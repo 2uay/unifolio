@@ -1,0 +1,100 @@
+{
+  "name": "Loan",
+  "type": "object",
+  "properties": {
+    "loan_type": {
+      "type": "string",
+      "enum": [
+        "Mortgage",
+        "Auto loan",
+        "Student loan",
+        "Personal loan",
+        "Line of credit",
+        "Business loan",
+        "Other"
+      ],
+      "description": "Type of loan"
+    },
+    "lender_name": {
+      "type": "string",
+      "description": "Name of lender"
+    },
+    "loan_name": {
+      "type": "string",
+      "description": "Nickname or loan name"
+    },
+    "outstanding_balance": {
+      "type": "number",
+      "description": "Current outstanding balance"
+    },
+    "original_balance": {
+      "type": "number",
+      "description": "Original loan amount"
+    },
+    "interest_rate": {
+      "type": "number",
+      "description": "Annual interest rate"
+    },
+    "monthly_payment": {
+      "type": "number",
+      "description": "Monthly payment amount"
+    },
+    "next_payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of next payment"
+    },
+    "maturity_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Loan maturity/payoff date"
+    },
+    "remaining_months": {
+      "type": "number",
+      "description": "Months remaining until payoff"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD",
+      "description": "Currency of loan"
+    },
+    "collateral_asset_id": {
+      "type": "string",
+      "description": "ID of linked custom asset (e.g., house for mortgage)"
+    },
+    "connection_status": {
+      "type": "string",
+      "enum": [
+        "Connected",
+        "Not connected",
+        "Syncing",
+        "Sync failed",
+        "API not supported yet",
+        "Manual"
+      ],
+      "default": "Manual",
+      "description": "Connection status to lender"
+    },
+    "last_synced": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last sync timestamp"
+    },
+    "include_in_net_value": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include balance in net value calculation"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "loan_type",
+    "lender_name",
+    "loan_name",
+    "outstanding_balance",
+    "currency"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "PredictionMarketPlatform",
+  "type": "object",
+  "properties": {
+    "platform_name": {
+      "type": "string",
+      "enum": [
+        "Polymarket",
+        "Kalshi"
+      ],
+      "description": "Prediction market platform"
+    },
+    "connection_status": {
+      "type": "string",
+      "enum": [
+        "Connected",
+        "Not connected",
+        "Syncing",
+        "Sync failed",
+        "API not supported yet",
+        "Manual"
+      ],
+      "default": "Not connected",
+      "description": "Connection status to platform"
+    },
+    "last_sync_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last sync timestamp"
+    },
+    "api_supported": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether live API integration is supported"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Platform user ID or handle"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes about the connection"
+    }
+  },
+  "required": [
+    "platform_name"
+  ]
+}

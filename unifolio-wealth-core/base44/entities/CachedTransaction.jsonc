@@ -1,0 +1,89 @@
+{
+  "name": "CachedTransaction",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User ID"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Account ID"
+    },
+    "ticker": {
+      "type": "string",
+      "description": "Asset ticker"
+    },
+    "asset_name": {
+      "type": "string",
+      "description": "Asset name"
+    },
+    "transaction_type": {
+      "type": "string",
+      "enum": [
+        "Buy",
+        "Sell",
+        "Dividend",
+        "Deposit",
+        "Withdrawal",
+        "Fee",
+        "Dividend reinvestment",
+        "Stock split",
+        "Other"
+      ],
+      "description": "Type of transaction"
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Number of shares/units"
+    },
+    "price": {
+      "type": "number",
+      "description": "Price per share"
+    },
+    "total_amount": {
+      "type": "number",
+      "description": "Total transaction amount"
+    },
+    "fees": {
+      "type": "number",
+      "description": "Transaction fees"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD",
+      "description": "Transaction currency"
+    },
+    "transaction_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Transaction date"
+    },
+    "settlement_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Settlement date"
+    },
+    "data_source": {
+      "type": "string",
+      "description": "Source of transaction data"
+    },
+    "cache_status": {
+      "type": "string",
+      "enum": [
+        "Live synced",
+        "Cached",
+        "Data retained"
+      ],
+      "default": "Cached",
+      "description": "Cache status"
+    }
+  },
+  "required": [
+    "user_id",
+    "account_id",
+    "transaction_type",
+    "total_amount",
+    "transaction_date"
+  ]
+}

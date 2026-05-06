@@ -1,0 +1,187 @@
+{
+  "name": "CustomAsset",
+  "type": "object",
+  "properties": {
+    "asset_name": {
+      "type": "string",
+      "description": "Name of the asset"
+    },
+    "asset_type": {
+      "type": "string",
+      "enum": [
+        "Real Estate",
+        "Vehicle",
+        "Precious Metals",
+        "Watch",
+        "Jewelry",
+        "Collectible",
+        "Art",
+        "Private Business",
+        "Private Investment",
+        "Cash",
+        "Crypto Wallet",
+        "Other"
+      ],
+      "description": "Type of asset"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description or notes"
+    },
+    "asset_details": {
+      "type": "object",
+      "description": "Asset-specific details (address, VIN, brand, etc.)"
+    },
+    "appraisal_method": {
+      "type": "string",
+      "enum": [
+        "Auto-Appraisal",
+        "Manual Value",
+        "Manual with Comparison",
+        "Appraisal Document",
+        "Purchase Price",
+        "Market Estimate",
+        "Other"
+      ],
+      "default": "Manual Value",
+      "description": "How the value was determined"
+    },
+    "appraisal_provider": {
+      "type": "string",
+      "description": "Name of appraisal source or provider"
+    },
+    "appraisal_source_type": {
+      "type": "string",
+      "enum": [
+        "Real Estate API",
+        "Vehicle API",
+        "Precious Metals API",
+        "Marketplace API",
+        "Auction Data",
+        "Insurance API",
+        "Manual Entry",
+        "Pending"
+      ],
+      "description": "Type of appraisal source"
+    },
+    "appraisal_status": {
+      "type": "string",
+      "enum": [
+        "Available",
+        "Unavailable",
+        "Pending",
+        "Failed",
+        "Manual Required",
+        "API Not Connected"
+      ],
+      "default": "Manual Required",
+      "description": "Status of appraisal availability"
+    },
+    "appraisal_last_checked": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When appraisal was last updated"
+    },
+    "appraisal_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Confidence level of appraisal (0-100%)"
+    },
+    "appraised_low_value": {
+      "type": "number",
+      "description": "Low estimate from appraisal"
+    },
+    "appraised_mid_value": {
+      "type": "number",
+      "description": "Normal/fair estimate from appraisal"
+    },
+    "appraised_high_value": {
+      "type": "number",
+      "description": "High estimate from appraisal"
+    },
+    "user_entered_value": {
+      "type": "number",
+      "description": "Value manually entered by user"
+    },
+    "chosen_value": {
+      "type": "number",
+      "description": "Final value chosen for Net Value calculation"
+    },
+    "chosen_value_source": {
+      "type": "string",
+      "enum": [
+        "Auto-Appraised Low",
+        "Auto-Appraised Mid",
+        "Auto-Appraised High",
+        "User Entered",
+        "Custom"
+      ],
+      "description": "Source of the chosen value"
+    },
+    "discrepancy_amount": {
+      "type": "number",
+      "description": "Difference between user value and appraised mid value"
+    },
+    "discrepancy_percent": {
+      "type": "number",
+      "description": "Percentage difference between user value and appraised mid value"
+    },
+    "discrepancy_warning": {
+      "type": "string",
+      "description": "Warning message if discrepancy is significant"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD",
+      "description": "Currency of the asset value"
+    },
+    "valuation_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of valuation"
+    },
+    "ownership_percentage": {
+      "type": "number",
+      "default": 100,
+      "description": "Ownership percentage (0-100)"
+    },
+    "liability_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "Debt or liability attached to this asset"
+    },
+    "net_value": {
+      "type": "number",
+      "description": "Calculated net value after liability"
+    },
+    "include_in_net_value": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to include in net value calculation"
+    },
+    "purchase_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of purchase"
+    },
+    "purchase_price": {
+      "type": "number",
+      "description": "Original purchase price"
+    },
+    "location": {
+      "type": "string",
+      "description": "Location of the asset"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    }
+  },
+  "required": [
+    "asset_name",
+    "asset_type",
+    "chosen_value",
+    "currency"
+  ]
+}

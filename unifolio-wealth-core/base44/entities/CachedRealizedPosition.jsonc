@@ -1,0 +1,87 @@
+{
+  "name": "CachedRealizedPosition",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User ID"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Account ID"
+    },
+    "ticker": {
+      "type": "string",
+      "description": "Asset ticker"
+    },
+    "asset_name": {
+      "type": "string",
+      "description": "Asset name"
+    },
+    "open_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Position open date"
+    },
+    "close_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Position close date"
+    },
+    "quantity_closed": {
+      "type": "number",
+      "description": "Quantity closed"
+    },
+    "average_buy_price": {
+      "type": "number",
+      "description": "Average buy price"
+    },
+    "average_sell_price": {
+      "type": "number",
+      "description": "Average sell price"
+    },
+    "cost_basis": {
+      "type": "number",
+      "description": "Total cost basis"
+    },
+    "proceeds": {
+      "type": "number",
+      "description": "Total sale proceeds"
+    },
+    "realized_gain_loss": {
+      "type": "number",
+      "description": "Realized gain/loss amount"
+    },
+    "realized_gain_loss_percent": {
+      "type": "number",
+      "description": "Realized gain/loss percentage"
+    },
+    "holding_period_days": {
+      "type": "integer",
+      "description": "Days position was held"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD",
+      "description": "Position currency"
+    },
+    "cache_status": {
+      "type": "string",
+      "enum": [
+        "Live synced",
+        "Cached",
+        "Data retained",
+        "Tax exported"
+      ],
+      "default": "Cached",
+      "description": "Cache status"
+    }
+  },
+  "required": [
+    "user_id",
+    "account_id",
+    "ticker",
+    "close_date",
+    "realized_gain_loss"
+  ]
+}

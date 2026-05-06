@@ -1,0 +1,79 @@
+{
+  "name": "CachedAccountSnapshot",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User ID"
+    },
+    "institution": {
+      "type": "string",
+      "description": "Institution name (e.g., Interactive Brokers, CIBC)"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Original account ID"
+    },
+    "account_name": {
+      "type": "string",
+      "description": "Account name/label"
+    },
+    "account_type": {
+      "type": "string",
+      "description": "Account type (TFSA, RRSP, Taxable, etc.)"
+    },
+    "snapshot_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of snapshot"
+    },
+    "total_account_value": {
+      "type": "number",
+      "description": "Total account value at snapshot"
+    },
+    "holdings_value": {
+      "type": "number",
+      "description": "Value of holdings"
+    },
+    "cash_value": {
+      "type": "number",
+      "description": "Cash balance"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD",
+      "description": "Account currency"
+    },
+    "data_source": {
+      "type": "string",
+      "description": "Original data source (API, manual import, etc.)"
+    },
+    "cache_status": {
+      "type": "string",
+      "enum": [
+        "Live synced",
+        "Cached",
+        "Disconnected",
+        "Sync failed",
+        "Data retained",
+        "Data expired",
+        "Manual data only"
+      ],
+      "default": "Cached",
+      "description": "Cache status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When snapshot was created"
+    }
+  },
+  "required": [
+    "user_id",
+    "institution",
+    "account_id",
+    "account_name",
+    "snapshot_date",
+    "total_account_value"
+  ]
+}

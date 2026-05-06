@@ -1,0 +1,89 @@
+{
+  "name": "CachedHoldingSnapshot",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User ID"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Account ID"
+    },
+    "ticker": {
+      "type": "string",
+      "description": "Stock ticker"
+    },
+    "asset_name": {
+      "type": "string",
+      "description": "Asset name"
+    },
+    "quantity": {
+      "type": "number",
+      "description": "Quantity held"
+    },
+    "average_price": {
+      "type": "number",
+      "description": "Average entry price"
+    },
+    "current_price_at_snapshot": {
+      "type": "number",
+      "description": "Price at snapshot time"
+    },
+    "market_value_at_snapshot": {
+      "type": "number",
+      "description": "Market value at snapshot"
+    },
+    "cost_basis": {
+      "type": "number",
+      "description": "Total cost basis"
+    },
+    "unrealized_gain_loss": {
+      "type": "number",
+      "description": "Unrealized P&L at snapshot"
+    },
+    "realized_gain_loss": {
+      "type": "number",
+      "description": "Realized gains/losses to date"
+    },
+    "position_status": {
+      "type": "string",
+      "enum": [
+        "Open",
+        "Closed",
+        "Partial",
+        "Pending"
+      ],
+      "default": "Open",
+      "description": "Position status"
+    },
+    "snapshot_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Snapshot date"
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD",
+      "description": "Position currency"
+    },
+    "cache_status": {
+      "type": "string",
+      "enum": [
+        "Live synced",
+        "Cached",
+        "Disconnected",
+        "Data retained"
+      ],
+      "default": "Cached",
+      "description": "Cache status"
+    }
+  },
+  "required": [
+    "user_id",
+    "account_id",
+    "ticker",
+    "quantity",
+    "snapshot_date"
+  ]
+}
