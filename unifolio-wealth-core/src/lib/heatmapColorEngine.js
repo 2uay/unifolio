@@ -138,19 +138,18 @@ function generateColorStyle(intensity, colorScheme, value, mode, theme, accentCo
   return { bgStyle: {}, label: '' };
 }
 
-// Concentration heatmap: amber/accent tint
-function concentrationColor(intensity, value, theme, accentColor) {
-  const opacity = Math.pow(intensity, 0.75) * 0.18; // Max 18% opacity
-  
-  // Use theme accent or default amber
-  const baseColor = theme === 'bloomberg' ? 'rgba(217, 119, 6, OPACITY)' : `rgba(${hexToRgb(accentColor)}, OPACITY)`;
-  const bgColor = baseColor.replace('OPACITY', opacity);
-  
-  const label = `${(value * 100).toFixed(1)}% concentration`;
+// Concentration heatmap: tinted with the active theme's primary color
+function concentrationColor(intensity, value, _theme, accentColor) {
+  const opacity = Math.pow(intensity, 0.75) * 0.18;
+  // accentColor is an HSL components string from the --primary CSS variable ("217 91% 60%")
+  // or a legacy hex fallback — handle both
+  const bgColor = accentColor && accentColor.includes('%')
+    ? `hsl(${accentColor} / ${opacity})`
+    : `rgba(${hexToRgb(accentColor || '#3B82F6')}, ${opacity})`;
 
   return {
     bgStyle: { backgroundColor: bgColor },
-    label,
+    label: `${(value * 100).toFixed(1)}% concentration`,
   };
 }
 
@@ -201,35 +200,22 @@ function hexToRgb(hex) {
   return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '59, 130, 246';
 }
 
-// Prepare holdings with heatmap metadata for a specific mode
-export function enrichHoldingsForHeatmap(holdings, mode, context = {}) {
-  if (!mode || mode === HEATMAP_MODES.OFF) return holdings;
-
+// Prepare holdings with heatmap metadata — always computes all enriched fields so
+// hover-preview across any mode works without re-enriching.
+export function enrichHoldingsForHeatmap(holdings, _mode, context = {}) {
   const { portfolioTotal = 0, accountTotals = {}, totalAbsoluteRealizedPnl = 0 } = context;
 
   return holdings.map(h => {
-    let portfolioWeight = 0;
-    let accountWeight = 0;
-    let realizedGainContribution = 0;
-
-    if (mode === HEATMAP_MODES.PORTFOLIO_WEIGHT) {
-      const marketValue = safeNumber(h.market_value ?? h.marketValue ?? 0);
-      portfolioWeight = portfolioTotal > 0 ? marketValue / portfolioTotal : 0;
-    } else if (mode === HEATMAP_MODES.ACCOUNT_WEIGHT) {
-      const accountId = h.account_id ?? h.accountId;
-      const accTotal = accountTotals[accountId] || 0;
-      const marketValue = safeNumber(h.market_value ?? h.marketValue ?? 0);
-      accountWeight = accTotal > 0 ? marketValue / accTotal : 0;
-    } else if (mode === HEATMAP_MODES.REALIZED_GAIN_CONTRIBUTION) {
-      const realized = safeNumber(h.realized_gain_loss_amount ?? h.realizedGain ?? 0);
-      realizedGainContribution = totalAbsoluteRealizedPnl > 0 ? (realized / totalAbsoluteRealizedPnl) * 100 : 0;
-    }
+    const marketValue = safeNumber(h.market_value ?? h.marketValue ?? 0);
+    const accountId = h.account_id ?? h.accountId;
+    const accTotal = accountTotals[accountId] || 0;
+    const realized = safeNumber(h.realized_gain_loss_amount ?? h.realizedGain ?? 0);
 
     return {
       ...h,
-      _portfolioWeight: portfolioWeight,
-      _accountWeight: accountWeight,
-      _realizedGainContribution: realizedGainContribution,
+      _portfolioWeight: portfolioTotal > 0 ? marketValue / portfolioTotal : 0,
+      _accountWeight: accTotal > 0 ? marketValue / accTotal : 0,
+      _realizedGainContribution: totalAbsoluteRealizedPnl > 0 ? (realized / totalAbsoluteRealizedPnl) * 100 : 0,
     };
   });
 }

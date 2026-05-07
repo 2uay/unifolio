@@ -11,17 +11,7 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    // Restore session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser(session.user);
-        setIsAuthenticated(true);
-      }
-      setIsLoadingAuth(false);
-    });
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser(session.user);
         setIsAuthenticated(true);
@@ -30,9 +20,18 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setIsAuthenticated(false);
       }
+      if (event === 'INITIAL_SESSION') {
+        setIsLoadingAuth(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    // Fallback: if INITIAL_SESSION never fires (stub client / no network), unblock after 3s
+    const fallback = setTimeout(() => setIsLoadingAuth(false), 3000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(fallback);
+    };
   }, []);
 
   const signUp = async (email, password, fullName) => {
@@ -66,6 +65,15 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  const updateFullName = async (newName) => {
+    const { error } = await supabase.auth.updateUser({ data: { full_name: newName } });
+    if (error) throw error;
+    if (user?.id) {
+      await supabase.from('user_profiles').upsert({ user_id: user.id, full_name: newName });
+    }
+    // onAuthStateChange fires USER_UPDATED and refreshes user state automatically
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -77,9 +85,12 @@ export const AuthProvider = ({ children }) => {
     setIsDemoMode(true);
   };
 
+  const fullName = user?.user_metadata?.full_name || user?.full_name || user?.email || '';
+
   return (
     <AuthContext.Provider value={{
       user,
+      fullName,
       isAuthenticated,
       isLoadingAuth,
       isDemoMode,
@@ -88,6 +99,7 @@ export const AuthProvider = ({ children }) => {
       signIn,
       logout,
       enterDemoMode,
+      updateFullName,
     }}>
       {children}
     </AuthContext.Provider>

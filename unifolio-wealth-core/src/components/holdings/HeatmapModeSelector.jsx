@@ -14,11 +14,11 @@ import {
 import { HEATMAP_MODES, HEATMAP_MODE_CONFIG, HEATMAP_CATEGORIES } from '@/lib/heatmapModes.js';
 import { cn } from '@/lib/utils';
 
-export default function HeatmapModeSelector({ activeMode, onModeChange }) {
+export default function HeatmapModeSelector({ activeMode, onModeChange, onModePreview, onPreviewEnd }) {
   const config = HEATMAP_MODE_CONFIG[activeMode];
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => { if (!open) onPreviewEnd?.(); }}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
@@ -43,6 +43,8 @@ export default function HeatmapModeSelector({ activeMode, onModeChange }) {
                 <DropdownMenuItem
                   key={modeId}
                   onClick={() => onModeChange(modeId)}
+                  onMouseEnter={() => onModePreview?.(modeId)}
+                  onMouseLeave={() => onPreviewEnd?.()}
                   className={cn(
                     'text-xs cursor-pointer px-2 py-1.5',
                     isActive && 'bg-primary/10 text-primary font-medium'

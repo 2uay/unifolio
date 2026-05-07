@@ -10,10 +10,35 @@ import { useSecondaryColors } from '@/lib/SecondaryColorsContext';
 import { useStarredStocks } from '@/lib/StarredStocksContext';
 import { cn } from '@/lib/utils';
 
-const AUTO_SPEED = 0.5; // px/frame leftward
+const AUTO_SPEED = 0.5;
 const FRICTION = 0.93;
 
-function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatchlistId, livePrice, liveChange, isStarred, onStarClick, accentColor, theme }) {
+function MiniSparkline({ values, isUp }) {
+  const W = 44, H = 16;
+  const pts = (values && values.length >= 2)
+    ? values
+    : (isUp ? [0, 0.4, 0.2, 0.6, 0.5, 0.8, 1] : [1, 0.6, 0.8, 0.4, 0.5, 0.2, 0]);
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const range = max - min || 1;
+  const coords = pts.map((v, i) =>
+    `${(i / (pts.length - 1)) * W},${H - ((v - min) / range) * (H - 2) - 1}`
+  ).join(' ');
+  return (
+    <svg width={W} height={H} className="flex-shrink-0 opacity-80">
+      <polyline
+        points={coords}
+        fill="none"
+        stroke={isUp ? '#22c55e' : '#ef4444'}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatchlistId, livePrice, liveChange, sparkline, isStarred, accentColor, theme }) {
   const { privacyMode } = usePrivacy();
   const { convert } = useCurrency();
   const { openWindow } = useResearchWindows();
@@ -47,74 +72,61 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
     });
   };
 
-  const bgColor = isUp ? 'rgba(34, 197, 94, 0.08)' : 'rgba(239, 68, 68, 0.08)';
+  const bgColor = isUp ? 'rgba(34, 197, 94, 0.07)' : 'rgba(239, 68, 68, 0.07)';
   const accentColorValue = isUp ? '#22c55e' : '#ef4444';
-  const borderColor = isUp ? 'rgba(34, 197, 94, 0.25)' : 'rgba(239, 68, 68, 0.25)';
+  const borderColor = isUp ? 'rgba(34, 197, 94, 0.22)' : 'rgba(239, 68, 68, 0.22)';
 
   return (
     <div
       onClick={handleCardClick}
       className={cn(
-        'relative group flex-shrink-0 w-52 rounded-lg border transition-all duration-150 cursor-pointer',
-        'hover:bg-opacity-80',
+        'relative group flex-shrink-0 w-40 rounded-md border transition-all duration-150 cursor-pointer hover:brightness-110',
         flash && 'animate-pulse'
       )}
       style={{ backgroundColor: bgColor, borderColor }}
     >
-      {/* Dismiss button */}
+      {/* Dismiss */}
       <button
         onClick={(e) => { e.stopPropagation(); onDismiss(stock.ticker); }}
-        className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity z-20 p-1 rounded text-muted-foreground/60 hover:text-foreground hover:bg-black/10"
+        className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-20 p-0.5 rounded text-muted-foreground/60 hover:text-foreground"
       >
-        <X className="w-3.5 h-3.5" />
+        <X className="w-2.5 h-2.5" />
       </button>
 
-      <div className="p-4 flex flex-col gap-3 h-full">
-        {/* Row 1: Ticker + Star + Change % */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="font-mono font-bold text-sm tracking-wider text-foreground truncate">
-              {stock.ticker}
-            </span>
+      <div className="pt-1 px-2 pb-2 flex flex-col gap-0.5">
+        {/* Row 1: Ticker + Sparkline */}
+        <div className="flex items-center justify-between gap-1">
+          <span className="font-mono font-bold text-xs tracking-wide text-foreground truncate">
+            {stock.ticker}
             {isStarred && (
-              <span
-                className="text-amber-400 text-[11px] flex-shrink-0"
-                style={{ color: theme === 'bloomberg' ? '#FCD34D' : accentColor }}
-              >
-                ★
-              </span>
+              <span className="ml-0.5 text-[9px]" style={{ color: accentColor }}>★</span>
             )}
-          </div>
-          <span
-            className="text-[11px] font-mono font-semibold tabular-nums flex-shrink-0"
-            style={{ color: accentColorValue }}
-          >
-            {privacyMode ? '••••' : `${isUp ? '+' : ''}${displayChange.toFixed(2)}%`}
           </span>
+          <MiniSparkline values={sparkline} isUp={isUp} />
         </div>
 
-        {/* Row 2: Company name */}
-        <p className="text-[10px] text-muted-foreground truncate leading-tight">
-          {stock.name}
-        </p>
+        {/* Row 2: Price + Change% | Add button */}
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1 min-w-0 flex-1">
+            <span className="font-mono text-xs font-semibold tabular-nums leading-none">
+              {privacyMode ? '••••' : `$${convertedPrice.toFixed(2)}`}
+            </span>
+            <span
+              className="text-[10px] font-mono tabular-nums leading-none flex-shrink-0"
+              style={{ color: accentColorValue }}
+            >
+              {privacyMode ? '••' : `${isUp ? '+' : ''}${displayChange.toFixed(2)}%`}
+            </span>
+          </div>
 
-        {/* Row 3: Price + Add button */}
-        <div className="flex items-center justify-between gap-2 mt-auto pt-1 border-t border-border/30">
-          <span className="font-mono text-base font-bold tabular-nums">
-            {privacyMode ? '••••••' : `$${convertedPrice.toFixed(2)}`}
-          </span>
-
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <button
               onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
-              className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150 flex-shrink-0"
-              style={{
-                backgroundColor: accentColorValue + '15',
-                borderColor: accentColorValue + '40',
-              }}
+              className="w-5 h-5 flex items-center justify-center rounded transition-all duration-150"
+              style={{ backgroundColor: accentColorValue + '20' }}
               title="Add to watchlist"
             >
-              <Plus className="w-3.5 h-3.5" style={{ color: accentColorValue }} />
+              <Plus className="w-3 h-3" style={{ color: accentColorValue }} />
             </button>
 
             {menuOpen && (
@@ -130,12 +142,19 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
                   >
                     <span>{wl.icon}</span>
                     <span className="truncate">{wl.name}</span>
-                    {wl.id === currentWatchlistId && <span className="ml-auto text-[9px] text-muted-foreground shrink-0">✓</span>}
+                    {wl.id === currentWatchlistId && (
+                      <span className="ml-auto text-[9px] text-muted-foreground shrink-0">✓</span>
+                    )}
                   </button>
                 ))}
               </div>
             )}
           </div>
+        </div>
+
+        {/* Row 3: Company name */}
+        <div className="text-[9px] text-muted-foreground truncate leading-none">
+          {stock.name}
         </div>
       </div>
     </div>
@@ -170,13 +189,11 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
   const accentColor = theme === 'bloomberg' ? '#FCD34D' : (palette?.accent || '#3B82F6');
   const carouselItems = displayStocks.length > 0 ? [...displayStocks, ...displayStocks] : [];
 
-  // Measure halfWidth after items render
   useEffect(() => {
     if (!stripRef.current) return;
     halfWidthRef.current = stripRef.current.scrollWidth / 2;
   }, [carouselItems]);
 
-  // Physics rAF loop
   useEffect(() => {
     const tick = () => {
       if (!isDraggingRef.current) {
@@ -240,16 +257,13 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header */}
       <div className="flex items-center justify-between px-1">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Explore</h2>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Discover stocks to add to your watchlist</p>
-        </div>
+        <span className="text-xs font-semibold text-foreground">Explore</span>
         <button
           onClick={handleRefresh}
-          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           title="Refresh recommendations"
         >
           <RefreshCw className={cn('w-3 h-3', spinning && 'animate-spin')} />
@@ -258,76 +272,50 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
       </div>
 
       {displayStocks.length > 0 ? (
-        <div className="relative">
-          {/* Top glow accent line */}
-          <div
-            className="absolute top-0 left-0 right-0 h-[1px] opacity-40 rounded-full"
-            style={{ backgroundColor: accentColor, boxShadow: `0 0 8px ${accentColor}60` }}
-          />
+        <div
+          className="relative bg-card/50 border border-border/60 rounded-xl p-1.5 overflow-hidden select-none"
+          style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+          onMouseDown={handleDragStart}
+          onMouseMove={handleDragMove}
+          onMouseUp={handleDragEnd}
+          onMouseLeave={handleDragEnd}
+          onTouchStart={handleDragStart}
+          onTouchMove={handleDragMove}
+          onTouchEnd={handleDragEnd}
+        >
+          {/* Left fade */}
+          <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-card/90 to-transparent z-10 pointer-events-none rounded-l-xl" />
+          {/* Right fade */}
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-card/90 to-transparent z-10 pointer-events-none rounded-r-xl" />
 
-          {/* Main carousel — drag target */}
-          <div
-            className="relative bg-gradient-to-r from-secondary/40 to-secondary/20 border border-border/60 rounded-xl p-3.5 overflow-hidden select-none"
-            style={{
-              boxShadow: `inset 0 0 20px rgba(0,0,0,0.15), 0 4px 12px ${accentColor}10`,
-              cursor: isDragging ? 'grabbing' : 'grab',
-            }}
-            onMouseDown={handleDragStart}
-            onMouseMove={handleDragMove}
-            onMouseUp={handleDragEnd}
-            onMouseLeave={handleDragEnd}
-            onTouchStart={handleDragStart}
-            onTouchMove={handleDragMove}
-            onTouchEnd={handleDragEnd}
-          >
-            {/* Left fade */}
-            <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-secondary/80 to-transparent z-10 pointer-events-none rounded-l-xl" />
-            {/* Right fade */}
-            <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-secondary/80 to-transparent z-10 pointer-events-none rounded-r-xl" />
-
-            {/* Scrolling strip */}
-            <div ref={stripRef} className="flex gap-3">
-              {carouselItems.map((stock, idx) => {
-                const liveData = liveHoldings[stock.ticker];
-                return (
-                  <ExploreCarouselCard
-                    key={`${stock.ticker}-${idx}`}
-                    stock={stock}
-                    onAdd={onAddToWatchlist}
-                    onDismiss={handleDismiss}
-                    watchlists={watchlists}
-                    currentWatchlistId={currentWatchlistId}
-                    livePrice={liveData?.price}
-                    liveChange={liveData?.dailyChangePercent}
-                    isStarred={isStar(stock.ticker)}
-                    onStarClick={() => toggleStar(stock.ticker)}
-                    accentColor={accentColor}
-                    theme={theme}
-                  />
-                );
-              })}
-            </div>
+          {/* Scrolling strip */}
+          <div ref={stripRef} className="flex gap-1.5">
+            {carouselItems.map((stock, idx) => {
+              const liveData = liveHoldings[stock.ticker];
+              return (
+                <ExploreCarouselCard
+                  key={`${stock.ticker}-${idx}`}
+                  stock={stock}
+                  onAdd={onAddToWatchlist}
+                  onDismiss={handleDismiss}
+                  watchlists={watchlists}
+                  currentWatchlistId={currentWatchlistId}
+                  livePrice={liveData?.price}
+                  liveChange={liveData?.dailyChangePercent}
+                  sparkline={liveData?.sparkline}
+                  isStarred={isStar(stock.ticker)}
+                  onStarClick={() => toggleStar(stock.ticker)}
+                  accentColor={accentColor}
+                  theme={theme}
+                />
+              );
+            })}
           </div>
-
-          {/* Bottom glow accent line */}
-          <div
-            className="absolute bottom-0 left-0 right-0 h-[1px] opacity-40 rounded-full"
-            style={{ backgroundColor: accentColor, boxShadow: `0 0 8px ${accentColor}60` }}
-          />
-
-          {!liveDataEnabled && (
-            <div className="mt-2 text-[11px] text-muted-foreground/60 text-center">
-              Enable live data in settings to see real-time prices
-            </div>
-          )}
         </div>
       ) : (
-        <div className="bg-card/50 rounded-xl border border-border p-8 text-center">
+        <div className="bg-card/50 rounded-xl border border-border p-6 text-center">
           <p className="text-xs text-muted-foreground mb-2">All suggestions dismissed</p>
-          <button
-            onClick={handleRefresh}
-            className="text-xs text-primary hover:underline transition-colors"
-          >
+          <button onClick={handleRefresh} className="text-xs text-primary hover:underline transition-colors">
             Refresh recommendations
           </button>
         </div>

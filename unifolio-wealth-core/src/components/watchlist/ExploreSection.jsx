@@ -11,7 +11,7 @@ function TickerIcon({ ticker }) {
   const idx = (ticker.charCodeAt(0) + (ticker.charCodeAt(1) || 0)) % colors.length;
   return (
     <div
-      className="w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
+      className="w-6 h-6 rounded-md flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
       style={{ backgroundColor: colors[idx] + 'cc' }}
     >
       {ticker.slice(0, 2)}
@@ -44,7 +44,7 @@ function ExploreCard({ stock, onAdd, onDismiss, watchlists, currentWatchlistId }
   return (
     <div
       onClick={handleCardClick}
-      className="relative group bg-card hover:bg-secondary/60 border border-border hover:border-primary/30 hover:shadow-md rounded-xl p-3.5 transition-all duration-150 flex flex-col gap-3 cursor-pointer"
+      className="relative group bg-card hover:bg-secondary/60 border border-border hover:border-primary/30 hover:shadow-md rounded-xl p-2.5 transition-all duration-150 flex flex-col gap-1.5 cursor-pointer"
     >
       {/* Dismiss — visible on hover */}
       <button
@@ -67,7 +67,7 @@ function ExploreCard({ stock, onAdd, onDismiss, watchlists, currentWatchlistId }
       </div>
 
       {/* Row 2: company name */}
-      <p className="text-[11px] text-muted-foreground truncate leading-none -mt-1">{stock.name}</p>
+      <p className="text-[11px] text-muted-foreground truncate leading-none">{stock.name}</p>
 
       {/* Row 3: price + add button */}
       <div className="flex items-center justify-between gap-2 mt-auto">
@@ -123,9 +123,9 @@ export default function ExploreSection({ watchlistTickers, watchlists, currentWa
   };
 
   return (
-    <div className="bg-card/50 rounded-xl border border-border p-4 md:p-5">
+    <div className="bg-card/50 rounded-xl border border-border p-3 md:p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2.5">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Explore</h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">Stocks you might like</p>
@@ -140,7 +140,7 @@ export default function ExploreSection({ watchlistTickers, watchlists, currentWa
       </div>
 
       {displayStocks.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
           {displayStocks.map(stock => (
             <ExploreCard
               key={stock.ticker + seed}

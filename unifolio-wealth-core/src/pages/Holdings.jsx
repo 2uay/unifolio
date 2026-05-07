@@ -67,6 +67,7 @@ export default function Holdings() {
     const saved = localStorage.getItem('holdings_heatmap_mode');
     return saved || HEATMAP_MODES.PORTFOLIO_WEIGHT; // Default to Portfolio Weight
   });
+  const [previewMode, setPreviewMode] = useState(null);
   const [showColumnModal, setShowColumnModal] = useState(false);
   const [stackAssets, setStackAssets] = useState(() => {
     return localStorage.getItem('unifolio_stack_assets') === 'true';
@@ -110,6 +111,7 @@ export default function Holdings() {
 
   const handleHeatmapModeChange = (newMode) => {
     setHeatmapMode(newMode);
+    setPreviewMode(null);
     localStorage.setItem('holdings_heatmap_mode', newMode);
   };
 
@@ -216,14 +218,12 @@ export default function Holdings() {
 
   // Enrich holdings for heatmap calculation
   const enrichedForHeatmap = useMemo(() => {
-    // Always enrich even if heatmap is disabled, so mode switching works
-    const enriched = enrichHoldingsForHeatmap(liveUpdatedBaseHoldings, heatmapMode, {
+    return enrichHoldingsForHeatmap(liveUpdatedBaseHoldings, null, {
       portfolioTotal: convertedPortfolioTotal,
       accountTotals,
       totalAbsoluteRealizedPnl,
     });
-    return enriched;
-  }, [liveUpdatedBaseHoldings, heatmapMode, convertedPortfolioTotal, accountTotals, totalAbsoluteRealizedPnl]);
+  }, [liveUpdatedBaseHoldings, convertedPortfolioTotal, accountTotals, totalAbsoluteRealizedPnl]);
 
   const filteredCurrent = useMemo(() => {
     return enrichedForHeatmap.filter(h => {
@@ -536,12 +536,12 @@ export default function Holdings() {
                   const isExpanded = expandedId === h.id;
 
                   // Calculate heatmap style based on selected mode (only if enabled)
-                  const heatmapStyle = heatmapEnabled ? calculateHeatmapStyle(h, heatmapMode, {
+                  const heatmapStyle = heatmapEnabled ? calculateHeatmapStyle(h, previewMode ?? heatmapMode, {
                     portfolioTotal: convertedPortfolioTotal,
                     accountTotal: safeNumber(accountTotals[h.account_id ?? h.accountId]),
                     visibleHoldings: displayHoldings,
                     theme: theme || 'default',
-                    accentColor: palette?.accent || '#3B82F6',
+                    accentColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
                     allRealizedHoldings: [...displayHoldings, ...filteredRealized],
                   }) : { bgStyle: {}, label: '' };
 
@@ -622,7 +622,7 @@ export default function Holdings() {
                           accountTotal: safeNumber(accountTotals[r.account_id]),
                           visibleHoldings: displayHoldings,
                           theme: theme || 'default',
-                          accentColor: palette?.accent || '#3B82F6',
+                          accentColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
                           allRealizedHoldings: [...displayHoldings, ...filteredRealized],
                         })
                       : { bgStyle: {}, label: '' };
@@ -697,7 +697,7 @@ export default function Holdings() {
                             accountTotal: safeNumber(accountTotals[r.account_id]),
                             visibleHoldings: displayHoldings,
                             theme: theme || 'default',
-                            accentColor: palette?.accent || '#3B82F6',
+                            accentColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
                             allRealizedHoldings: [...displayHoldings, ...filteredRealized],
                           })
                         : { bgStyle: {}, label: '' };
@@ -775,7 +775,12 @@ export default function Holdings() {
         </div>
 
         {/* Heatmap Mode Selector */}
-        <HeatmapModeSelector activeMode={heatmapMode} onModeChange={handleHeatmapModeChange} />
+        <HeatmapModeSelector
+          activeMode={heatmapMode}
+          onModeChange={handleHeatmapModeChange}
+          onModePreview={(mode) => setPreviewMode(mode)}
+          onPreviewEnd={() => setPreviewMode(null)}
+        />
 
         {/* Column Customize Button */}
         <div title="Customize Columns">

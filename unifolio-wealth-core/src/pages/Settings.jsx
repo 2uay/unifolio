@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Eye, Shield, Bell, RefreshCw, AlertTriangle, LogOut, Trash2, Download, Lock, Smartphone, Monitor, Coins, CheckCircle2, Clock, Palette, Zap, Sparkles } from 'lucide-react';
+import { User, Eye, Shield, Bell, RefreshCw, AlertTriangle, LogOut, Trash2, Download, Lock, Smartphone, Monitor, Coins, CheckCircle2, Clock, Palette, Zap, Sparkles, Pencil, X, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,13 +19,32 @@ import { cn } from '@/lib/utils';
 
 export default function Settings() {
   const { displayCurrency, setDisplayCurrency, enabledCurrencies, setEnabledCurrencies, allCurrencies } = useCurrency();
-  const { user, logout } = useAuth();
+  const { user, fullName, logout, updateFullName } = useAuth();
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState('');
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError] = useState('');
   const { liveDataEnabled, setLiveDataEnabled } = useLiveData();
   const { accentBarsEnabled, toggleAccentBars } = useAccentBars();
   const [excludedAccounts, setExcludedAccounts] = useState([]);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [priceAlerts, setPriceAlerts] = useState(true);
   const [twoFactor, setTwoFactor] = useState(false);
+
+  const handleSaveName = async () => {
+    const trimmed = nameValue.trim();
+    if (!trimmed) { setNameError('Name cannot be empty.'); return; }
+    setNameSaving(true);
+    setNameError('');
+    try {
+      await updateFullName(trimmed);
+      setEditingName(false);
+    } catch (err) {
+      setNameError(err.message || 'Failed to update name.');
+    } finally {
+      setNameSaving(false);
+    }
+  };
 
   const toggleAccount = (id) => {
     setExcludedAccounts(prev =>
@@ -59,7 +78,7 @@ export default function Settings() {
         <div className="flex items-center gap-2 sm:gap-4 p-2 sm:p-4 rounded-lg bg-secondary/40 border border-border">
           <Avatar user={user} size="md" showRing={true} />
           <div className="min-w-0">
-            <p className="text-sm sm:text-base font-semibold truncate">{user?.full_name || 'User'}</p>
+            <p className="text-sm sm:text-base font-semibold truncate">{fullName || 'User'}</p>
             <p className="text-xs sm:text-sm text-muted-foreground truncate">{user?.email}</p>
             <p className="text-[10px] sm:text-xs text-muted-foreground/60 mt-0.5">Role: {user?.role || 'user'}</p>
           </div>
@@ -67,14 +86,55 @@ export default function Settings() {
         <div className="grid sm:grid-cols-2 gap-2 sm:gap-4">
           <div>
             <Label className="text-[10px] sm:text-xs text-muted-foreground">Full Name</Label>
-            <Input defaultValue={user?.full_name || ''} className="mt-1 bg-secondary border-border" readOnly />
+            {editingName ? (
+              <div className="mt-1 flex items-center gap-1.5">
+                <Input
+                  autoFocus
+                  value={nameValue}
+                  onChange={(e) => setNameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveName();
+                    if (e.key === 'Escape') setEditingName(false);
+                  }}
+                  className="bg-secondary border-border flex-1"
+                  disabled={nameSaving}
+                />
+                <button
+                  onClick={handleSaveName}
+                  disabled={nameSaving}
+                  className="p-1.5 rounded-md text-green-500 hover:bg-green-500/10 transition-colors disabled:opacity-40"
+                  title="Save"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => { setEditingName(false); setNameError(''); }}
+                  disabled={nameSaving}
+                  className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-40"
+                  title="Cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-1.5">
+                <Input value={fullName} className="bg-secondary border-border flex-1" readOnly />
+                <button
+                  onClick={() => { setNameValue(fullName); setNameError(''); setEditingName(true); }}
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  title="Edit name"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            {nameError && <p className="text-xs text-red-400 mt-1">{nameError}</p>}
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">Email</Label>
             <Input defaultValue={user?.email || ''} className="mt-1 bg-secondary border-border" readOnly />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground/60">Profile details are managed through the platform authentication system.</p>
       </div>
 
       {/* Themes */}

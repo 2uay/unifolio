@@ -15,7 +15,7 @@ import {
   CHART_TYPES, TIME_RANGES, RANGE_DAYS, ALL_INDICATORS, DEFAULT_LAYOUT, loadChartLayout, saveChartLayout
 } from '@/lib/chartEngine.js';
 
-export default function StockChart({ ticker, name, lastPrice, seedVal = 42, compact = false, onChartClick, clickableChart = true }) {
+export default function StockChart({ ticker, name, lastPrice, seedVal = 42, compact = false, onChartClick, clickableChart = true, referenceLines = [] }) {
   const { privacyMode } = usePrivacy();
   const { openWindow } = useResearchWindows();
   const saved = useMemo(() => loadChartLayout(), []);
@@ -300,6 +300,17 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
             {activeIndicators.includes('low52') && (
               <ReferenceLine yAxisId="price" y={Math.min(...chartData.map(d => d.low))} stroke="#f87171" strokeDasharray="4 2" strokeWidth={0.8} />
             )}
+            {referenceLines.map((rl, i) => (
+              <ReferenceLine
+                key={`ext-${i}`}
+                yAxisId="price"
+                y={rl.price}
+                stroke={rl.color || '#a78bfa'}
+                strokeDasharray="3 3"
+                strokeWidth={1}
+                label={{ value: rl.label, position: 'right', fill: rl.color || '#a78bfa', fontSize: 9 }}
+              />
+            ))}
           </ComposedChart>
         </ResponsiveContainer>
         {/* Chart click indicator */}

@@ -20,7 +20,7 @@ export function LiveDataProvider({ children }) {
   const marketOpenRef = useRef(isMarketOpen());
   const realPricesRef = useRef({}); // ticker -> { current_price, previous_close, ... }
   const [apiPricesLoaded, setApiPricesLoaded] = useState(false);
-  const [apiLastFetched, setApiLastFetched] = useState(getCacheAge);
+  const [apiLastFetched, setApiLastFetched] = useState(getCacheAge());
 
   // Register a stock/ETF/crypto holding
   const registerTicker = useCallback((ticker, assetClass = 'stock') => {

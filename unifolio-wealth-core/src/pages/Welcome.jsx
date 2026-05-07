@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, TrendingUp, BarChart3, PieChart, Zap, Eye, EyeOff } from 'lucide-react';
+import { Shield, TrendingUp, BarChart3, PieChart, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AccentBars from '@/components/shared/AccentBars';
@@ -15,7 +15,6 @@ export default function Welcome() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
@@ -127,23 +126,14 @@ export default function Welcome() {
                 required
                 className="bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-amber-500/50"
               />
-              <div className="relative">
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="pr-10 bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-amber-500/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-amber-500/50"
+              />
               {error && <p className="text-red-400 text-xs">{error}</p>}
               <Button
                 type="submit"
@@ -173,23 +163,14 @@ export default function Welcome() {
                 required
                 className="bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-amber-500/50"
               />
-              <div className="relative">
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Password (min 6 characters)"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="pr-10 bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-amber-500/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+              <Input
+                type="password"
+                placeholder="Password (min 6 characters)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus:border-amber-500/50"
+              />
               {error && <p className="text-red-400 text-xs">{error}</p>}
               <Button
                 type="submit"
