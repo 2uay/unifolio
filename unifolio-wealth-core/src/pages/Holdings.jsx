@@ -13,7 +13,9 @@ import { useTheme } from '@/lib/ThemeContext';
 import HoldingDetailRow from '@/components/holdings/HoldingDetailRow';
 import DateRangeFilter from '@/components/holdings/DateRangeFilter';
 import { rawRealizedPositions, filterRealizedByDateRange } from '@/lib/realizedPositions';
-import { getSavedColumnOrder, COLUMN_DEFINITIONS } from '@/lib/columnConfig';
+import { getSavedColumnOrder, saveColumnOrder, loadColumnOrderFromSupabase, COLUMN_DEFINITIONS } from '@/lib/columnConfig';
+import { supabase } from '@/lib/supabaseClient';
+import { stackHoldings } from '@/lib/stackingEngine';
 import PortfolioBreakdown from '@/components/holdings/PortfolioBreakdown';
 import HeatmapModeSelector from '@/components/holdings/HeatmapModeSelector';
 import { HEATMAP_MODES } from '@/lib/heatmapModes.js';
@@ -66,6 +68,9 @@ export default function Holdings() {
     return saved || HEATMAP_MODES.PORTFOLIO_WEIGHT; // Default to Portfolio Weight
   });
   const [showColumnModal, setShowColumnModal] = useState(false);
+  const [stackAssets, setStackAssets] = useState(() => {
+    return localStorage.getItem('unifolio_stack_assets') === 'true';
+  });
 
   const { convert, displayCurrency } = useCurrency();
   const { privacyMode } = usePrivacy();
@@ -83,6 +88,19 @@ export default function Holdings() {
     });
   }, [registerTicker]);
 
+  // Load column order from Supabase when auth state is available
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session?.user) return;
+      const cols = await loadColumnOrderFromSupabase(session.user.id);
+      if (cols) {
+        setVisibleColumns(cols);
+        saveColumnOrder(cols);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
 
 
   const handleHeatmapToggle = (enabled) => {
@@ -97,6 +115,11 @@ export default function Holdings() {
 
   const handleColumnsChange = (newColumns) => {
     setVisibleColumns(newColumns);
+  };
+
+  const handleStackToggle = (val) => {
+    setStackAssets(val);
+    localStorage.setItem('unifolio_stack_assets', String(val));
   };
 
   const accountValueMap = useMemo(() => {
@@ -232,6 +255,12 @@ export default function Holdings() {
     });
   }, [enrichedForHeatmap, accountFilter, institutionFilter, assetClassFilter, currencyFilter, sortField, sortDir]);
 
+  // Stack same-ticker holdings across accounts when toggle is on
+  const displayHoldings = useMemo(() => {
+    if (!stackAssets) return filteredCurrent;
+    return stackHoldings(filteredCurrent, { getAccount, getInstitutionForAccount });
+  }, [filteredCurrent, stackAssets]);
+
   // Group realized positions: matched under active holdings, and unmatched at bottom
   const { realizedByActive, realizedUnmatched } = useMemo(() => {
    if (!showRealized || filteredRealized.length === 0) return { realizedByActive: {}, realizedUnmatched: [] };
@@ -240,8 +269,8 @@ export default function Holdings() {
    const unmatched = [];
 
    filteredRealized.forEach(r => {
-     // Find matching active holding by ticker (case-insensitive)
-     const matchingActive = filteredCurrent.find(h => h.ticker?.toUpperCase() === r.ticker?.toUpperCase());
+     // Match against displayHoldings so stacked rows are found by ticker
+     const matchingActive = displayHoldings.find(h => h.ticker?.toUpperCase() === r.ticker?.toUpperCase());
 
      if (matchingActive) {
        if (!byActive[matchingActive.id]) byActive[matchingActive.id] = [];
@@ -260,7 +289,7 @@ export default function Holdings() {
    unmatched.sort((a, b) => new Date(b.close_date) - new Date(a.close_date));
 
    return { realizedByActive: byActive, realizedUnmatched: unmatched };
-  }, [showRealized, filteredRealized, filteredCurrent]);
+  }, [showRealized, filteredRealized, displayHoldings]);
 
   const handleSort = (field) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -297,6 +326,8 @@ export default function Holdings() {
         return <span className="text-right font-mono tabular-nums">{privacyMode ? PM : (safeNumber(h.average_price ?? h.avgPrice) > 0 ? safeNumber(h.average_price ?? h.avgPrice).toFixed(2) : '—')}</span>;
       case 'realizedGain':
         return <PnlValue value={h.realized_gain_loss_amount ?? h.realizedGain} className="text-xs" />;
+      case 'realizedGainContrib':
+        return <PnlValue value={h._realizedGainContribution ?? 0} isCurrency={false} className="text-xs" />;
       case 'unrealizedGainPct':
         return <PnlValue value={unrealizedPct} isCurrency={false} className="text-xs" />;
       case 'unrealizedGain':
@@ -306,11 +337,11 @@ export default function Holdings() {
       case 'dailyPnlPct':
         return <PnlValue value={dailyPct} isCurrency={false} className="text-xs" />;
       case 'account':
-        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{acctType}</span>;
+        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 text-foreground/70 font-medium whitespace-nowrap">{h._isStacked ? h._accountLabel : acctType}</span>;
       case 'institution':
-        return <span className="text-xs text-muted-foreground whitespace-nowrap">{inst?.name}</span>;
+        return <span className="text-xs text-muted-foreground whitespace-nowrap">{h._isStacked ? h._institutionLabel : inst?.name}</span>;
       case 'accountType':
-        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{acctType}</span>;
+        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 text-foreground/70 font-medium whitespace-nowrap">{h._isStacked ? h._accountLabel : acctType}</span>;
       case 'marketValue':
         return <span className="text-right font-mono tabular-nums">{privacyMode ? PM : formatCurrency(convertedMarketValue)}</span>;
       case 'nativeMarketValue':
@@ -354,16 +385,16 @@ export default function Holdings() {
 
   // Calculate max holding % for responsive heatmap scaling
   const maxPctInView = useMemo(() => {
-    if (filteredCurrent.length === 0) return 50;
+    if (displayHoldings.length === 0) return 50;
     let max = 0;
-    filteredCurrent.forEach(h => {
+    displayHoldings.forEach(h => {
       const marketValue = safeNumber(h.market_value ?? h.marketValue);
       const convertedValue = convert(marketValue, h.currency || 'USD');
       const pct = safeDivide(convertedValue, convertedPortfolioTotal) * 100;
       if (pct > max) max = pct;
     });
     return Math.max(max, 5); // Minimum 5% for scaling
-  }, [filteredCurrent, convertedPortfolioTotal, convert]);
+  }, [displayHoldings, convertedPortfolioTotal, convert]);
 
   return (
     <div className="space-y-4">
@@ -421,29 +452,43 @@ export default function Holdings() {
         </div>
       )}
 
-      {/* Realized toggle */}
-       <div className="flex items-center gap-2">
-         <ThemedSwitch
-           id="show-realized"
-           checked={showRealized}
-           onCheckedChange={setShowRealized}
-           className="scale-90"
-         />
-         <label htmlFor="show-realized" className="text-xs text-muted-foreground cursor-pointer select-none">
-           Show realized positions
-         </label>
-       </div>
-
-
+      {/* Realized + Stack toggles */}
+      <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+        <div className="flex items-center gap-2">
+          <ThemedSwitch
+            id="show-realized"
+            checked={showRealized}
+            onCheckedChange={setShowRealized}
+            className="scale-90"
+          />
+          <label htmlFor="show-realized" className="text-xs text-muted-foreground cursor-pointer select-none">
+            Show realized positions
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <ThemedSwitch
+            id="stack-assets"
+            checked={stackAssets}
+            onCheckedChange={handleStackToggle}
+            className="scale-90"
+          />
+          <label htmlFor="stack-assets" className="text-xs text-muted-foreground cursor-pointer select-none">
+            Stack Assets
+          </label>
+        </div>
+      </div>
 
       {/* Position count */}
-      <div className="flex items-center justify-end">
-        <span className="text-[10px] sm:text-xs text-muted-foreground">
-          {filteredCurrent.length} active{showRealized && (Object.keys(realizedByActive).length > 0 || realizedUnmatched.length > 0) ? ` · ${(Object.values(realizedByActive).flat() || []).length + realizedUnmatched.length} realized` : ''}
+      <div className="flex items-center justify-between">
+        {stackAssets && (
+          <span className="text-[10px] text-muted-foreground/60 italic">Stacked by ticker</span>
+        )}
+        <span className="text-[10px] sm:text-xs text-muted-foreground ml-auto">
+          {displayHoldings.length} active{showRealized && (Object.keys(realizedByActive).length > 0 || realizedUnmatched.length > 0) ? ` · ${(Object.values(realizedByActive).flat() || []).length + realizedUnmatched.length} realized` : ''}
         </span>
       </div>
 
-      {filteredCurrent.length === 0 && filteredRealized.length === 0 ? (
+      {displayHoldings.length === 0 && filteredRealized.length === 0 ? (
         <div className="bg-card rounded-lg border border-border/30 p-12 text-center">
           <p className="text-muted-foreground text-sm">No holdings found for this date range.</p>
           <p className="text-muted-foreground/60 text-xs mt-1">Try a different date or connect full transaction history.</p>
@@ -458,7 +503,7 @@ export default function Holdings() {
                     const col = COLUMN_DEFINITIONS.find(c => c.id === colId);
                     if (!col) return null;
                     const isSortable = ['ticker', 'price', 'quantity', 'marketValue'].includes(colId);
-                    const headerClass = ['price', 'quantity', 'pctPortfolio', 'pctAccount', 'avgPrice', 'realizedGain', 'unrealizedGainPct', 'unrealizedGain', 'dailyPnl', 'dailyPnlPct', 'marketValue', 'nativeMarketValue', 'costBasis'].includes(colId) ? 'text-right' : 'text-left';
+                    const headerClass = ['price', 'quantity', 'pctPortfolio', 'pctAccount', 'avgPrice', 'realizedGain', 'realizedGainContrib', 'unrealizedGainPct', 'unrealizedGain', 'dailyPnl', 'dailyPnlPct', 'marketValue', 'nativeMarketValue', 'costBasis'].includes(colId) ? 'text-right' : 'text-left';
                     return isSortable ? (
                       <SortHeader key={colId} field={colId} className={headerClass}>{col.label}</SortHeader>
                     ) : (
@@ -471,7 +516,7 @@ export default function Holdings() {
               </thead>
               <tbody>
                 {/* Active holdings + nested realized positions */}
-                {filteredCurrent.flatMap(h => {
+                {displayHoldings.flatMap(h => {
                   const acc = getAccount(h.account_id ?? h.accountId);
                   const inst = getInstitutionForAccount(h.account_id ?? h.accountId);
                   const nativeCurrency = h.currency || 'USD';
@@ -494,10 +539,10 @@ export default function Holdings() {
                   const heatmapStyle = heatmapEnabled ? calculateHeatmapStyle(h, heatmapMode, {
                     portfolioTotal: convertedPortfolioTotal,
                     accountTotal: safeNumber(accountTotals[h.account_id ?? h.accountId]),
-                    visibleHoldings: filteredCurrent,
+                    visibleHoldings: displayHoldings,
                     theme: theme || 'default',
                     accentColor: palette?.accent || '#3B82F6',
-                    allRealizedHoldings: [...filteredCurrent, ...filteredRealized],
+                    allRealizedHoldings: [...displayHoldings, ...filteredRealized],
                   }) : { bgStyle: {}, label: '' };
 
                   const rows = [
@@ -506,7 +551,8 @@ export default function Holdings() {
                       style={heatmapEnabled ? heatmapStyle.bgStyle : {}}
                       className={cn(
                         'row-hover border-b border-border/50',
-                        isExpanded && 'bg-secondary/20'
+                        isExpanded && 'bg-secondary/20',
+                        h._isStacked && 'border-l-2 border-l-amber-400/50',
                       )}
                       title={heatmapStyle.label}
                       onClick={() => setExpandedId(isExpanded ? null : h.id)}
@@ -518,7 +564,46 @@ export default function Holdings() {
                       ))}
                     </tr>
                   ];
-                  if (isExpanded) {
+                  if (isExpanded && h._isStacked) {
+                    // Stacked row expansion: show account-level breakdown
+                    const stackedMarketValue = safeNumber(h.market_value ?? h.marketValue);
+                    h._stackedChildren.forEach((child, childIdx) => {
+                      const childAcc = getAccount(child.account_id ?? child.accountId);
+                      const childInst = getInstitutionForAccount(child.account_id ?? child.accountId);
+                      const childAccType = childAcc?.account_type ?? childAcc?.type ?? '—';
+                      const childCurrency = child.currency || 'USD';
+                      const childMarketValue = convert(safeNumber(child.market_value ?? child.marketValue), childCurrency);
+                      const childUnrealized = safeNumber(child.unrealized_gain_loss_amount ?? child.unrealizedAmt);
+                      const childDailyPnl = safeNumber(child.daily_pnl_amount ?? child.dailyPnl);
+                      const childQty = safeNumber(child.quantity ?? child.position);
+                      const childAvgPrice = safeNumber(child.average_price ?? child.avgPrice);
+                      const childPctOfStack = stackedMarketValue > 0
+                        ? safeDivide(safeNumber(child.market_value ?? child.marketValue), stackedMarketValue) * 100
+                        : 0;
+                      const isLastChild = childIdx === h._stackedChildren.length - 1;
+
+                      rows.push(
+                        <tr key={`stack-child-${child.id}`} className={cn(
+                          'bg-secondary/10 hover:bg-secondary/20 transition-colors border-l-2 border-l-amber-400/25',
+                          isLastChild ? 'border-b-2 border-b-border/30' : 'border-b border-border/20'
+                        )}>
+                          <td colSpan={visibleColumns.length} className="px-3 py-2">
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 pl-4 text-xs text-muted-foreground items-center">
+                              <span className="text-muted-foreground/50 mr-1">↳</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 text-foreground/70 font-medium">{childAccType}</span>
+                              <span className="font-medium text-foreground/80">{childInst?.name ?? '—'}</span>
+                              <span className="font-mono tabular-nums">{childQty} shares</span>
+                              <span className="text-muted-foreground/60">avg {privacyMode ? PM : `$${childAvgPrice.toFixed(2)}`}</span>
+                              <span className="font-mono tabular-nums">{privacyMode ? PM : formatCurrency(childMarketValue)}</span>
+                              <PnlValue value={childDailyPnl} className="text-xs" />
+                              <PnlValue value={childUnrealized} className="text-xs" />
+                              <span className="text-muted-foreground/60 font-mono">{childPctOfStack.toFixed(1)}% of position</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  } else if (isExpanded) {
                     rows.push(<HoldingDetailRow key={`detail-${h.id}`} holding={h} />);
                   }
 
@@ -531,14 +616,14 @@ export default function Holdings() {
                     const rAccType = rAcc?.account_type ?? rAcc?.type;
 
                     // For realized-only heatmap modes, calculate style
-                    const realizHeatmapStyle = heatmapEnabled && ['Realized Gain/Loss Amount', 'Realized Gain/Loss %', 'Realized Gain Contribution %', 'Total P&L Amount', 'Total P&L %'].includes(heatmapMode) 
+                    const realizHeatmapStyle = heatmapEnabled && ['Realized Gain/Loss Amount', 'Realized Gain/Loss %', 'Realized Gain Contribution %', 'Total P&L Amount', 'Total P&L %'].includes(heatmapMode)
                       ? calculateHeatmapStyle(r, heatmapMode, {
                           portfolioTotal: convertedPortfolioTotal,
                           accountTotal: safeNumber(accountTotals[r.account_id]),
-                          visibleHoldings: filteredCurrent,
+                          visibleHoldings: displayHoldings,
                           theme: theme || 'default',
                           accentColor: palette?.accent || '#3B82F6',
-                          allRealizedHoldings: [...filteredCurrent, ...filteredRealized],
+                          allRealizedHoldings: [...displayHoldings, ...filteredRealized],
                         })
                       : { bgStyle: {}, label: '' };
 
@@ -568,7 +653,7 @@ export default function Holdings() {
                             ) : colId === 'quantity' ? (
                               <span className="font-mono tabular-nums text-right">{r.quantity}</span>
                             ) : colId === 'account' || colId === 'accountType' ? (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-medium">{rAccType}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 text-foreground/70 font-medium">{rAccType}</span>
                             ) : colId === 'institution' ? (
                               <span>{rInst?.name}</span>
                             ) : colId === 'assetClass' ? (
@@ -606,14 +691,14 @@ export default function Holdings() {
                       const acctType = acc?.account_type ?? acc?.type;
 
                       // For realized-only heatmap modes, calculate style
-                      const realizHeatmapStyle = heatmapEnabled && ['Realized Gain/Loss Amount', 'Realized Gain/Loss %', 'Realized Gain Contribution %', 'Total P&L Amount', 'Total P&L %'].includes(heatmapMode) 
+                      const realizHeatmapStyle = heatmapEnabled && ['Realized Gain/Loss Amount', 'Realized Gain/Loss %', 'Realized Gain Contribution %', 'Total P&L Amount', 'Total P&L %'].includes(heatmapMode)
                         ? calculateHeatmapStyle(r, heatmapMode, {
                             portfolioTotal: convertedPortfolioTotal,
                             accountTotal: safeNumber(accountTotals[r.account_id]),
-                            visibleHoldings: filteredCurrent,
+                            visibleHoldings: displayHoldings,
                             theme: theme || 'default',
                             accentColor: palette?.accent || '#3B82F6',
-                            allRealizedHoldings: [...filteredCurrent, ...filteredRealized],
+                            allRealizedHoldings: [...displayHoldings, ...filteredRealized],
                           })
                         : { bgStyle: {}, label: '' };
 
@@ -661,7 +746,7 @@ export default function Holdings() {
                   </>
                 )}
 
-                {showRealized && filteredCurrent.length > 0 && realizedByActive && Object.keys(realizedByActive).length === 0 && realizedUnmatched.length === 0 && (
+                {showRealized && displayHoldings.length > 0 && realizedByActive && Object.keys(realizedByActive).length === 0 && realizedUnmatched.length === 0 && (
                   <tr>
                     <td colSpan={visibleColumns.length} className="px-4 py-3 text-center text-xs text-muted-foreground/60 border-t border-border/30 italic">
                       No realized positions for this selection.

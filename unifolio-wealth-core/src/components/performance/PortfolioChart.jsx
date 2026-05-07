@@ -12,6 +12,7 @@ import { Check, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { CustomLineTooltip } from '@/lib/chartTooltip';
+import { fetchBenchmarkCandles } from '@/lib/stockApi';
 
 function genBenchmark(base, seed, trend, points) {
   const data = [];
@@ -241,6 +242,7 @@ export default function PortfolioChart() {
   const [viewMode, setViewMode] = useState('dollar');
   const [activeBenchmarks, setActiveBenchmarks] = useState([]);
   const [selectedAccounts, setSelectedAccounts] = useState(['__all__']);
+  const [realBenchmarkCandles, setRealBenchmarkCandles] = useState({});
 
   const days = PERIOD_MAP[period] || 365;
   const baseSnapshots = safeArray(portfolioSnapshots).slice(-days);
@@ -267,10 +269,30 @@ export default function PortfolioChart() {
     }).map(a => a.id);
   }, [selectedAccounts]);
 
+  // Fetch real candle data when benchmarks are enabled
+  useEffect(() => {
+    if (activeBenchmarks.length === 0) return;
+    fetchBenchmarkCandles(activeBenchmarks, days).then(candles => {
+      if (Object.keys(candles).length > 0) setRealBenchmarkCandles(prev => ({ ...prev, ...candles }));
+    }).catch(() => {});
+  }, [activeBenchmarks, days]);
+
   const chartData = useMemo(() => {
     const benchmarkSeries = {};
     BENCHMARKS.forEach(b => {
-      if (activeBenchmarks.includes(b.id)) benchmarkSeries[b.id] = genBenchmark(b.base, b.seed, 0.3, days);
+      if (!activeBenchmarks.includes(b.id)) return;
+      const realCandles = realBenchmarkCandles[b.id];
+      if (realCandles && realCandles.length >= days * 0.5) {
+        // Use real data — pad/trim to match chart length
+        const padded = Array(days).fill(null);
+        const offset = Math.max(0, days - realCandles.length);
+        realCandles.slice(-days).forEach((v, i) => { padded[offset + i] = v; });
+        // Forward-fill nulls at start
+        let last = padded.find(v => v !== null) || b.base;
+        benchmarkSeries[b.id] = padded.map(v => { if (v !== null) { last = v; } return last; });
+      } else {
+        benchmarkSeries[b.id] = genBenchmark(b.base, b.seed, 0.3, days);
+      }
     });
 
     return baseSnapshots.map((snap, i) => {
@@ -285,7 +307,7 @@ export default function PortfolioChart() {
       Object.entries(benchmarkSeries).forEach(([id, arr]) => { row[id] = arr[i]; });
       return row;
     });
-  }, [baseSnapshots, activeBenchmarks, activeAccountIds, selectedAccounts, days]);
+  }, [baseSnapshots, activeBenchmarks, activeAccountIds, selectedAccounts, days, realBenchmarkCandles]);
 
   const displayData = useMemo(() => {
     if (viewMode === 'dollar') return chartData;

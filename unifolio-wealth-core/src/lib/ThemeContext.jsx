@@ -1,63 +1,29 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { applyTheme, getChartColors, generateMonochromeTheme, themes } from './themes';
-import { base44 } from '@/api/base44Client';
+// @ts-nocheck
+import { createContext, useContext, useEffect, useState } from 'react';
+import { applyTheme, getChartColors, generateMonochromeTheme } from './themes';
+import { supabase } from '@/lib/supabaseClient';
 
-const ThemeContext = createContext();
+const ThemeContext = createContext(null);
 
 const DEFAULT_THEME = 'redblackwhiteaccent';
+const LS_KEY = 'unifolio_default_theme';
+const LS_MONO_KEY = 'unifolio_mono_color';
+
+async function saveToSupabase(userId, themeId, monoColor) {
+  if (!userId) return;
+  await supabase.from('user_profiles').upsert({
+    user_id: userId,
+    theme_id: themeId,
+    updated_at: new Date().toISOString(),
+    ...(monoColor ? { custom_monochrome_color: monoColor } : {}),
+  });
+}
 
 export function ThemeProvider({ children }) {
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME);
   const [chartColors, setChartColors] = useState(getChartColors(DEFAULT_THEME));
   const [isLoading, setIsLoading] = useState(true);
   const [customMonochromeColor, setCustomMonochromeColor] = useState('#3b82f6');
-
-  useEffect(() => {
-    const loadThemeFromProfile = async () => {
-      try {
-        const isAuth = await base44.auth.isAuthenticated();
-        
-        if (isAuth) {
-          // Load from UserProfile
-          const response = await base44.functions.invoke('getUserProfile', {});
-          const profile = response.data.profile;
-          
-          if (profile && profile.theme_id) {
-            const themeId = profile.theme_id;
-            if (themeId === 'custom-monochrome' && profile.custom_monochrome_color) {
-              applyCustomMonochrome(profile.custom_monochrome_color);
-              setSelectedTheme('custom-monochrome');
-              setChartColors(generateMonochromeTheme(profile.custom_monochrome_color).chartColors);
-              setCustomMonochromeColor(profile.custom_monochrome_color);
-            } else {
-              setSelectedTheme(themeId);
-              setChartColors(getChartColors(themeId));
-              applyTheme(themeId);
-            }
-          } else {
-            // Default theme
-            setSelectedTheme(DEFAULT_THEME);
-            setChartColors(getChartColors(DEFAULT_THEME));
-            applyTheme(DEFAULT_THEME);
-          }
-        } else {
-          // Logged out - use default
-          setSelectedTheme(DEFAULT_THEME);
-          setChartColors(getChartColors(DEFAULT_THEME));
-          applyTheme(DEFAULT_THEME);
-        }
-      } catch (err) {
-        console.error('Failed to load theme from profile:', err);
-        setSelectedTheme(DEFAULT_THEME);
-        setChartColors(getChartColors(DEFAULT_THEME));
-        applyTheme(DEFAULT_THEME);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadThemeFromProfile();
-  }, []);
 
   const applyCustomMonochrome = (hexColor) => {
     const monoTheme = generateMonochromeTheme(hexColor);
@@ -67,46 +33,85 @@ export function ThemeProvider({ children }) {
     });
   };
 
-  const changeTheme = async (themeId, customColor = null) => {
-    try {
-      const isAuth = await base44.auth.isAuthenticated();
-      
-      if (themeId === 'custom-monochrome') {
-        const color = customColor || customMonochromeColor;
-        setCustomMonochromeColor(color);
-        applyCustomMonochrome(color);
-        setSelectedTheme('custom-monochrome');
-        setChartColors(generateMonochromeTheme(color).chartColors);
-
-        if (isAuth) {
-          await base44.functions.invoke('updateUserPreference', {
-            preferenceKey: 'theme_id',
-            preferenceValue: 'custom-monochrome'
-          });
-          await base44.functions.invoke('updateUserPreference', {
-            preferenceKey: 'custom_monochrome_color',
-            preferenceValue: color
-          });
-        }
-      } else {
-        setSelectedTheme(themeId);
-        setChartColors(getChartColors(themeId));
-        applyTheme(themeId);
-
-        if (isAuth) {
-          await base44.functions.invoke('updateUserPreference', {
-            preferenceKey: 'theme_id',
-            preferenceValue: themeId
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Failed to save theme:', err);
+  const applyById = (themeId, monoColor) => {
+    if (themeId === 'custom-monochrome' && monoColor) {
+      applyCustomMonochrome(monoColor);
+      setSelectedTheme('custom-monochrome');
+      setChartColors(generateMonochromeTheme(monoColor).chartColors);
+      setCustomMonochromeColor(monoColor);
+    } else if (themeId && themeId !== 'custom-monochrome') {
+      setSelectedTheme(themeId);
+      setChartColors(getChartColors(themeId));
+      applyTheme(themeId);
     }
   };
 
+  useEffect(() => {
+    // Step 1: apply localStorage immediately (fast, no network wait)
+    const localTheme = localStorage.getItem(LS_KEY);
+    const localMono = localStorage.getItem(LS_MONO_KEY);
+    if (localTheme) {
+      applyById(localTheme, localMono);
+    } else {
+      applyTheme(DEFAULT_THEME);
+    }
+
+    // Step 2: subscribe to auth state — load Supabase preference on sign-in
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        try {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('theme_id, custom_monochrome_color')
+            .eq('user_id', session.user.id)
+            .single();
+
+          if (data?.theme_id) {
+            const monoColor = data.custom_monochrome_color || null;
+            applyById(data.theme_id, monoColor);
+            // Sync back to localStorage so next load is instant
+            localStorage.setItem(LS_KEY, data.theme_id);
+            if (monoColor) localStorage.setItem(LS_MONO_KEY, monoColor);
+          }
+        } catch { /* silent — keep current theme */ }
+      }
+      setIsLoading(false);
+    });
+
+    // Also do a one-shot getUser in case onAuthStateChange doesn't fire
+    // (e.g. session already exists from a previous tab)
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) setIsLoading(false);
+      // If user exists, onAuthStateChange will have fired or will fire with INITIAL_SESSION
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // changeTheme: apply immediately + persist to localStorage + save to Supabase
+  const changeTheme = async (themeId, customColor = null) => {
+    const color = themeId === 'custom-monochrome' ? (customColor || customMonochromeColor) : null;
+
+    applyById(themeId, color);
+    localStorage.setItem(LS_KEY, themeId);
+    if (color != null) localStorage.setItem(LS_MONO_KEY, color);
+    else localStorage.removeItem(LS_MONO_KEY);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await saveToSupabase(user.id, themeId, color);
+    } catch { /* silent */ }
+  };
+
   return (
-    <ThemeContext.Provider value={{ selectedTheme, changeTheme, chartColors, isLoading, customMonochromeColor, setCustomMonochromeColor: (color) => changeTheme('custom-monochrome', color) }}>
+    <ThemeContext.Provider value={{
+      selectedTheme,
+      changeTheme,
+      chartColors,
+      isLoading,
+      customMonochromeColor,
+      setCustomMonochromeColor: (color) => changeTheme('custom-monochrome', color),
+    }}>
       {children}
     </ThemeContext.Provider>
   );

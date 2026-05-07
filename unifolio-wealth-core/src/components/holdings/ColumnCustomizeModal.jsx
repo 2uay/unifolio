@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+// @ts-nocheck
+import React, { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { X, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { COLUMN_DEFINITIONS, getDefaultColumnOrder, saveColumnOrder } from '@/lib/columnConfig';
+import { COLUMN_DEFINITIONS, getDefaultColumnOrder, saveColumnOrder, saveColumnOrderToSupabase } from '@/lib/columnConfig';
 import { cn } from '@/lib/utils';
 
 export default function ColumnCustomizeModal({ visibleColumns, onClose, onSave }) {
@@ -44,7 +45,8 @@ export default function ColumnCustomizeModal({ visibleColumns, onClose, onSave }
   };
 
   const handleSave = () => {
-    saveColumnOrder(visible);
+    saveColumnOrder(visible);          // localStorage — instant
+    saveColumnOrderToSupabase(visible); // Supabase — async, fire-and-forget
     onSave(visible);
     onClose();
   };

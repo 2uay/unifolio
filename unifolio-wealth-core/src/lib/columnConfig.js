@@ -1,3 +1,6 @@
+// @ts-nocheck
+import { supabase } from '@/lib/supabaseClient';
+
 export const COLUMN_DEFINITIONS = [
   { id: 'ticker', label: 'Ticker', required: true },
   { id: 'trend', label: 'Trend', required: false },
@@ -19,9 +22,7 @@ export const COLUMN_DEFINITIONS = [
   { id: 'unrealizedGain', label: 'Unrealized Gain/Loss', required: false },
   { id: 'unrealizedGainPct', label: 'Unrealized Gain/Loss %', required: false },
   { id: 'realizedGain', label: 'Realized Gain/Loss', required: false },
-  { id: 'unrealizedGainPct', label: 'Unrealized Gain/Loss %', required: false },
-  { id: 'pctPortfolio', label: '% of Portfolio', required: false },
-  { id: 'pctAccount', label: '% of Account', required: false },
+  { id: 'realizedGainContrib', label: 'Realized Gain Contribution %', required: false },
   { id: 'currency', label: 'Currency', required: false },
   { id: 'assetClass', label: 'Asset Class', required: false },
   { id: 'sector', label: 'Sector', required: false },
@@ -42,8 +43,40 @@ export function getSavedColumnOrder() {
   return stored ? JSON.parse(stored) : DEFAULT_VISIBLE_COLUMNS;
 }
 
+// Sync save to localStorage (fast, used on every change)
 export function saveColumnOrder(columnIds) {
   localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columnIds));
+}
+
+// Async save to Supabase (called alongside saveColumnOrder when user applies changes)
+export async function saveColumnOrderToSupabase(columnIds) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('user_profiles').upsert({
+      user_id: user.id,
+      holdings_columns: JSON.stringify(columnIds),
+      updated_at: new Date().toISOString(),
+    });
+  } catch { /* silent */ }
+}
+
+// Load from Supabase for a given user — returns column array or null if not set
+export async function loadColumnOrderFromSupabase(userId) {
+  try {
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('holdings_columns')
+      .eq('user_id', userId)
+      .single();
+    if (data?.holdings_columns) {
+      const parsed = typeof data.holdings_columns === 'string'
+        ? JSON.parse(data.holdings_columns)
+        : data.holdings_columns;
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* silent */ }
+  return null;
 }
 
 export function getVisibleColumns(columnIds) {

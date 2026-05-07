@@ -114,8 +114,8 @@ export default function Dashboard() {
   }, [activeHoldings, convert, displayCurrency]);
 
   return (
-    <div className="space-y-3 sm:space-y-6 relative">
-      {/* Asymmetric black background with white geometric design */}
+    <>
+      {/* Asymmetric black background — outside space-y to avoid pushing PageHeader down */}
       <div className="fixed inset-0 -z-10 bg-black overflow-hidden pointer-events-none">
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
           {/* Large asymmetric circles - upper left and lower right */}
@@ -146,7 +146,7 @@ export default function Dashboard() {
           <rect width="100%" height="100%" fill="url(#bgGrid)" />
         </svg>
       </div>
-      
+      <div className="space-y-4">
       <PageHeader
         title="Dashboard"
         description="Portfolio overview and key metrics"
@@ -288,6 +288,7 @@ export default function Dashboard() {
           })}
         </div>
       </div>
-    </div>);
+      </div>
+    </>);
 
 }

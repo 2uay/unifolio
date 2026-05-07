@@ -9,7 +9,9 @@ import { useTheme } from '@/lib/ThemeContext';
 import { useSecondaryColors } from '@/lib/SecondaryColorsContext';
 import { useStarredStocks } from '@/lib/StarredStocksContext';
 import { cn } from '@/lib/utils';
-import TickerWithStar from '@/components/shared/TickerWithStar';
+
+const AUTO_SPEED = 0.5; // px/frame leftward
+const FRICTION = 0.93;
 
 function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatchlistId, livePrice, liveChange, isStarred, onStarClick, accentColor, theme }) {
   const { privacyMode } = usePrivacy();
@@ -23,7 +25,6 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
   const isUp = displayChange >= 0;
   const convertedPrice = convert(displayPrice, 'USD');
 
-  // Flash effect when live price updates
   useEffect(() => {
     if (livePrice !== undefined && livePrice !== stock.price) {
       setFlash(true);
@@ -33,7 +34,7 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
   }, [livePrice]);
 
   const handleCardClick = (e) => {
-    if (e.target.closest('button')) return; // Don't trigger on button clicks
+    if (e.target.closest('button')) return;
     openWindow({
       ticker: stock.ticker,
       name: stock.name,
@@ -58,10 +59,7 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
         'hover:bg-opacity-80',
         flash && 'animate-pulse'
       )}
-      style={{
-        backgroundColor: bgColor,
-        borderColor: borderColor,
-      }}
+      style={{ backgroundColor: bgColor, borderColor }}
     >
       {/* Dismiss button */}
       <button
@@ -71,7 +69,6 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
         <X className="w-3.5 h-3.5" />
       </button>
 
-      {/* Content */}
       <div className="p-4 flex flex-col gap-3 h-full">
         {/* Row 1: Ticker + Star + Change % */}
         <div className="flex items-center justify-between gap-2">
@@ -109,10 +106,7 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
 
           <div className="relative">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen(o => !o);
-              }}
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o); }}
               className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150 flex-shrink-0"
               style={{
                 backgroundColor: accentColorValue + '15',
@@ -128,11 +122,7 @@ function ExploreCarouselCard({ stock, onAdd, onDismiss, watchlists, currentWatch
                 {watchlists.map(wl => (
                   <button
                     key={wl.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAdd(stock, wl.id);
-                      setMenuOpen(false);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); onAdd(stock, wl.id); setMenuOpen(false); }}
                     className={cn(
                       'w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-secondary transition-colors',
                       wl.id === currentWatchlistId ? 'text-primary font-medium' : 'text-foreground'
@@ -156,24 +146,87 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
   const [seed, setSeed] = useState(0);
   const [dismissed, setDismissed] = useState([]);
   const [spinning, setSpinning] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const { liveHoldings, registerTicker, liveDataEnabled } = useLiveData();
   const { theme } = useTheme();
   const { palette } = useSecondaryColors();
   const { isStar, toggleStar } = useStarredStocks();
-  const containerRef = useRef(null);
+
+  const stripRef = useRef(null);
+  const offsetRef = useRef(0);
+  const velRef = useRef(AUTO_SPEED);
+  const isDraggingRef = useRef(false);
+  const lastDragXRef = useRef(0);
+  const halfWidthRef = useRef(0);
+  const rafRef = useRef(null);
 
   const allStocks = getExploreStocks(watchlistTickers, seed);
   const displayStocks = useMemo(() => allStocks.filter(s => !dismissed.includes(s.ticker)), [allStocks, dismissed]);
 
-  // Register tickers for live data
   useEffect(() => {
-    displayStocks.forEach(stock => {
-      registerTicker(stock.ticker, 'stock');
-    });
+    displayStocks.forEach(stock => { registerTicker(stock.ticker, 'stock'); });
   }, [displayStocks, registerTicker]);
 
   const accentColor = theme === 'bloomberg' ? '#FCD34D' : (palette?.accent || '#3B82F6');
+  const carouselItems = displayStocks.length > 0 ? [...displayStocks, ...displayStocks] : [];
+
+  // Measure halfWidth after items render
+  useEffect(() => {
+    if (!stripRef.current) return;
+    halfWidthRef.current = stripRef.current.scrollWidth / 2;
+  }, [carouselItems]);
+
+  // Physics rAF loop
+  useEffect(() => {
+    const tick = () => {
+      if (!isDraggingRef.current) {
+        if (Math.abs(velRef.current) > AUTO_SPEED * 1.5) {
+          velRef.current *= FRICTION;
+        } else {
+          velRef.current = AUTO_SPEED;
+        }
+      }
+      offsetRef.current += velRef.current;
+      const half = halfWidthRef.current;
+      if (half > 0) {
+        offsetRef.current = ((offsetRef.current % half) + half) % half;
+      }
+      if (stripRef.current) {
+        stripRef.current.style.transform = `translateX(${-offsetRef.current}px)`;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  const getClientX = (e) => (e.touches ? e.touches[0].clientX : e.clientX);
+
+  const handleDragStart = (e) => {
+    isDraggingRef.current = true;
+    lastDragXRef.current = getClientX(e);
+    velRef.current = 0;
+    setIsDragging(true);
+  };
+
+  const handleDragMove = (e) => {
+    if (!isDraggingRef.current) return;
+    const x = getClientX(e);
+    const dx = x - lastDragXRef.current;
+    offsetRef.current -= dx;
+    velRef.current = -dx;
+    lastDragXRef.current = x;
+    const half = halfWidthRef.current;
+    if (half > 0) {
+      offsetRef.current = ((offsetRef.current % half) + half) % half;
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+  };
 
   const handleRefresh = () => {
     setSpinning(true);
@@ -185,8 +238,6 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
   const handleDismiss = (ticker) => {
     setDismissed(prev => [...prev, ticker]);
   };
-
-  const carouselItems = displayStocks.length > 0 ? [...displayStocks, ...displayStocks] : [];
 
   return (
     <div className="space-y-3">
@@ -206,41 +257,36 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
         </button>
       </div>
 
-      {/* Carousel Container */}
       {displayStocks.length > 0 ? (
-        <div className="relative group">
+        <div className="relative">
           {/* Top glow accent line */}
           <div
             className="absolute top-0 left-0 right-0 h-[1px] opacity-40 rounded-full"
-            style={{
-              backgroundColor: accentColor,
-              boxShadow: `0 0 8px ${accentColor}60`,
-            }}
+            style={{ backgroundColor: accentColor, boxShadow: `0 0 8px ${accentColor}60` }}
           />
 
-          {/* Main carousel */}
+          {/* Main carousel — drag target */}
           <div
-            className="relative bg-gradient-to-r from-secondary/40 to-secondary/20 border border-border/60 rounded-xl p-3.5 overflow-hidden"
+            className="relative bg-gradient-to-r from-secondary/40 to-secondary/20 border border-border/60 rounded-xl p-3.5 overflow-hidden select-none"
             style={{
               boxShadow: `inset 0 0 20px rgba(0,0,0,0.15), 0 4px 12px ${accentColor}10`,
+              cursor: isDragging ? 'grabbing' : 'grab',
             }}
-            onMouseEnter={() => setIsPaused(true)}
-            onMouseLeave={() => setIsPaused(false)}
+            onMouseDown={handleDragStart}
+            onMouseMove={handleDragMove}
+            onMouseUp={handleDragEnd}
+            onMouseLeave={handleDragEnd}
+            onTouchStart={handleDragStart}
+            onTouchMove={handleDragMove}
+            onTouchEnd={handleDragEnd}
           >
             {/* Left fade */}
             <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-secondary/80 to-transparent z-10 pointer-events-none rounded-l-xl" />
-
             {/* Right fade */}
             <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-secondary/80 to-transparent z-10 pointer-events-none rounded-r-xl" />
 
-            {/* Scrolling container */}
-            <div
-              ref={containerRef}
-              className="flex gap-3 overflow-hidden"
-              style={{
-                animation: isPaused || !liveDataEnabled ? 'none' : 'slideExplore 35s linear infinite',
-              }}
-            >
+            {/* Scrolling strip */}
+            <div ref={stripRef} className="flex gap-3">
               {carouselItems.map((stock, idx) => {
                 const liveData = liveHoldings[stock.ticker];
                 return (
@@ -266,13 +312,9 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
           {/* Bottom glow accent line */}
           <div
             className="absolute bottom-0 left-0 right-0 h-[1px] opacity-40 rounded-full"
-            style={{
-              backgroundColor: accentColor,
-              boxShadow: `0 0 8px ${accentColor}60`,
-            }}
+            style={{ backgroundColor: accentColor, boxShadow: `0 0 8px ${accentColor}60` }}
           />
 
-          {/* Status indicator */}
           {!liveDataEnabled && (
             <div className="mt-2 text-[11px] text-muted-foreground/60 text-center">
               Enable live data in settings to see real-time prices
@@ -290,17 +332,6 @@ export default function ExploreCarousel({ watchlistTickers, watchlists, currentW
           </button>
         </div>
       )}
-
-      <style>{`
-        @keyframes slideExplore {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(calc(-50% - 6px));
-          }
-        }
-      `}</style>
     </div>
   );
 }

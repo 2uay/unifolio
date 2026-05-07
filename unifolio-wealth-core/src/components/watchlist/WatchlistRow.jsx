@@ -40,13 +40,20 @@ export default function WatchlistRow({ item, onRemove }) {
     ? ((convertedTargetPrice - convertedPrice) / convertedPrice) * 100
     : null;
 
+  const accentBorder = item.changePct > 0
+    ? 'border-l-[3px] border-l-emerald-500'
+    : item.changePct < 0
+    ? 'border-l-[3px] border-l-red-500'
+    : 'border-l-[3px] border-l-transparent';
+
   return (
     <>
       {/* Main row */}
       <tr
         className={cn(
           'border-b border-border/50 hover:bg-secondary/20 cursor-pointer transition-colors select-none',
-          expanded && 'bg-secondary/20'
+          expanded && 'bg-secondary/20',
+          accentBorder
         )}
         onClick={() => setExpanded(p => !p)}
       >
@@ -73,7 +80,16 @@ export default function WatchlistRow({ item, onRemove }) {
           <PnlValue value={convertedChange} className="text-xs" />
         </td>
         <td className="px-4 py-3 text-right">
-          <PnlValue value={item.changePct} isCurrency={false} className="text-xs" />
+          <span className={cn(
+            'inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold font-mono tabular-nums',
+            item.changePct > 0
+              ? 'bg-emerald-500/10 text-emerald-400'
+              : item.changePct < 0
+              ? 'bg-red-500/10 text-red-400'
+              : 'bg-secondary text-muted-foreground'
+          )}>
+            {item.changePct > 0 ? '+' : ''}{item.changePct?.toFixed(2)}%
+          </span>
         </td>
         <td className="px-4 py-3 text-right hidden lg:table-cell">
           <span className="text-xs font-mono text-muted-foreground">{item.marketCap}</span>

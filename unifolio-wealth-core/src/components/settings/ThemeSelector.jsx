@@ -5,7 +5,7 @@ import { useTheme } from '@/lib/ThemeContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import MonochromeColorPicker from './MonochromeColorPicker';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabaseClient';
 
 const DEFAULT_THEME_KEY = 'unifolio_default_theme';
 
@@ -30,16 +30,9 @@ export default function ThemeSelector() {
     localStorage.setItem(DEFAULT_THEME_KEY, selectedTheme);
     setDefaultTheme(selectedTheme);
     try {
-      const isAuth = await base44.auth.isAuthenticated();
-      if (isAuth) {
-        await base44.functions.invoke('updateUserPreference', {
-          preferenceKey: 'theme_id',
-          preferenceValue: selectedTheme
-        });
-      }
-    } catch (err) {
-      console.error('Failed to save theme:', err);
-    }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await supabase.from('user_profiles').upsert({ user_id: user.id, theme_id: selectedTheme, updated_at: new Date().toISOString() });
+    } catch { /* silent */ }
   };
 
   const handleResetToDefault = async () => {
@@ -47,16 +40,9 @@ export default function ThemeSelector() {
     setDefaultTheme(DEFAULT_THEME);
     changeTheme(DEFAULT_THEME);
     try {
-      const isAuth = await base44.auth.isAuthenticated();
-      if (isAuth) {
-        await base44.functions.invoke('updateUserPreference', {
-          preferenceKey: 'theme_id',
-          preferenceValue: DEFAULT_THEME
-        });
-      }
-    } catch (err) {
-      console.error('Failed to save theme:', err);
-    }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) await supabase.from('user_profiles').upsert({ user_id: user.id, theme_id: DEFAULT_THEME, updated_at: new Date().toISOString() });
+    } catch { /* silent */ }
   };
 
   if (showMonochrome) {
@@ -136,21 +122,7 @@ export default function ThemeSelector() {
                 return (
                   <button
                     key={theme.id}
-                    onClick={async () => {
-                      changeTheme(theme.id);
-                      setOpen(false);
-                      try {
-                        const isAuth = await base44.auth.isAuthenticated();
-                        if (isAuth) {
-                          await base44.functions.invoke('updateUserPreference', {
-                            preferenceKey: 'theme_id',
-                            preferenceValue: theme.id
-                          });
-                        }
-                      } catch (err) {
-                        console.error('Failed to save theme:', err);
-                      }
-                    }}
+                    onClick={() => { changeTheme(theme.id); setOpen(false); }}
                     className={cn(
                       'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100',
                       isSelected

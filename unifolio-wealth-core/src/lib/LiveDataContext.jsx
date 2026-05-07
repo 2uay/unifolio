@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { simulatePriceMovement, simulateProbabilityMovement, isMarketOpen } from '@/lib/globalSimulationEngine';
 import { safeNumber } from '@/lib/safeNum';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabaseClient';
+import { fetchQuotes, getCacheAge } from '@/lib/stockApi';
+import { rawHoldings, watchlist, assets } from '@/lib/sampleData';
 
 const LiveDataContext = createContext(null);
 
@@ -16,6 +18,9 @@ export function LiveDataProvider({ children }) {
   const tickersRef = useRef(new Map()); // ticker -> { assetClass, basePrice }
   const marketsRef = useRef(new Map()); // market_id -> { assetType, baseProb }
   const marketOpenRef = useRef(isMarketOpen());
+  const realPricesRef = useRef({}); // ticker -> { current_price, previous_close, ... }
+  const [apiPricesLoaded, setApiPricesLoaded] = useState(false);
+  const [apiLastFetched, setApiLastFetched] = useState(getCacheAge);
 
   // Register a stock/ETF/crypto holding
   const registerTicker = useCallback((ticker, assetClass = 'stock') => {
@@ -56,7 +61,10 @@ export function LiveDataProvider({ children }) {
 
       tickersRef.current.forEach((config, ticker) => {
         const current = prev[ticker];
-        const currentPrice = current?.price || 100;
+        const currentPrice = current?.price
+          || realPricesRef.current[ticker]?.current_price
+          || assets[ticker]?.current_price
+          || 100;
         const assetClass = config.assetClass || 'stock';
 
         // Skip stocks during market closed, but continue crypto
@@ -116,40 +124,60 @@ export function LiveDataProvider({ children }) {
   useEffect(() => {
     const loadLiveDataFromProfile = async () => {
       try {
-        const isAuth = await base44.auth.isAuthenticated();
-
-        if (isAuth) {
-          const response = await base44.functions.invoke('getUserProfile', {});
-          const profile = response.data.profile;
-          setLiveDataEnabled(profile?.simulated_live_data_enabled !== false);
-        } else {
-          setLiveDataEnabled(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase.from('user_profiles').select('simulated_live_data_enabled').eq('user_id', user.id).single();
+          setLiveDataEnabled(data?.simulated_live_data_enabled !== false);
         }
-      } catch (err) {
-        console.error('Failed to load live data preference:', err);
-        setLiveDataEnabled(true);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch { /* stay enabled */ }
+      setIsLoading(false);
     };
-
     loadLiveDataFromProfile();
+  }, []);
+
+  // Fetch real prices from Finnhub on mount, seed liveHoldings immediately
+  useEffect(() => {
+    const allTickers = [
+      ...rawHoldings.map(h => h.ticker),
+      ...watchlist.map(w => w.ticker),
+    ];
+    const unique = [...new Set(allTickers.filter(Boolean))];
+
+    fetchQuotes(unique).then(prices => {
+      if (Object.keys(prices).length === 0) return;
+      realPricesRef.current = prices;
+
+      // Seed liveHoldings with real prices so pages show real values immediately
+      setLiveHoldings(prev => {
+        const next = { ...prev };
+        Object.entries(prices).forEach(([ticker, data]) => {
+          if (!next[ticker]) {
+            next[ticker] = {
+              price: data.current_price,
+              sparkline: [],
+              lastUpdate: Date.now(),
+            };
+          }
+        });
+        return next;
+      });
+
+      setApiPricesLoaded(true);
+      setApiLastFetched(Date.now());
+    }).catch(err => {
+      console.warn('[LiveDataContext] Stock API fetch failed:', err.message);
+    });
   }, []);
 
   // Handle setLiveDataEnabled with profile update
   const setLiveDataEnabledWithSync = useCallback(async (enabled) => {
     setLiveDataEnabled(enabled);
     try {
-      const isAuth = await base44.auth.isAuthenticated();
-      if (isAuth) {
-        await base44.functions.invoke('updateUserPreference', {
-          preferenceKey: 'simulated_live_data_enabled',
-          preferenceValue: enabled
-        });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('user_profiles').upsert({ user_id: user.id, simulated_live_data_enabled: enabled, updated_at: new Date().toISOString() });
       }
-    } catch (err) {
-      console.error('Failed to save live data preference:', err);
-    }
+    } catch { /* silent */ }
   }, []);
 
    // Main update loop
@@ -199,6 +227,9 @@ export function LiveDataProvider({ children }) {
     livePredictionMarkets,
     lastUpdateTime,
     isMarketOpen: marketOpenRef.current,
+    apiPricesLoaded,
+    apiLastFetched,
+    realPrices: realPricesRef.current,
   };
 
   return (

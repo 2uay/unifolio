@@ -14,7 +14,6 @@ import { SecondaryColorsProvider } from '@/lib/SecondaryColorsContext';
 import { AccentBarsProvider } from '@/lib/AccentBarsContext';
 import { StarredStocksProvider } from '@/lib/StarredStocksContext';
 import { ProfilePictureProvider } from '@/lib/ProfilePictureContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AppLayout from '@/components/layout/AppLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Dashboard from '@/pages/Dashboard';
@@ -32,28 +31,21 @@ import Settings from '@/pages/Settings';
 import Welcome from '@/pages/Welcome';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated, isDemoMode } = useAuth();
+  const { isLoadingAuth, isAuthenticated, isDemoMode } = useAuth();
 
-  // Show loading spinner
-  if (isLoadingPublicSettings || isLoadingAuth) {
+  if (isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      <div className="fixed inset-0 flex items-center justify-center bg-black">
+        <div className="w-8 h-8 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
       </div>
     );
   }
 
-  // Handle critical auth errors (user not registered)
-  if (authError?.type === 'user_not_registered') {
-    return <UserNotRegisteredError />;
-  }
-
-  // If not authenticated and in demo mode, show welcome page to allow entering demo
+  // Not authenticated and not in demo mode → show Welcome page
   if (!isAuthenticated && !isDemoMode) {
     return <Welcome />;
   }
 
-  // Render app (works for both authenticated users and demo mode)
   return (
     <Routes>
       <Route element={<AppLayout />}>
@@ -75,9 +67,7 @@ const AuthenticatedApp = () => {
   );
 };
 
-
 function App() {
-
   return (
     <ErrorBoundary>
       <ThemeProvider>
@@ -90,26 +80,26 @@ function App() {
                     <Router>
                       <SidebarProvider>
                         <CurrencyProvider>
-                        <PrivacyProvider>
-                          <ResearchWindowProvider>
-                            <ProfilePictureProvider>
-                              <AuthenticatedApp />
-                            </ProfilePictureProvider>
-                          </ResearchWindowProvider>
-                        </PrivacyProvider>
-                      </CurrencyProvider>
+                          <PrivacyProvider>
+                            <ResearchWindowProvider>
+                              <ProfilePictureProvider>
+                                <AuthenticatedApp />
+                              </ProfilePictureProvider>
+                            </ResearchWindowProvider>
+                          </PrivacyProvider>
+                        </CurrencyProvider>
                       </SidebarProvider>
                     </Router>
                     <Toaster />
                   </QueryClientProvider>
                 </AuthProvider>
               </StarredStocksProvider>
-              </AccentBarsProvider>
+            </AccentBarsProvider>
           </SecondaryColorsProvider>
         </LiveDataProvider>
       </ThemeProvider>
     </ErrorBoundary>
-  )
+  );
 }
 
-export default App
+export default App;

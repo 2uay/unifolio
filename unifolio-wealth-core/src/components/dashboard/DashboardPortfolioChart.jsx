@@ -3,12 +3,11 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid
 } from 'recharts';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { portfolioSnapshots } from '@/lib/mockData';
 import { safeNumber, safeArray, safeDivide } from '@/lib/safeNum';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Check, ChevronDown, AlertTriangle, Calendar } from 'lucide-react';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useTheme } from '@/lib/ThemeContext';
@@ -39,7 +38,25 @@ const BENCHMARKS = [
   { id: 'camarket', label: 'CA Total Mkt',  color: '#fb7185', base: 180,   seed: 888 },
 ];
 
-const PERIOD_MAP = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
+const PERIODS = ['1W', '1M', '3M', '6M', 'YTD', '1Y', 'ALL', 'Custom'];
+
+// Return filtered snapshot array for a given period + custom date range
+function filterSnapshots(allSnaps, period, customFrom, customTo) {
+  if (!allSnaps.length) return allSnaps;
+  if (period === 'ALL') return allSnaps;
+  if (period === 'Custom') {
+    return allSnaps.filter(s =>
+      (!customFrom || s.date >= customFrom) && (!customTo || s.date <= customTo)
+    );
+  }
+  if (period === 'YTD') {
+    const ytd = `${new Date().getFullYear()}-01-01`;
+    const filtered = allSnaps.filter(s => s.date >= ytd);
+    return filtered.length ? filtered : allSnaps.slice(-30);
+  }
+  const days = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 }[period] || 365;
+  return allSnaps.slice(-days);
+}
 
 function useOutsideClick(ref, handler) {
   useEffect(() => {
@@ -54,10 +71,11 @@ function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
   const ref = useRef(null);
   useOutsideClick(ref, () => setOpen(false));
 
-  let label;
-  if (activeBenchmarks.length === 0) label = 'None';
-  else if (activeBenchmarks.length === 1) label = BENCHMARKS.find(b => b.id === activeBenchmarks[0])?.label || '1 selected';
-  else label = `${activeBenchmarks.length} selected`;
+  const label = activeBenchmarks.length === 0
+    ? 'None'
+    : activeBenchmarks.length === 1
+    ? BENCHMARKS.find(b => b.id === activeBenchmarks[0])?.label || '1 selected'
+    : `${activeBenchmarks.length} selected`;
 
   return (
     <div className="relative" ref={ref}>
@@ -102,7 +120,8 @@ function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
                 >
                   {activeBenchmarks.includes(b.id) && <Check className="w-2.5 h-2.5 text-white" />}
                 </span>
-                <span style={{ color: activeBenchmarks.includes(b.id) ? b.color : undefined }}
+                <span
+                  style={{ color: activeBenchmarks.includes(b.id) ? b.color : undefined }}
                   className={activeBenchmarks.includes(b.id) ? '' : 'text-muted-foreground'}
                 >
                   {b.label}
@@ -116,6 +135,23 @@ function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
   );
 }
 
+// Minimal styled date input for dark theme
+function DateInput({ label, value, onChange, min, max }) {
+  return (
+    <label className="flex items-center gap-1.5">
+      <span className="text-[10px] text-muted-foreground whitespace-nowrap">{label}</span>
+      <input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={e => onChange(e.target.value)}
+        className="text-xs bg-secondary border border-border rounded-md px-2 py-1 text-foreground focus:outline-none focus:border-primary/60 [color-scheme:dark] cursor-pointer"
+      />
+    </label>
+  );
+}
+
 export default function DashboardPortfolioChart() {
   const { displayCurrency, isSample, convert } = useCurrency();
   const { privacyMode } = usePrivacy();
@@ -124,23 +160,32 @@ export default function DashboardPortfolioChart() {
   const [viewMode, setViewMode] = useState('dollar');
   const [activeBenchmarks, setActiveBenchmarks] = useState([]);
 
-  const days = PERIOD_MAP[period] || 365;
-  const baseSnapshots = safeArray(portfolioSnapshots).slice(-days);
+  const allSnapshots = useMemo(() => safeArray(portfolioSnapshots), []);
+  const dataMin = allSnapshots[0]?.date || '';
+  const dataMax = allSnapshots[allSnapshots.length - 1]?.date || '';
 
-  // Portfolio snapshots are in CAD — convert to display currency for dollar view
+  // Custom date range state
+  const [customFrom, setCustomFrom] = useState(dataMin);
+  const [customTo, setCustomTo] = useState(dataMax);
+
+  const baseSnapshots = useMemo(
+    () => filterSnapshots(allSnapshots, period, customFrom, customTo),
+    [allSnapshots, period, customFrom, customTo]
+  );
+
   const chartData = useMemo(() => {
+    const n = baseSnapshots.length;
     const benchmarkSeries = {};
     BENCHMARKS.forEach(b => {
-      if (activeBenchmarks.includes(b.id)) benchmarkSeries[b.id] = genBenchmark(b.base, b.seed, 0.3, days);
+      if (activeBenchmarks.includes(b.id)) benchmarkSeries[b.id] = genBenchmark(b.base, b.seed, 0.3, n);
     });
-
     return baseSnapshots.map((snap, i) => {
       const portfolioVal = viewMode === 'dollar' ? convert(snap.value, 'CAD') : snap.value;
       const row = { date: snap.date, portfolio: portfolioVal };
       Object.entries(benchmarkSeries).forEach(([id, arr]) => { row[id] = arr[i]; });
       return row;
     });
-  }, [baseSnapshots, activeBenchmarks, days, convert, displayCurrency, viewMode]);
+  }, [baseSnapshots, activeBenchmarks, convert, displayCurrency, viewMode]);
 
   const displayData = useMemo(() => {
     if (viewMode === 'dollar') return chartData;
@@ -168,14 +213,13 @@ export default function DashboardPortfolioChart() {
   };
 
   const lineKeys = ['portfolio', ...activeBenchmarks];
-  // Portfolio line uses first chart color from theme; benchmarks keep their own colors
   const portfolioColor = chartColors[0] || '#3b82f6';
   const lineColors = { portfolio: portfolioColor, ...Object.fromEntries(BENCHMARKS.map(b => [b.id, b.color])) };
-  const xInterval = Math.floor(displayData.length / 6);
+  const xInterval = Math.max(0, Math.floor(displayData.length / 6));
 
   return (
-    <div className="bg-card rounded-xl border border-border p-4 md:p-6 space-y-4">
-      {/* Controls row */}
+    <div className="bg-card rounded-xl border border-border p-4 md:p-6 space-y-3">
+      {/* Title row */}
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Portfolio Value</h2>
@@ -187,6 +231,8 @@ export default function DashboardPortfolioChart() {
             </span>
           )}
         </div>
+
+        {/* View mode + benchmarks */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-lg border border-border overflow-hidden text-xs">
             <button
@@ -198,15 +244,64 @@ export default function DashboardPortfolioChart() {
               className={cn('px-3 py-1.5 transition-colors', viewMode === 'pct' ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground hover:text-foreground')}
             >% Return</button>
           </div>
-          <Tabs value={period} onValueChange={setPeriod}>
-            <TabsList className="bg-secondary h-8">
-              {['1M', '3M', '6M', '1Y'].map(p => (
-                <TabsTrigger key={p} value={p} className="text-xs h-6 px-3">{p}</TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
           <BenchmarksDropdown activeBenchmarks={activeBenchmarks} onToggle={toggleBenchmark} />
         </div>
+      </div>
+
+      {/* Date / Period controls */}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Period quick-select pills */}
+        <div className="flex items-center bg-secondary rounded-lg p-0.5 gap-0.5 flex-wrap">
+          {PERIODS.map(p => (
+            <button
+              key={p}
+              onClick={() => {
+                setPeriod(p);
+                // When switching to Custom, seed with current visible range
+                if (p === 'Custom' && baseSnapshots.length) {
+                  setCustomFrom(baseSnapshots[0].date);
+                  setCustomTo(baseSnapshots[baseSnapshots.length - 1].date);
+                }
+              }}
+              className={cn(
+                'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150',
+                period === p
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {p === 'Custom' && <Calendar className="w-2.5 h-2.5" />}
+              {p}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom date inputs — shown only when Custom is selected */}
+        {period === 'Custom' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <DateInput
+              label="From"
+              value={customFrom}
+              min={dataMin}
+              max={customTo || dataMax}
+              onChange={setCustomFrom}
+            />
+            <span className="text-muted-foreground/40 text-xs">→</span>
+            <DateInput
+              label="To"
+              value={customTo}
+              min={customFrom || dataMin}
+              max={dataMax}
+              onChange={setCustomTo}
+            />
+            {/* Range summary */}
+            {baseSnapshots.length > 0 && (
+              <span className="text-[10px] text-muted-foreground/60">
+                {baseSnapshots.length} day{baseSnapshots.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Chart */}

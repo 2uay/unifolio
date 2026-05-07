@@ -4,15 +4,20 @@ import { useAuth } from '@/lib/AuthContext';
 import { cn } from '@/lib/utils';
 
 export default function DemoModeButton({ collapsed }) {
-  const { isAuthenticated, isDemoMode, navigateToLogin } = useAuth();
+  const { isAuthenticated, isDemoMode, logout } = useAuth();
 
   if (isAuthenticated || !isDemoMode) {
     return null;
   }
 
+  const handleSignIn = () => {
+    // Exit demo mode by logging out (which clears isDemoMode) and reloading → Welcome page shows
+    logout().then(() => window.location.reload());
+  };
+
   return (
     <Button
-      onClick={navigateToLogin}
+      onClick={handleSignIn}
       size="sm"
       className={cn(
         'text-xs font-medium gap-1.5 h-8',

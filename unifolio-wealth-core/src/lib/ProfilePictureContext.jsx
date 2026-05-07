@@ -1,111 +1,97 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/lib/AuthContext';
 
 const ProfilePictureContext = createContext();
 
 export function ProfilePictureProvider({ children }) {
+  const { user, isAuthenticated } = useAuth();
   const [profilePicture, setProfilePicture] = useState(null);
   const [isAnimated, setIsAnimated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Load profile picture from user profile on mount
   useEffect(() => {
-    const loadProfilePicture = async () => {
-      try {
-        const isAuth = await base44.auth.isAuthenticated();
-        if (!isAuth) {
-          setLoading(false);
-          return;
-        }
+    if (!isAuthenticated || !user) {
+      setProfilePicture(null);
+      setIsAnimated(false);
+      setLoading(false);
+      return;
+    }
 
-        const response = await base44.functions.invoke('getUserProfile', {});
-        const profile = response.data.profile;
-        
-        if (profile && profile.profile_picture_url) {
-          setProfilePicture(profile.profile_picture_url);
-          setIsAnimated(profile.profile_picture_type === 'animated_gif');
+    const loadProfile = async () => {
+      try {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('profile_picture_url, profile_picture_type')
+          .eq('user_id', user.id)
+          .single();
+
+        if (data?.profile_picture_url) {
+          setProfilePicture(data.profile_picture_url);
+          setIsAnimated(data.profile_picture_type === 'animated_gif');
         }
       } catch (err) {
-        console.error('Failed to load profile picture:', err);
+        // no profile yet — that's fine
       } finally {
         setLoading(false);
       }
     };
 
-    loadProfilePicture();
-  }, []);
+    loadProfile();
+  }, [isAuthenticated, user]);
 
   const updateProfilePicture = async (base64DataUrl, fileName = '', animated = false) => {
-    try {
-      if (!base64DataUrl) {
-        throw new Error('Image data is required');
-      }
+    if (!isAuthenticated || !user) throw new Error('Must be signed in to save profile picture');
+    if (!base64DataUrl) throw new Error('Image data is required');
 
-      const isAuth = await base44.auth.isAuthenticated();
-      if (!isAuth) {
-        throw new Error('Must be signed in to save profile picture');
-      }
+    const resp = await fetch(base64DataUrl);
+    const blob = await resp.blob();
+    const ext = animated ? 'gif' : 'png';
+    const path = `${user.id}/avatar.${ext}`;
+    const file = new File([blob], fileName || `avatar.${ext}`, { type: blob.type });
 
-      // Convert base64 to blob and file
-      const response = await fetch(base64DataUrl);
-      const blob = await response.blob();
-      const file = new File([blob], fileName || `avatar.${animated ? 'gif' : 'png'}`, { type: blob.type });
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true });
 
-      // Upload file via UploadFile integration
-      const uploadResponse = await base44.integrations.Core.UploadFile({ file });
-      const imageUrl = uploadResponse.file_url;
+    if (uploadError) throw uploadError;
 
-      // Save to UserProfile
-      const saveResponse = await base44.functions.invoke('saveUserProfile', {
-        profile_picture_url: imageUrl,
-        profile_picture_type: animated ? 'animated_gif' : 'static',
-        profile_picture_file_name: fileName,
-        profile_picture_updated_at: new Date().toISOString()
-      });
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
 
-      if (saveResponse.data.success) {
-        setProfilePicture(imageUrl);
-        setIsAnimated(animated);
-      } else {
-        throw new Error('Failed to save profile picture');
-      }
-    } catch (err) {
-      console.error('Failed to save profile picture:', err);
-      throw err;
-    }
+    const { error: dbError } = await supabase.from('user_profiles').upsert({
+      user_id: user.id,
+      profile_picture_url: publicUrl,
+      profile_picture_type: animated ? 'animated_gif' : 'static',
+      profile_picture_file_name: fileName,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (dbError) throw dbError;
+
+    setProfilePicture(publicUrl);
+    setIsAnimated(animated);
   };
 
   const removeProfilePicture = async () => {
-    try {
-      const isAuth = await base44.auth.isAuthenticated();
-      if (!isAuth) {
-        throw new Error('Must be signed in to remove profile picture');
-      }
+    if (!isAuthenticated || !user) throw new Error('Must be signed in to remove profile picture');
 
-      const response = await base44.functions.invoke('deleteUserProfilePicture', {});
+    // Try to remove both possible extensions
+    await supabase.storage.from('avatars').remove([`${user.id}/avatar.png`, `${user.id}/avatar.gif`]);
 
-      if (response.data.success) {
-        setProfilePicture(null);
-        setIsAnimated(false);
-      } else {
-        throw new Error('Failed to remove profile picture');
-      }
-    } catch (err) {
-      console.error('Failed to remove profile picture:', err);
-      throw err;
-    }
+    await supabase.from('user_profiles').upsert({
+      user_id: user.id,
+      profile_picture_url: null,
+      profile_picture_type: 'static',
+      profile_picture_file_name: null,
+      updated_at: new Date().toISOString(),
+    });
+
+    setProfilePicture(null);
+    setIsAnimated(false);
   };
 
   return (
-    <ProfilePictureContext.Provider
-      value={{
-        profilePicture,
-        isAnimated,
-        updateProfilePicture,
-        removeProfilePicture,
-        loading,
-      }}
-    >
+    <ProfilePictureContext.Provider value={{ profilePicture, isAnimated, loading, updateProfilePicture, removeProfilePicture }}>
       {children}
     </ProfilePictureContext.Provider>
   );
@@ -113,8 +99,6 @@ export function ProfilePictureProvider({ children }) {
 
 export function useProfilePicture() {
   const context = useContext(ProfilePictureContext);
-  if (!context) {
-    throw new Error('useProfilePicture must be used within ProfilePictureProvider');
-  }
+  if (!context) throw new Error('useProfilePicture must be used within ProfilePictureProvider');
   return context;
 }

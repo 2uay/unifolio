@@ -215,12 +215,18 @@ export default function Watchlist() {
       </div>
 
       {/* Summary bar */}
-      <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-muted-foreground flex-wrap">
-        <span>{filtered.length} securities</span>
-        <span className="text-emerald-400">{gainers} gaining</span>
-        <span className="text-red-400">{losers} declining</span>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] sm:text-xs text-muted-foreground">{filtered.length} securities</span>
+        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+          {gainers} gaining
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+          {losers} declining
+        </span>
         {showStarredOnly && starredTickers.length === 0 && (
-          <span className="ml-auto text-muted-foreground/60 italic">No starred stocks yet. Open a stock and click the star to add it here.</span>
+          <span className="ml-auto text-[10px] text-muted-foreground/60 italic">No starred stocks yet. Open a stock and click the star to add it here.</span>
         )}
       </div>
 

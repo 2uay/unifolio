@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getPalette } from '@/lib/secondaryColorPalettes';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabaseClient';
 
 const SecondaryColorsContext = createContext(null);
 
@@ -10,58 +10,32 @@ export function SecondaryColorsProvider({ children }) {
 
   const palette = getPalette(paletteId);
 
-  // Load from UserProfile on mount
   useEffect(() => {
-    const loadPaletteFromProfile = async () => {
+    const load = async () => {
       try {
-        const isAuth = await base44.auth.isAuthenticated();
-        
-        if (isAuth) {
-          const response = await base44.functions.invoke('getUserProfile', {});
-          const profile = response.data.profile;
-          setPaletteId(profile?.secondary_color_palette_id || 'bloomberg_heat');
-        } else {
-          setPaletteId('bloomberg_heat');
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase.from('user_profiles').select('secondary_color_palette_id').eq('user_id', user.id).single();
+          setPaletteId(data?.secondary_color_palette_id || 'bloomberg_heat');
         }
-      } catch (err) {
-        console.error('Failed to load palette from profile:', err);
-        setPaletteId('bloomberg_heat');
-      } finally {
-        setIsLoading(false);
-      }
+      } catch { /* stay default */ }
+      setIsLoading(false);
     };
-
-    loadPaletteFromProfile();
+    load();
   }, []);
 
-  // Save to UserProfile when palette changes
-  useEffect(() => {
-    const savePaletteToProfile = async () => {
-      if (isLoading) return;
-      try {
-        const isAuth = await base44.auth.isAuthenticated();
-        if (isAuth) {
-          await base44.functions.invoke('updateUserPreference', {
-            preferenceKey: 'secondary_color_palette_id',
-            preferenceValue: paletteId
-          });
-        }
-      } catch (err) {
-        console.error('Failed to save palette to profile:', err);
+  const changePalette = async (id) => {
+    setPaletteId(id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('user_profiles').upsert({ user_id: user.id, secondary_color_palette_id: id, updated_at: new Date().toISOString() });
       }
-    };
-
-    savePaletteToProfile();
-  }, [paletteId, isLoading]);
-
-  const value = {
-    paletteId,
-    setPaletteId,
-    palette,
+    } catch { /* silent */ }
   };
 
   return (
-    <SecondaryColorsContext.Provider value={value}>
+    <SecondaryColorsContext.Provider value={{ paletteId, setPaletteId: changePalette, palette }}>
       {children}
     </SecondaryColorsContext.Provider>
   );
@@ -69,8 +43,6 @@ export function SecondaryColorsProvider({ children }) {
 
 export function useSecondaryColors() {
   const ctx = useContext(SecondaryColorsContext);
-  if (!ctx) {
-    throw new Error('useSecondaryColors must be used inside SecondaryColorsProvider');
-  }
+  if (!ctx) throw new Error('useSecondaryColors must be used inside SecondaryColorsProvider');
   return ctx;
 }

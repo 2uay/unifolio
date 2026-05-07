@@ -1,50 +1,32 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabaseClient';
 
 const PrivacyContext = createContext(null);
 
 export function PrivacyProvider({ children }) {
   const [privacyMode, setPrivacyMode] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadPrivacyFromProfile = async () => {
+    const load = async () => {
       try {
-        const isAuth = await base44.auth.isAuthenticated();
-        
-        if (isAuth) {
-          const response = await base44.functions.invoke('getUserProfile', {});
-          const profile = response.data.profile;
-          setPrivacyMode(profile?.privacy_mode_preference || false);
-        } else {
-          setPrivacyMode(false);
-        }
-      } catch (err) {
-        console.error('Failed to load privacy mode:', err);
-        setPrivacyMode(false);
-      } finally {
-        setIsLoading(false);
-      }
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data } = await supabase.from('user_profiles').select('privacy_mode_preference').eq('user_id', user.id).single();
+        setPrivacyMode(data?.privacy_mode_preference || false);
+      } catch { /* stay false */ }
     };
-
-    loadPrivacyFromProfile();
+    load();
   }, []);
 
   const togglePrivacy = async () => {
     const newValue = !privacyMode;
     setPrivacyMode(newValue);
-
     try {
-      const isAuth = await base44.auth.isAuthenticated();
-      if (isAuth) {
-        await base44.functions.invoke('updateUserPreference', {
-          preferenceKey: 'privacy_mode_preference',
-          preferenceValue: newValue
-        });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('user_profiles').upsert({ user_id: user.id, privacy_mode_preference: newValue, updated_at: new Date().toISOString() });
       }
-    } catch (err) {
-      console.error('Failed to save privacy mode:', err);
-    }
+    } catch { /* silent */ }
   };
 
   const mask = (value, placeholder = '••••••') => privacyMode ? placeholder : value;
