@@ -229,22 +229,21 @@ export async function fetchBenchmarkCandles(benchmarkIds, days = 365) {
   return Object.fromEntries(benchmarkIds.filter(id => merged[id]).map(id => [id, merged[id]]));
 }
 
-// ─── Stock chart candle cache ──────────────────────────────────
-const CHART_CANDLE_CACHE_KEY = 'unifolio_chart_candles_v2';
-const CHART_CANDLE_TTL_D = 4 * 60 * 60 * 1000;   // 4 hours — daily bars change slowly
-const CHART_CANDLE_TTL_W = 12 * 60 * 60 * 1000;  // 12 hours — weekly bars
+// ─── Stock chart candle cache (Yahoo Finance via /api/chart proxy) ─
+const CHART_CANDLE_CACHE_KEY = 'unifolio_chart_candles_v3';
 
-const RANGE_TO_CANDLE = {
-  '1D':  { resolution: 'D', days: 5 },
-  '5D':  { resolution: 'D', days: 10 },
-  '1W':  { resolution: 'D', days: 14 },
-  '1M':  { resolution: 'D', days: 35 },
-  '3M':  { resolution: 'D', days: 100 },
-  '6M':  { resolution: 'D', days: 190 },
-  '1Y':  { resolution: 'D', days: 375 },
-  '2Y':  { resolution: 'W', days: 750 },
-  '5Y':  { resolution: 'W', days: 1900 },
-  'All': { resolution: 'W', days: 2600 },
+// interval + yahoo range per app range button
+const RANGE_TO_YAHOO = {
+  '1D':  { interval: '5m',  yahooRange: '1d',  ttl: 5 * 60 * 1000 },
+  '5D':  { interval: '15m', yahooRange: '5d',  ttl: 10 * 60 * 1000 },
+  '1W':  { interval: '60m', yahooRange: '5d',  ttl: 15 * 60 * 1000 },
+  '1M':  { interval: '1d',  yahooRange: '1mo', ttl: 60 * 60 * 1000 },
+  '3M':  { interval: '1d',  yahooRange: '3mo', ttl: 60 * 60 * 1000 },
+  '6M':  { interval: '1d',  yahooRange: '6mo', ttl: 2 * 60 * 60 * 1000 },
+  '1Y':  { interval: '1d',  yahooRange: '1y',  ttl: 4 * 60 * 60 * 1000 },
+  '2Y':  { interval: '1wk', yahooRange: '2y',  ttl: 12 * 60 * 60 * 1000 },
+  '5Y':  { interval: '1wk', yahooRange: '5y',  ttl: 12 * 60 * 60 * 1000 },
+  'All': { interval: '1mo', yahooRange: 'max', ttl: 24 * 60 * 60 * 1000 },
 };
 
 function readChartCandleCache() {
@@ -255,46 +254,58 @@ function writeChartCandleCache(cache) {
 }
 
 /**
- * Fetch real OHLCV chart data for any ticker from Finnhub.
- * Returns array of { date, open, high, low, close, volume, timestamp }
- * matching the format of generateOHLC() — drop-in compatible with chartEngine.
- * Returns null on failure so callers can fall back to synthetic data.
+ * Fetch real OHLCV chart data via the /api/chart serverless proxy (Yahoo Finance).
+ * Returns array of { date, open, high, low, close, volume, timestamp } —
+ * drop-in compatible with generateOHLC(). Returns null on failure.
  */
 export async function fetchStockCandles(ticker, range = '1M') {
-  if (!API_KEY || !ticker) return null;
+  if (!ticker) return null;
 
-  const { resolution, days } = RANGE_TO_CANDLE[range] || RANGE_TO_CANDLE['1M'];
-  const symbol = toFinnhubSymbol(ticker);
-  const cacheKey = `${ticker}_${resolution}_${range}`;
-  const ttl = resolution === 'W' ? CHART_CANDLE_TTL_W : CHART_CANDLE_TTL_D;
+  const cfg = RANGE_TO_YAHOO[range] || RANGE_TO_YAHOO['1M'];
+  const { interval, yahooRange, ttl } = cfg;
+  const cacheKey = `${ticker}_${interval}_${range}`;
 
   const cache = readChartCandleCache();
   const entry = cache[cacheKey];
   if (entry && Date.now() - entry.ts < ttl) return entry.data;
 
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - days * 86400;
-
   try {
-    const url = `${BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${now}&token=${API_KEY}`;
+    const url = `/api/chart?ticker=${encodeURIComponent(ticker)}&interval=${interval}&range=${yahooRange}`;
     const res = await fetch(url);
     if (!res.ok) return null;
-    const raw = await res.json();
-    if (raw.s !== 'ok' || !Array.isArray(raw.c) || raw.c.length < 2) return null;
+    const json = await res.json();
 
-    const data = raw.t.map((ts, i) => ({
-      date: new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      open:   Math.round(raw.o[i] * 100) / 100,
-      high:   Math.round(raw.h[i] * 100) / 100,
-      low:    Math.round(raw.l[i] * 100) / 100,
-      close:  Math.round(raw.c[i] * 100) / 100,
-      volume: raw.v[i],
-      timestamp: ts * 1000,
-    }));
+    const result = json.chart?.result?.[0];
+    if (!result?.timestamp) return null;
 
-    // Evict oldest if cache grows large
+    const timestamps = result.timestamp;
+    const q = result.indicators?.quote?.[0];
+    if (!q) return null;
+
+    const isIntraday = interval.endsWith('m') || interval === '60m';
+
+    const data = timestamps
+      .map((ts, i) => {
+        const close = q.close?.[i];
+        if (!close || close <= 0) return null;
+        return {
+          date: new Date(ts * 1000).toLocaleString('en-US', isIntraday
+            ? { hour: 'numeric', minute: '2-digit', hour12: true }
+            : { month: 'short', day: 'numeric' }),
+          open:      Math.round((q.open?.[i]   || close) * 100) / 100,
+          high:      Math.round((q.high?.[i]   || close) * 100) / 100,
+          low:       Math.round((q.low?.[i]    || close) * 100) / 100,
+          close:     Math.round(close * 100) / 100,
+          volume:    q.volume?.[i] || 0,
+          timestamp: ts * 1000,
+        };
+      })
+      .filter(Boolean);
+
+    if (data.length < 2) return null;
+
     const keys = Object.keys(cache);
-    if (keys.length >= 50) {
+    if (keys.length >= 60) {
       const oldest = keys.sort((a, b) => (cache[a]?.ts || 0) - (cache[b]?.ts || 0))[0];
       delete cache[oldest];
     }
@@ -302,7 +313,7 @@ export async function fetchStockCandles(ticker, range = '1M') {
     writeChartCandleCache(cache);
     return data;
   } catch (err) {
-    console.warn(`[stockApi] candle fetch failed for ${ticker}:`, err.message);
+    console.warn(`[stockApi] chart fetch failed for ${ticker}/${range}:`, err.message);
     return null;
   }
 }
