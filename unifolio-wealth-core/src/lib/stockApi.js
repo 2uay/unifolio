@@ -229,6 +229,84 @@ export async function fetchBenchmarkCandles(benchmarkIds, days = 365) {
   return Object.fromEntries(benchmarkIds.filter(id => merged[id]).map(id => [id, merged[id]]));
 }
 
+// ─── Stock chart candle cache ──────────────────────────────────
+const CHART_CANDLE_CACHE_KEY = 'unifolio_chart_candles_v2';
+const CHART_CANDLE_TTL_D = 4 * 60 * 60 * 1000;   // 4 hours — daily bars change slowly
+const CHART_CANDLE_TTL_W = 12 * 60 * 60 * 1000;  // 12 hours — weekly bars
+
+const RANGE_TO_CANDLE = {
+  '1D':  { resolution: 'D', days: 5 },
+  '5D':  { resolution: 'D', days: 10 },
+  '1W':  { resolution: 'D', days: 14 },
+  '1M':  { resolution: 'D', days: 35 },
+  '3M':  { resolution: 'D', days: 100 },
+  '6M':  { resolution: 'D', days: 190 },
+  '1Y':  { resolution: 'D', days: 375 },
+  '2Y':  { resolution: 'W', days: 750 },
+  '5Y':  { resolution: 'W', days: 1900 },
+  'All': { resolution: 'W', days: 2600 },
+};
+
+function readChartCandleCache() {
+  try { return JSON.parse(localStorage.getItem(CHART_CANDLE_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+function writeChartCandleCache(cache) {
+  try { localStorage.setItem(CHART_CANDLE_CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+
+/**
+ * Fetch real OHLCV chart data for any ticker from Finnhub.
+ * Returns array of { date, open, high, low, close, volume, timestamp }
+ * matching the format of generateOHLC() — drop-in compatible with chartEngine.
+ * Returns null on failure so callers can fall back to synthetic data.
+ */
+export async function fetchStockCandles(ticker, range = '1M') {
+  if (!API_KEY || !ticker) return null;
+
+  const { resolution, days } = RANGE_TO_CANDLE[range] || RANGE_TO_CANDLE['1M'];
+  const symbol = toFinnhubSymbol(ticker);
+  const cacheKey = `${ticker}_${resolution}_${range}`;
+  const ttl = resolution === 'W' ? CHART_CANDLE_TTL_W : CHART_CANDLE_TTL_D;
+
+  const cache = readChartCandleCache();
+  const entry = cache[cacheKey];
+  if (entry && Date.now() - entry.ts < ttl) return entry.data;
+
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - days * 86400;
+
+  try {
+    const url = `${BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${now}&token=${API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const raw = await res.json();
+    if (raw.s !== 'ok' || !Array.isArray(raw.c) || raw.c.length < 2) return null;
+
+    const data = raw.t.map((ts, i) => ({
+      date: new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      open:   Math.round(raw.o[i] * 100) / 100,
+      high:   Math.round(raw.h[i] * 100) / 100,
+      low:    Math.round(raw.l[i] * 100) / 100,
+      close:  Math.round(raw.c[i] * 100) / 100,
+      volume: raw.v[i],
+      timestamp: ts * 1000,
+    }));
+
+    // Evict oldest if cache grows large
+    const keys = Object.keys(cache);
+    if (keys.length >= 50) {
+      const oldest = keys.sort((a, b) => (cache[a]?.ts || 0) - (cache[b]?.ts || 0))[0];
+      delete cache[oldest];
+    }
+    cache[cacheKey] = { data, ts: Date.now() };
+    writeChartCandleCache(cache);
+    return data;
+  } catch (err) {
+    console.warn(`[stockApi] candle fetch failed for ${ticker}:`, err.message);
+    return null;
+  }
+}
+
 /**
  * Invalidate the local quote cache (call after manual refresh).
  */

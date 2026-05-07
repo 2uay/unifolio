@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   ComposedChart, Area, Line, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine
@@ -20,6 +20,7 @@ import {
   CHART_TYPES, TIME_RANGES, RANGE_DAYS, INTERVALS, ALL_INDICATORS,
   COMPARE_OPTIONS, EVENT_TYPES, DEFAULT_LAYOUT, saveChartLayout, loadChartLayout
 } from '@/lib/chartEngine';
+import { fetchStockCandles } from '@/lib/stockApi';
 
 // Generate a synthetic comparison line (% from start)
 function genCompareLine(seedVal, points, key) {
@@ -35,6 +36,7 @@ function genCompareLine(seedVal, points, key) {
 export default function FullscreenChart({
   ticker, name, lastPrice, seedVal = 42,
   chartData: chartDataProp,
+  realCandles: realCandlesProp,
   range, chartType, activeIndicators,
   onRangeChange, onChartTypeChange, onIndicatorsChange, onClose,
 }) {
@@ -43,6 +45,7 @@ export default function FullscreenChart({
 
   const [showIndicatorMenu, setShowIndicatorMenu] = useState(false);
   const [showCompareMenu, setShowCompareMenu] = useState(false);
+  const [fsRealCandles, setFsRealCandles] = useState(realCandlesProp ?? null);
   const [rightPanelOpen, setRightPanelOpen] = useState(saved?.rightPanelOpen ?? true);
   const [activeTool, setActiveTool] = useState('cursor');
   const [interval, setIntervalVal] = useState(saved?.interval || DEFAULT_LAYOUT.interval);
@@ -53,9 +56,22 @@ export default function FullscreenChart({
   const compareRef = useRef(null);
   const eventRef = useRef(null);
 
-  // Recompute data fresh in fullscreen (may differ from prop if range changes here)
+  // When range changes inside fullscreen, fetch new real candles
+  useEffect(() => {
+    if (!ticker) return;
+    let cancelled = false;
+    setFsRealCandles(null);
+    fetchStockCandles(ticker, range).then(candles => {
+      if (!cancelled) setFsRealCandles(candles && candles.length >= 5 ? candles : null);
+    }).catch(() => { if (!cancelled) setFsRealCandles(null); });
+    return () => { cancelled = true; };
+  }, [ticker, range]);
+
   const days = RANGE_DAYS[range] || 90;
-  const baseData = useMemo(() => generateOHLC(lastPrice || 100, seedVal, Math.min(days, 500)), [lastPrice, seedVal, days]);
+  const baseData = useMemo(() => {
+    if (fsRealCandles && fsRealCandles.length >= 5) return fsRealCandles;
+    return generateOHLC(lastPrice || 100, seedVal, Math.min(days, 500));
+  }, [fsRealCandles, lastPrice, seedVal, days]);
   const chartData = useMemo(() => {
     let d = applyIndicators(baseData, activeIndicators);
     if (chartType === 'heikin') d = toHeikinAshi(d);
@@ -537,8 +553,8 @@ export default function FullscreenChart({
           <div className="flex items-center gap-4 px-4 h-7 border-t border-border/30 text-[10px] text-muted-foreground/60 flex-shrink-0 bg-card/50">
             <span className="font-mono">{range} · {interval}</span>
             <span className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-amber-400/60" />
-              Sample data
+              <div className={cn('w-1.5 h-1.5 rounded-full', fsRealCandles ? 'bg-emerald-400/80' : 'bg-amber-400/60')} />
+              {fsRealCandles ? 'Live data · Finnhub' : 'Sample data'}
             </span>
             {activeTool !== 'cursor' && (
               <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{activeTool} tool active</span>

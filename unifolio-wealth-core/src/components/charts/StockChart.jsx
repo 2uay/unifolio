@@ -14,6 +14,7 @@ import {
   generateOHLC, applyIndicators, toHeikinAshi,
   CHART_TYPES, TIME_RANGES, RANGE_DAYS, ALL_INDICATORS, DEFAULT_LAYOUT, loadChartLayout, saveChartLayout
 } from '@/lib/chartEngine.js';
+import { fetchStockCandles } from '@/lib/stockApi';
 
 export default function StockChart({ ticker, name, lastPrice, seedVal = 42, compact = false, onChartClick, clickableChart = true, referenceLines = [] }) {
   const { privacyMode } = usePrivacy();
@@ -26,7 +27,26 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
   const [activeIndicators, setActiveIndicators] = useState(saved?.activeIndicators || DEFAULT_LAYOUT.activeIndicators);
   const [fullscreen, setFullscreen] = useState(false);
   const [showIndicatorMenu, setShowIndicatorMenu] = useState(false);
+  const [realCandles, setRealCandles] = useState(null);
+  const [candlesLoading, setCandlesLoading] = useState(false);
   const indicatorRef = useRef(null);
+
+  // Fetch real OHLCV candles from Finnhub; fall back to synthetic on failure
+  useEffect(() => {
+    if (!ticker) return;
+    let cancelled = false;
+    setRealCandles(null);
+    setCandlesLoading(true);
+    fetchStockCandles(ticker, range).then(candles => {
+      if (!cancelled) {
+        setRealCandles(candles && candles.length >= 5 ? candles : null);
+        setCandlesLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) { setRealCandles(null); setCandlesLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [ticker, range]);
 
   // Close indicator menu on outside click
   useEffect(() => {
@@ -38,7 +58,10 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
   }, []);
 
   const days = RANGE_DAYS[range] || 90;
-  const baseData = useMemo(() => generateOHLC(lastPrice || 100, seedVal, Math.min(days, 500)), [lastPrice, seedVal, days]);
+  const baseData = useMemo(() => {
+    if (realCandles && realCandles.length >= 5) return realCandles;
+    return generateOHLC(lastPrice || 100, seedVal, Math.min(days, 500));
+  }, [realCandles, lastPrice, seedVal, days]);
 
   const chartData = useMemo(() => {
     let d = applyIndicators(baseData, activeIndicators);
@@ -131,6 +154,7 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
         lastPrice={lastPrice}
         seedVal={seedVal}
         chartData={chartData}
+        realCandles={realCandles}
         range={range}
         chartType={chartType}
         activeIndicators={activeIndicators}
@@ -408,8 +432,13 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
 
       {/* Data source notice */}
       <div className="px-4 py-1.5 flex items-center gap-1.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-amber-400/60" />
-        <p className="text-[10px] text-muted-foreground/50">Sample data — connect a market data source for live charts</p>
+        <div className={cn(
+          'w-1.5 h-1.5 rounded-full',
+          realCandles ? 'bg-emerald-400/80' : candlesLoading ? 'bg-amber-400/60 animate-pulse' : 'bg-amber-400/60'
+        )} />
+        <p className="text-[10px] text-muted-foreground/50">
+          {realCandles ? 'Live data · Finnhub' : candlesLoading ? 'Loading…' : 'Sample data'}
+        </p>
       </div>
     </div>
   );
