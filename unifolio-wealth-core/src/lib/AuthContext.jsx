@@ -3,6 +3,31 @@ import { supabase } from '@/lib/supabaseClient';
 
 const AuthContext = createContext();
 
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+function clearSupabaseAuthStorage() {
+  if (typeof window === 'undefined') return;
+  const clearStore = (store) => {
+    try {
+      Object.keys(store)
+        .filter(key => (key.startsWith('sb-') && key.includes('auth-token')) || key === 'supabase.auth.token')
+        .forEach(key => store.removeItem(key));
+    } catch {
+      // Storage cleanup is best-effort; state below is authoritative for the UI.
+    }
+  };
+  clearStore(window.localStorage);
+  clearStore(window.sessionStorage);
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -75,14 +100,26 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setIsAuthenticated(false);
-    setIsDemoMode(false);
+    setAuthError(null);
+    try {
+      await withTimeout(supabase.auth.signOut({ scope: 'local' }), 3000, 'Sign out');
+    } catch (error) {
+      console.warn('[Auth] Sign out did not complete cleanly; clearing local session:', error?.message || error);
+    } finally {
+      clearSupabaseAuthStorage();
+      setUser(null);
+      setIsAuthenticated(false);
+      setIsDemoMode(false);
+      setIsLoadingAuth(false);
+    }
   };
 
   const enterDemoMode = () => {
     setIsDemoMode(true);
+  };
+
+  const exitDemoMode = () => {
+    setIsDemoMode(false);
   };
 
   const fullName = user?.user_metadata?.full_name || user?.full_name || user?.email || '';
@@ -99,6 +136,7 @@ export const AuthProvider = ({ children }) => {
       signIn,
       logout,
       enterDemoMode,
+      exitDemoMode,
       updateFullName,
     }}>
       {children}

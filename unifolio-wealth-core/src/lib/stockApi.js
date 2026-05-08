@@ -10,8 +10,10 @@
 
 const API_KEY = import.meta.env.VITE_FINNHUB_API_KEY;
 const BASE_URL = 'https://finnhub.io/api/v1';
-const CACHE_KEY = 'unifolio_stock_quotes_v1';
+const CACHE_KEY = 'unifolio_stock_quotes_v2';
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_VALID_QUOTE_AGE_MS = 4 * 24 * 60 * 60 * 1000;
+const QUOTE_MISMATCH_THRESHOLD = 0.08;
 
 // ─── Ticker format mapping ─────────────────────────────────────
 // Unifolio uses Yahoo-style suffixes (.TO for TSX).
@@ -61,6 +63,8 @@ async function fetchQuote(finnhubSymbol) {
     low: data.l,
     change: data.d,
     change_pct: data.dp,
+    timestamp: data.t ? data.t * 1000 : null,
+    source: 'finnhub',
   };
 }
 
@@ -103,6 +107,184 @@ export async function fetchQuotes(tickers) {
   const data = await _fetchBatch(unique);
   writeCache(data);
   return data;
+}
+
+function asFiniteNumber(value, fallback = null) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function isFreshTimestamp(timestamp, maxAge = MAX_VALID_QUOTE_AGE_MS) {
+  if (!timestamp) return false;
+  return Date.now() - timestamp <= maxAge;
+}
+
+function isUsablePrice(value) {
+  return Number.isFinite(Number(value)) && Number(value) > 0;
+}
+
+function inferQuoteSymbol(row = {}) {
+  const ticker = String(row.ticker || '').trim().toUpperCase();
+  if (!ticker || ticker.includes('.') || ticker.includes(':')) return ticker;
+  const name = String(row.asset_name || row.name || '').toLowerCase();
+  const currency = String(row.currency || '').toUpperCase();
+  if (currency === 'CAD' && name.includes('cdr')) return `${ticker}.NE`;
+  if (currency === 'CAD' && ticker !== 'CASH') return `${ticker}.TO`;
+  return ticker;
+}
+
+function normalizeBrokerRows(rows = []) {
+  return rows.reduce((acc, row) => {
+    const ticker = row?.ticker;
+    if (!ticker || acc[ticker]) return acc;
+    const brokerPrice = asFiniteNumber(row.current_price ?? row.lastPrice ?? row.price);
+    if (isUsablePrice(brokerPrice)) {
+      acc[ticker] = {
+        current_price: brokerPrice,
+        previous_close: brokerPrice,
+        price_source: 'broker',
+        valuation_status: 'broker_fallback',
+        quote_symbol: row.quote_symbol || inferQuoteSymbol(row),
+      };
+    }
+    return acc;
+  }, {});
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = [];
+  let index = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const currentIndex = index;
+      index += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function fetchLatestYahooPrices(tickers) {
+  const entries = await mapWithConcurrency(tickers, 5, async (ticker) => {
+    try {
+      const candles = await fetchStockCandles(ticker, '5D');
+      if (!Array.isArray(candles) || candles.length === 0) return null;
+      const latest = candles[candles.length - 1];
+      const previous = candles[candles.length - 2] || latest;
+      const currentPrice = asFiniteNumber(latest?.close);
+      if (!isUsablePrice(currentPrice)) return null;
+      return [ticker, {
+        current_price: currentPrice,
+        previous_close: asFiniteNumber(previous?.close, currentPrice),
+        timestamp: latest?.timestamp ?? null,
+        price_source: 'yahoo',
+        valuation_status: 'market_closed_close',
+      }];
+    } catch (err) {
+      console.warn(`[stockApi] Yahoo validation failed for ${ticker}: ${err.message}`);
+      return null;
+    }
+  });
+
+  return Object.fromEntries(entries.filter(Boolean));
+}
+
+function chooseValidatedQuote({ ticker, yahoo, finnhub, broker }) {
+  const yahooPrice = asFiniteNumber(yahoo?.current_price);
+  const finnhubPrice = asFiniteNumber(finnhub?.current_price);
+  const brokerPrice = asFiniteNumber(broker?.current_price);
+  const yahooUsable = isUsablePrice(yahooPrice);
+  const finnhubUsable = isUsablePrice(finnhubPrice);
+  const finnhubFresh = finnhubUsable && (!finnhub?.timestamp || isFreshTimestamp(finnhub.timestamp));
+
+  if (yahooUsable && finnhubFresh) {
+    const mismatchPct = Math.abs(finnhubPrice - yahooPrice) / Math.max(yahooPrice, 0.01);
+    if (mismatchPct > QUOTE_MISMATCH_THRESHOLD) {
+      return {
+        ...yahoo,
+        price_source: 'yahoo',
+        valuation_status: 'quote_mismatch',
+        rejected_quote: {
+          source: 'finnhub',
+          price: finnhubPrice,
+          mismatch_pct: Math.round(mismatchPct * 10000) / 100,
+        },
+      };
+    }
+
+    return {
+      ...yahoo,
+      price_source: 'yahoo',
+      valuation_status: 'live',
+      validation_source: 'finnhub',
+      validation_price: finnhubPrice,
+    };
+  }
+
+  if (yahooUsable) {
+    return {
+      ...yahoo,
+      price_source: 'yahoo',
+      valuation_status: 'market_closed_close',
+    };
+  }
+
+  if (finnhubFresh) {
+    return {
+      ...finnhub,
+      price_source: 'finnhub',
+      valuation_status: 'live',
+    };
+  }
+
+  if (isUsablePrice(brokerPrice)) {
+    return {
+      ...broker,
+      price_source: 'broker',
+      valuation_status: finnhubUsable ? 'quote_stale' : 'broker_fallback',
+      rejected_quote: finnhubUsable ? {
+        source: 'finnhub',
+        price: finnhubPrice,
+        ticker,
+      } : null,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Fetch market prices with guardrails for imported portfolio valuation.
+ * Yahoo chart data validates Finnhub quotes so stale/bad point quotes cannot
+ * overwrite broker import marks. Broker values are preserved as the fallback.
+ */
+export async function fetchValidatedPrices(tickers, brokerRows = []) {
+  const unique = [...new Set(tickers.filter(Boolean))];
+  if (unique.length === 0) return {};
+
+  const brokerByTicker = normalizeBrokerRows(brokerRows);
+  const quoteSymbolByTicker = Object.fromEntries(unique.map(ticker => [ticker, brokerByTicker[ticker]?.quote_symbol || ticker]));
+  const quoteSymbols = [...new Set(Object.values(quoteSymbolByTicker).filter(Boolean))];
+  const [finnhubQuotes, yahooQuotes] = await Promise.all([
+    fetchQuotes(quoteSymbols).catch(error => {
+      console.warn('[stockApi] Finnhub validation quotes failed:', error?.message || error);
+      return {};
+    }),
+    fetchLatestYahooPrices(quoteSymbols),
+  ]);
+
+  return unique.reduce((acc, ticker) => {
+    const quoteSymbol = quoteSymbolByTicker[ticker];
+    const selected = chooseValidatedQuote({
+      ticker,
+      yahoo: yahooQuotes[quoteSymbol],
+      finnhub: finnhubQuotes[quoteSymbol],
+      broker: brokerByTicker[ticker],
+    });
+    if (selected) acc[ticker] = { ...selected, quote_symbol: quoteSymbol };
+    return acc;
+  }, {});
 }
 
 async function _fetchBatch(tickers) {
@@ -154,79 +336,6 @@ export async function searchSymbols(query) {
   } catch {
     return [];
   }
-}
-
-// ─── Benchmark candle cache ────────────────────────────────────
-const CANDLE_CACHE_KEY = 'unifolio_benchmark_candles_v1';
-const CANDLE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour (daily data changes slowly)
-
-function readCandleCache() {
-  try { return JSON.parse(localStorage.getItem(CANDLE_CACHE_KEY) || 'null'); } catch { return null; }
-}
-function writeCandleCache(data) {
-  try { localStorage.setItem(CANDLE_CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
-}
-
-/**
- * Map from chart benchmark IDs to Finnhub-fetchable ETF proxies.
- * Using liquid ETFs instead of indices since Finnhub free tier covers ETFs.
- */
-export const BENCHMARK_TICKER_MAP = {
-  sp500:    'SPY',      // S&P 500
-  nasdaq:   'QQQ',      // NASDAQ-100
-  dow:      'DIA',      // Dow Jones
-  russell:  'IWM',      // Russell 2000
-  btc:      'BINANCE:BTCUSDT', // Bitcoin
-  gold:     'GLD',      // Gold ETF
-  usmarket: 'VTI',      // US Total Market
-  camarket: 'XIC:TSX',  // CA Total Market (TSX)
-};
-
-/**
- * Fetch historical daily closes for benchmark ETF proxies.
- * Returns { [benchmarkId]: number[] } — closing prices ordered oldest → newest.
- * Cached for 1 hour since these are daily prices that change slowly.
- *
- * @param {string[]} benchmarkIds - subset of BENCHMARK_TICKER_MAP keys
- * @param {number} days - number of trading days to fetch
- */
-export async function fetchBenchmarkCandles(benchmarkIds, days = 365) {
-  if (!API_KEY) return {};
-
-  const cacheEntry = readCandleCache();
-  const cacheValid = cacheEntry?.ts && Date.now() - cacheEntry.ts < CANDLE_CACHE_TTL_MS;
-  const cached = cacheValid ? (cacheEntry.data || {}) : {};
-
-  const toFetch = benchmarkIds.filter(id => BENCHMARK_TICKER_MAP[id] && !cached[id]);
-  if (toFetch.length === 0) {
-    return Object.fromEntries(benchmarkIds.filter(id => cached[id]).map(id => [id, cached[id]]));
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  // Add 40% buffer to get enough trading days
-  const from = now - Math.round(days * 1.4) * 86400;
-
-  const fresh = {};
-  await Promise.all(toFetch.map(async (id) => {
-    const symbol = BENCHMARK_TICKER_MAP[id];
-    try {
-      const url = `${BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${now}&token=${API_KEY}`;
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.s === 'ok' && Array.isArray(data.c)) {
-        // Take the last `days` data points
-        fresh[id] = data.c.slice(-days);
-      }
-    } catch (err) {
-      console.warn(`[stockApi] candle fetch failed for ${symbol}:`, err.message);
-    }
-  }));
-
-  const merged = { ...cached, ...fresh };
-  writeCandleCache(merged);
-
-  return Object.fromEntries(benchmarkIds.filter(id => merged[id]).map(id => [id, merged[id]]));
 }
 
 // ─── Stock chart candle cache (Yahoo Finance via /api/chart proxy) ─
@@ -318,6 +427,92 @@ export async function fetchStockCandles(ticker, range = '1M') {
   }
 }
 
+// ─── Historical prices (portfolio reconstruction) ─────────────
+const HIST_PRICES_CACHE_KEY = 'unifolio_hist_prices_v1';
+const HIST_PRICES_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function daysFromDate(fromDate) {
+  return Math.ceil((Date.now() - new Date(fromDate).getTime()) / 86400000);
+}
+
+function yahooRangeForHistoryDays(days) {
+  if (days <= 35) return '1mo';
+  if (days <= 100) return '3mo';
+  if (days <= 200) return '6mo';
+  if (days <= 390) return '1y';
+  if (days <= 800) return '2y';
+  if (days <= 1900) return '5y';
+  return 'max';
+}
+
+function readHistPricesCache() {
+  try { return JSON.parse(localStorage.getItem(HIST_PRICES_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+function writeHistPricesCache(cache) {
+  try { localStorage.setItem(HIST_PRICES_CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+
+/**
+ * Fetch daily closing prices for multiple tickers via Yahoo Finance proxy.
+ * Returns { [ticker]: { [YYYY-MM-DD]: close } } covering fromDate → today.
+ * Cached per-ticker for 24 hours.
+ */
+export async function fetchHistoricalPricesForTickers(tickers, fromDate) {
+  const unique = [...new Set(tickers.filter(Boolean))];
+  if (unique.length === 0) return {};
+
+  const days = daysFromDate(fromDate);
+  const range = yahooRangeForHistoryDays(Math.max(days + 7, 14));
+  const cache = readHistPricesCache();
+  const result = {};
+
+  await Promise.all(unique.map(async (ticker) => {
+    const cacheKey = `${ticker}_${range}`;
+    const entry = cache[cacheKey];
+    if (entry?.data && Date.now() - (entry.ts || 0) < HIST_PRICES_CACHE_TTL_MS) {
+      result[ticker] = entry.data;
+      return;
+    }
+
+    try {
+      const url = `/api/chart?ticker=${encodeURIComponent(ticker)}&interval=1d&range=${range}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const json = await res.json();
+      const apiResult = json.chart?.result?.[0];
+      const timestamps = apiResult?.timestamp;
+      const quote = apiResult?.indicators?.quote?.[0];
+      if (!Array.isArray(timestamps) || !quote) return;
+
+      const priceMap = {};
+      timestamps.forEach((ts, i) => {
+        const close = quote.close?.[i];
+        if (close && close > 0) {
+          priceMap[new Date(ts * 1000).toISOString().slice(0, 10)] = Math.round(close * 100) / 100;
+        }
+      });
+
+      if (Object.keys(priceMap).length > 0) {
+        result[ticker] = priceMap;
+        cache[cacheKey] = { ts: Date.now(), data: priceMap };
+      }
+    } catch (err) {
+      console.warn(`[stockApi] historical prices failed for ${ticker}:`, err.message);
+    }
+  }));
+
+  // Prune oldest entries if cache grows large
+  const keys = Object.keys(cache);
+  if (keys.length > 120) {
+    keys.sort((a, b) => (cache[a]?.ts || 0) - (cache[b]?.ts || 0))
+      .slice(0, keys.length - 120)
+      .forEach(k => delete cache[k]);
+  }
+
+  writeHistPricesCache(cache);
+  return result;
+}
+
 /**
  * Invalidate the local quote cache (call after manual refresh).
  */
@@ -331,4 +526,44 @@ export function invalidateCache() {
 export function getCacheAge() {
   const cache = readCache();
   return cache?.ts ?? null;
+}
+
+/**
+ * Fetch benchmark candle data from Finnhub using ETF proxies.
+ * benchmarks: array of { id, finnhubSymbol, finnhubType } from BENCHMARKS
+ * days: number of calendar days of history to fetch
+ * Returns { [id]: [{date, close, timestamp}] }
+ */
+export async function fetchBenchmarkViaFinnhub(benchmarks, days) {
+  if (!API_KEY) return {};
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - Math.max(days, 30) * 86400;
+  const results = {};
+  await Promise.all(
+    benchmarks.map(async ({ id, finnhubSymbol, finnhubType }) => {
+      if (!finnhubSymbol) return;
+      try {
+        const endpoint = finnhubType === 'crypto' ? 'crypto/candle' : 'stock/candle';
+        const url = `${BASE_URL}/${endpoint}?symbol=${encodeURIComponent(finnhubSymbol)}&resolution=D&from=${from}&to=${now}&token=${API_KEY}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.s !== 'ok' || !Array.isArray(data.t) || data.t.length < 2) return;
+        results[id] = data.t
+          .map((ts, i) => {
+            const close = data.c?.[i];
+            if (!close || close <= 0) return null;
+            return {
+              date: new Date(ts * 1000).toISOString().slice(0, 10),
+              close: Math.round(close * 100) / 100,
+              timestamp: ts * 1000,
+            };
+          })
+          .filter(Boolean);
+      } catch (err) {
+        console.warn(`[stockApi] Finnhub benchmark failed for ${finnhubSymbol}:`, err.message);
+      }
+    })
+  );
+  return results;
 }

@@ -4,6 +4,32 @@ import { useAuth } from '@/lib/AuthContext';
 
 const ProfilePictureContext = createContext();
 
+function withTimeout(promise, ms, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+// Resize non-GIF images to max 200×200 JPEG ~85% quality (~30–50 KB) for DB storage
+function compressImageDataUrl(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 200;
+      const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 export function ProfilePictureProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
   const [profilePicture, setProfilePicture] = useState(null);
@@ -44,47 +70,43 @@ export function ProfilePictureProvider({ children }) {
     if (!isAuthenticated || !user) throw new Error('Must be signed in to save profile picture');
     if (!base64DataUrl) throw new Error('Image data is required');
 
-    const resp = await fetch(base64DataUrl);
-    const blob = await resp.blob();
-    const ext = animated ? 'gif' : 'png';
-    const path = `${user.id}/avatar.${ext}`;
-    const file = new File([blob], fileName || `avatar.${ext}`, { type: blob.type });
+    // Compress static images to ≤200×200 JPEG; keep GIFs as-is (animation requires original data)
+    const dataUrl = animated ? base64DataUrl : await compressImageDataUrl(base64DataUrl);
 
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true });
-
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
-
-    const { error: dbError } = await supabase.from('user_profiles').upsert({
-      user_id: user.id,
-      profile_picture_url: publicUrl,
-      profile_picture_type: animated ? 'animated_gif' : 'static',
-      profile_picture_file_name: fileName,
-      updated_at: new Date().toISOString(),
-    });
+    const { error: dbError } = await withTimeout(
+      supabase.from('user_profiles').upsert({
+        user_id: user.id,
+        profile_picture_url: dataUrl,
+        profile_picture_type: animated ? 'animated_gif' : 'static',
+        profile_picture_file_name: fileName,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' }),
+      15000,
+      'Profile picture sync'
+    );
 
     if (dbError) throw dbError;
 
-    setProfilePicture(publicUrl);
+    setProfilePicture(dataUrl);
     setIsAnimated(animated);
   };
 
   const removeProfilePicture = async () => {
     if (!isAuthenticated || !user) throw new Error('Must be signed in to remove profile picture');
 
-    // Try to remove both possible extensions
-    await supabase.storage.from('avatars').remove([`${user.id}/avatar.png`, `${user.id}/avatar.gif`]);
+    const { error: dbError } = await withTimeout(
+      supabase.from('user_profiles').upsert({
+        user_id: user.id,
+        profile_picture_url: null,
+        profile_picture_type: 'static',
+        profile_picture_file_name: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' }),
+      15000,
+      'Profile picture sync'
+    );
 
-    await supabase.from('user_profiles').upsert({
-      user_id: user.id,
-      profile_picture_url: null,
-      profile_picture_type: 'static',
-      profile_picture_file_name: null,
-      updated_at: new Date().toISOString(),
-    });
+    if (dbError) throw dbError;
 
     setProfilePicture(null);
     setIsAnimated(false);

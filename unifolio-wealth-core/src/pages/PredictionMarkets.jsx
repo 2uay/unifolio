@@ -15,17 +15,28 @@ export default function PredictionMarkets() {
   const { convert, displayCurrency } = useCurrency();
   const queryClient = useQueryClient();
   const PM = '••••••';
+  const listEntity = async (entityName) => {
+    try {
+      const list = await base44?.entities?.[entityName]?.list?.('-created_date');
+      return Array.isArray(list) ? list.filter(Boolean) : [];
+    } catch (err) {
+      console.warn(`[PredictionMarkets] ${entityName} unavailable:`, err?.message || err);
+      return [];
+    }
+  };
 
   // Fetch accounts and positions
-  const { data: accounts = [] } = useQuery({
+  const { data: accountsRaw = [] } = useQuery({
     queryKey: ['predictionMarketAccounts'],
-    queryFn: () => base44.entities.PredictionMarketAccount.list('-created_date'),
+    queryFn: () => listEntity('PredictionMarketAccount'),
   });
 
-  const { data: positions = [] } = useQuery({
+  const { data: positionsRaw = [] } = useQuery({
     queryKey: ['predictionMarketPositions'],
-    queryFn: () => base44.entities.PredictionMarketPosition.list('-created_date'),
+    queryFn: () => listEntity('PredictionMarketPosition'),
   });
+  const accounts = Array.isArray(accountsRaw) ? accountsRaw.filter(Boolean) : [];
+  const positions = Array.isArray(positionsRaw) ? positionsRaw.filter(Boolean) : [];
 
   // Calculate totals
   const includedAccounts = accounts.filter(a => a.included_in_net_value !== false);
@@ -44,10 +55,11 @@ export default function PredictionMarkets() {
   const worstPosition = sortedByUnrealized[sortedByUnrealized.length - 1];
 
   // Fetch platforms
-  const { data: platforms = [] } = useQuery({
+  const { data: platformsRaw = [] } = useQuery({
     queryKey: ['predictionMarketPlatforms'],
-    queryFn: () => base44.entities.PredictionMarketPlatform.list('-created_date'),
+    queryFn: () => listEntity('PredictionMarketPlatform'),
   });
+  const platforms = Array.isArray(platformsRaw) ? platformsRaw.filter(Boolean) : [];
 
   const polymarket = platforms.find(p => p.platform_name === 'Polymarket');
   const kalshi = platforms.find(p => p.platform_name === 'Kalshi');

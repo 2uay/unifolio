@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { DATA_IS_SAMPLE, SAMPLE_DATA_LABEL } from '@/lib/portfolioEngine';
 import {
   LayoutDashboard, Briefcase, Building2, TrendingUp,
-  ArrowLeftRight, Eye, Lightbulb, Zap, Link2, Settings, Menu, X,
-  CreditCard, BarChart3, LogOut, UserCircle, LogIn, ChevronUp,
+  ArrowLeftRight, Eye, Lightbulb, Zap, Link2, Settings, X,
+  CreditCard, LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -15,19 +14,27 @@ import DemoModeButton from '@/components/layout/DemoModeButton';
 import DemoModeIndicator from '@/components/layout/DemoModeIndicator';
 import Avatar from '@/components/shared/Avatar';
 import UnifolioLogo from '@/components/shared/UnifolioLogo';
+import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
+import { useTopbarLogo } from '@/lib/TopbarLogoContext';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/holdings', label: 'Holdings', icon: Briefcase },
   { path: '/accounts', label: 'Accounts', icon: Building2 },
   { path: '/debts', label: 'Debts & Balances', icon: CreditCard },
-  { path: '/prediction-markets', label: 'Prediction Markets', icon: BarChart3 },
   { path: '/performance', label: 'Performance', icon: TrendingUp },
   { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { path: '/watchlist', label: 'Watchlist', icon: Eye },
   { path: '/insights', label: 'Insights', icon: Lightbulb },
-  { path: '/trade', label: 'Trade Center', icon: Zap },
   { path: '/institutions', label: 'Institutions', icon: Link2 },
+  { path: '/import', label: 'Import Center', icon: Upload },
+  { path: '/tax', label: 'Tax Report', icon: Receipt },
+];
+
+const utilityNavItems = [
+  { path: '/instructions', label: 'Instructions', icon: BookOpen },
+  { path: '/privacy', label: 'Privacy & Data', icon: Shield },
 ];
 
 function useMarketStatus() {
@@ -48,7 +55,7 @@ function useMarketStatus() {
 }
 
 // Profile popover — shown above the account button when clicked
-function ProfilePopover({ user, onClose, onSignOut, onNavigate }) {
+function ProfilePopover({ user, onClose, onSignOut, onNavigate, position = 'above' }) {
   const ref = useRef(null);
   const displayName = user?.user_metadata?.full_name || user?.full_name || user?.email || 'Account';
   const email = user?.email || '';
@@ -69,7 +76,10 @@ function ProfilePopover({ user, onClose, onSignOut, onNavigate }) {
   return (
     <div
       ref={ref}
-      className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-xl shadow-2xl overflow-hidden z-50"
+      className={cn(
+        'absolute bg-card border border-border rounded-xl shadow-2xl overflow-hidden z-50 w-56',
+        position === 'above' ? 'bottom-full left-0 right-0 mb-2' : 'top-full right-0 mt-2'
+      )}
     >
       {/* User info header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50 bg-secondary/30">
@@ -116,51 +126,134 @@ function ProfilePopover({ user, onClose, onSignOut, onNavigate }) {
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, isDemoMode, exitDemoMode } = useAuth();
+  const { isSample } = usePortfolioData();
   const { collapsed, desktopOpen, setDesktopOpen } = useSidebar();
+  const { logoVisible } = useTopbarLogo();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [topbarProfileOpen, setTopbarProfileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const marketOpen = useMarketStatus();
 
   const handleSignOut = async () => {
-    await logout();
-    // AuthContext will set isAuthenticated=false → App shows Welcome
+    setSigningOut(true);
+    try {
+      await Promise.all([
+        logout(),
+        new Promise(resolve => setTimeout(resolve, 450)),
+      ]);
+      navigate('/');
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const handleSignIn = async () => {
+    if (isDemoMode) {
+      exitDemoMode();
+      navigate('/');
+      return;
+    }
     await logout(); // clears any stale session / demo state
+    navigate('/');
   };
 
   return (
     <>
+      {signingOut && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/70 backdrop-blur-sm">
+          <div className="rounded-2xl border border-border bg-card px-6 py-5 shadow-2xl flex items-center gap-3">
+            <div className="h-5 w-5 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Signing out...</p>
+              <p className="text-xs text-muted-foreground">Clearing your local session</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Fixed Top Bar - Desktop */}
-      <div className="hidden lg:flex fixed left-0 top-0 right-0 h-14 bg-card border-b border-border/30 z-50 items-center px-6 justify-between">
+      <div className="hidden lg:grid fixed left-0 top-0 right-0 h-14 bg-card border-b border-border/30 z-50 items-center px-6" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
+        {/* Left: sidebar toggle + status indicator */}
         <button
           onClick={() => setDesktopOpen(!desktopOpen)}
-          className="group font-bold text-lg tracking-tight cursor-pointer"
+          className="group cursor-pointer flex items-center gap-1.5 justify-self-start hover:!translate-y-0 hover:!text-inherit"
         >
-          <UnifolioLogo />
+          <UnifolioWheelLogo />
+          <Zap className={cn('w-3 h-3 flex-shrink-0 animate-pulse', marketOpen ? 'text-green-500' : 'text-red-500')} />
         </button>
-        {!desktopOpen && (
-          <div className="flex items-center gap-2">
-            <PrivacyToggle collapsed={false} />
-            <CurrencySelector collapsed={false} />
-          </div>
+
+        {/* Center: Unifolio wordmark (togglable) */}
+        {logoVisible ? (
+          <Link to="/" className="group font-bold text-lg tracking-tight flex items-center justify-center">
+            <UnifolioLogo />
+          </Link>
+        ) : (
+          <div />
         )}
+
+        {/* Right: controls */}
+        <div className="flex items-center gap-2 justify-self-end">
+          <PrivacyToggle collapsed={false} />
+          <CurrencySelector collapsed={false} />
+          {user && (
+            <div className="relative flex-shrink-0">
+              {topbarProfileOpen && (
+                <ProfilePopover
+                  user={user}
+                  position="below"
+                  onClose={() => setTopbarProfileOpen(false)}
+                  onSignOut={handleSignOut}
+                  onNavigate={navigate}
+                />
+              )}
+              <button
+                onClick={() => setTopbarProfileOpen(o => !o)}
+                className="rounded-full hover:ring-2 hover:ring-primary/50 transition-all"
+                title="Account"
+              >
+                <Avatar user={user} size="xs" showRing={false} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-card border-b border-border/30 flex items-center px-4">
-        <button onClick={() => setMobileOpen(true)} className="p-2 icon-hover icon-hover-bg rounded-lg">
-          <Menu className="w-5 h-5" />
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="group cursor-pointer flex items-center gap-1.5 p-1.5 rounded-lg icon-hover icon-hover-bg hover:!translate-y-0 hover:!text-inherit"
+          aria-label="Open navigation"
+        >
+          <UnifolioWheelLogo />
+          <Zap className={cn('w-3 h-3 flex-shrink-0 animate-pulse', marketOpen ? 'text-green-500' : 'text-red-500')} />
         </button>
-        <Link to="/" className="group ml-3 font-bold text-lg tracking-tight flex-1 cursor-pointer">
-          <UnifolioLogo />
-        </Link>
         <div className="flex items-center gap-1.5 ml-auto">
           <PrivacyToggle />
           <CurrencySelector />
           <DemoModeButton collapsed={false} />
+          {user && (
+            <div className="relative flex-shrink-0">
+              {topbarProfileOpen && (
+                <ProfilePopover
+                  user={user}
+                  position="below"
+                  onClose={() => setTopbarProfileOpen(false)}
+                  onSignOut={handleSignOut}
+                  onNavigate={navigate}
+                />
+              )}
+              <button
+                onClick={() => setTopbarProfileOpen(o => !o)}
+                className="rounded-full hover:ring-2 hover:ring-primary/50 transition-all"
+                title="Account"
+              >
+                <Avatar user={user} size="xs" showRing={false} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -170,8 +263,9 @@ export default function Sidebar() {
           <div className="w-64 h-full bg-card border-r border-border/30 flex flex-col" onClick={e => e.stopPropagation()}>
             {/* Drawer header */}
             <div className="flex items-center justify-between h-14 border-b border-border/30 px-4 flex-shrink-0">
-              <Link to="/" onClick={() => setMobileOpen(false)} className="group font-bold text-xl tracking-tight cursor-pointer">
-                <UnifolioLogo />
+              <Link to="/" onClick={() => setMobileOpen(false)} className="group font-bold text-xl tracking-tight cursor-pointer flex items-center gap-1.5">
+                <UnifolioWheelLogo />
+                <Zap className={cn('w-3 h-3 flex-shrink-0 animate-pulse', marketOpen ? 'text-green-500' : 'text-red-500')} />
               </Link>
               <button onClick={() => setMobileOpen(false)} className="p-1 icon-hover icon-hover-bg rounded">
                 <X className="w-5 h-5" />
@@ -201,6 +295,28 @@ export default function Sidebar() {
 
             {/* Drawer footer */}
             <div className="p-3 border-t border-border/30 flex-shrink-0 space-y-2">
+              {utilityNavItems.map(item => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
+                      isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    )}
+                  >
+                    <item.icon className="w-4 h-4 flex-shrink-0" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+              {isSample && (
+                <div className="text-[9px] px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 text-center font-medium tracking-wider uppercase">
+                  Sample Data
+                </div>
+              )}
               {/* Utility controls */}
               <div className="flex items-center justify-between gap-2 px-1 pb-1">
                 <PrivacyToggle collapsed={false} />
@@ -314,9 +430,28 @@ export default function Sidebar() {
 
           {/* Bottom utility area */}
           <div className="p-3 border-t border-border/30 flex-shrink-0 flex flex-col gap-2">
-            {DATA_IS_SAMPLE && !collapsed && (
+            {utilityNavItems.map(item => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  title={collapsed ? item.label : undefined}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                    collapsed && 'justify-center px-2',
+                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  )}
+                >
+                  <item.icon className="w-4 h-4 flex-shrink-0" />
+                  {!collapsed && <span>{item.label}</span>}
+                </Link>
+              );
+            })}
+
+            {isSample && !collapsed && (
               <div className="text-[9px] px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 text-center font-medium tracking-wider uppercase">
-                {SAMPLE_DATA_LABEL}
+                Sample Data
               </div>
             )}
 

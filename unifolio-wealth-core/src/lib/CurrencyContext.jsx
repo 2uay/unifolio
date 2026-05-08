@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { convertCurrency, hasRate, FX_IS_SAMPLE } from '@/lib/exchangeRates';
+import { convertCurrency, hasRate, FX_IS_SAMPLE, fetchLiveRates } from '@/lib/exchangeRates';
 import { supabase } from '@/lib/supabaseClient';
 
 export const ALL_CURRENCIES = [
@@ -16,6 +16,13 @@ const CurrencyContext = createContext(null);
 export function CurrencyProvider({ children }) {
   const [displayCurrency, _setDisplayCurrency] = useState('CAD');
   const [enabledCurrencies, _setEnabledCurrencies] = useState(['CAD', 'USD']);
+  const [bothMode, _setBothMode] = useState(false);
+  const [fxRates, setFxRates] = useState({
+    usdToCad: 1 / 0.74,
+    cadToUsd: 0.74,
+    isLive: false,
+    lastUpdated: null,
+  });
 
   useEffect(() => {
     const load = async () => {
@@ -27,6 +34,10 @@ export function CurrencyProvider({ children }) {
       } catch { /* stay default */ }
     };
     load();
+  }, []);
+
+  useEffect(() => {
+    fetchLiveRates().then(rates => { if (rates) setFxRates(rates); });
   }, []);
 
   const setDisplayCurrency = useCallback(async (code) => {
@@ -43,6 +54,10 @@ export function CurrencyProvider({ children }) {
     _setEnabledCurrencies(codes);
   }, []);
 
+  const setBothMode = useCallback((val) => {
+    _setBothMode(typeof val === 'function' ? val : !!val);
+  }, []);
+
   const convert = useCallback((amount, fromCurrency) => {
     if (!fromCurrency || fromCurrency === displayCurrency) return amount;
     if (!hasRate(fromCurrency) || !hasRate(displayCurrency)) return amount;
@@ -50,11 +65,22 @@ export function CurrencyProvider({ children }) {
     return convertCurrency(amount, fromCurrency, displayCurrency);
   }, [displayCurrency]);
 
+  const secondaryCurrency = displayCurrency === 'CAD' ? 'USD' : 'CAD';
+
+  const convertSecondary = useCallback((amount, fromCurrency) => {
+    if (!fromCurrency || fromCurrency === secondaryCurrency) return amount;
+    if (!hasRate(fromCurrency) || !hasRate(secondaryCurrency)) return amount;
+    if (amount == null || amount === '' || isNaN(amount)) return 0;
+    return convertCurrency(amount, fromCurrency, secondaryCurrency);
+  }, [secondaryCurrency]);
+
   return (
     <CurrencyContext.Provider value={{
       displayCurrency, setDisplayCurrency,
       enabledCurrencies, setEnabledCurrencies,
       convert, isSample: FX_IS_SAMPLE, allCurrencies: ALL_CURRENCIES,
+      bothMode, setBothMode, secondaryCurrency, convertSecondary,
+      fxRates,
     }}>
       {children}
     </CurrencyContext.Provider>

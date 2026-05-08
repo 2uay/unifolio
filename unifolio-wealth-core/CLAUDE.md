@@ -115,6 +115,78 @@ This file tracks all significant feature additions, changes, and known limitatio
 - Padding reduced (`p-4 md:p-6` → `p-3 md:p-4`), grid gap tightened (`gap-6` → `gap-4`)
 - Purchase history badges below chart updated with "Lot N" purple label prefix matching chart reference line colors
 
+#### Stability + Visual Consistency Pass
+- **Files:** `src/components/layout/Sidebar.jsx`, `src/pages/Accounts.jsx`, `src/pages/Holdings.jsx`, `src/components/accounts/MetalsBreakdownSection.jsx`, `src/components/accounts/MetalBreakdownCard.jsx`
+- Top-left Unifolio Zap indicator now uses the same `marketOpen` source as the sidebar market status pill; green when markets are open, red when closed, with pulse preserved
+- Accounts page now guards production-only failure paths: custom assets query fails closed to `[]`, Base44 custom-asset mutations check service availability, accounts/holdings arrays are normalized before rendering, and malformed precious-metal details no longer crash cards
+- Holdings "Stacked by ticker" label now uses amber (`text-amber-400/80`) to match the stacked-row yellow vertical indicator
+
+#### Stability: Default Theme, Profile Picture, Debts, Prediction Markets
+- **Files:** `src/lib/ThemeContext.jsx`, `src/lib/themes.js`, `src/lib/ProfilePictureContext.jsx`, `src/pages/DebtsAndBalances.jsx`, `src/pages/PredictionMarkets.jsx`, `src/components/predictionmarkets/PredictionMarketPlatformCard.jsx`, `src/components/predictionmarkets/PredictionMarketPositionsTable.jsx`
+- Default theme changed from `redblackwhiteaccent` to `royalpurple` so new/default users land on the purple Unifolio look
+- Profile picture upload/sync now has explicit timeouts for storage upload, database sync, and removal; avatar URLs get a cache-busting `?v=` suffix so changed pictures refresh immediately instead of appearing stale
+- Debts & Balances and Prediction Markets pages now fail closed when Base44 entities are unavailable or return non-array data, preventing production crashes while preserving existing empty states
+- Prediction platform cards now guard unknown connection statuses; positions table normalizes incoming positions before sorting/rendering
+
+#### Visual Polish: Theme Wave Background
+- **Files:** `src/components/shared/ThemedWaveBackground.jsx`, `src/pages/Welcome.jsx`, `src/components/layout/AppLayout.jsx`, `src/App.jsx`, `src/lib/ThemeContext.jsx`
+- Removed the login-screen top/bottom accent bars and replaced the old static ring/grid backdrop with a cursor-responsive, theme-aware wave field rising from the bottom of the viewport
+- Added `ThemedWaveBackground`, a lightweight CSS/`requestAnimationFrame` component that reads current theme tokens (`--primary`, `--background`, `--card`, `--accent`, `--ring`) and respects `prefers-reduced-motion`
+- Login screen now uses theme tokens for card, tabs, inputs, buttons, logo mark, feature tiles, and auth loading spinner instead of hardcoded amber/black styling
+- App pages now receive the same subtle theme wave background behind page content, without changing page component structure
+- Cached legacy default theme (`redblackwhiteaccent`) is migrated to `royalpurple` so returning browsers with the old default localStorage value see the new purple default
+
+#### UX Polish: Heatmap Menu, Extracted Holdings, Instructions
+- **Files:** `src/pages/Holdings.jsx`, `src/components/holdings/HeatmapModeMenu.jsx`, `src/pages/Instructions.jsx`, `src/lib/bankExportInstructions.js`, `src/App.jsx`, `src/components/layout/Sidebar.jsx`, `src/pages/Welcome.jsx`, `src/components/ui/dialog.jsx`, `src/components/settings/ProfilePictureModal.jsx`
+- Heatmap mode selector is now a persistent panel with clickable previous/next controls, keyboard left/right cycling, hover/focus preview, and click/Enter/Space selection; it no longer opens over the holdings table
+- Holdings can be extracted into a fixed in-app panel with shared state and a browser fullscreen toggle; filters, sorting, stacked rows, heatmap preview, column controls, and breakdown rows use the same state as embedded mode
+- Login sign-in form now explicitly handles Enter with `requestSubmit()` and guards against duplicate loading submissions
+- Added `/instructions` sidebar page backed by config-driven bank export instructions, official links, screenshot placeholders, and generated CSV/Flex Query downloads
+- Profile picture modal close button is enforced at the top-right through dialog header spacing and the shared dialog close control now has `aria-label="Close modal"`
+
+#### Dashboard Wave Background Fix
+- **Files:** `src/pages/Dashboard.jsx`
+- Removed the old dashboard-only fixed black SVG/ring backdrop so the shared theme-aware `ThemedWaveBackground` from `AppLayout` is visible on Dashboard like the rest of the app
+
+#### Real Benchmark API Wiring
+- **Files:** `src/lib/benchmarks.js`, `src/components/dashboard/DashboardPortfolioChart.jsx`, `src/components/performance/PortfolioChart.jsx`, `src/lib/stockApi.js`
+- Dashboard and Performance benchmark dropdowns now share one benchmark config and fetch real benchmark series through the existing Yahoo Finance `/api/chart` proxy
+- Benchmark symbols use real Yahoo index/asset tickers where available (`^GSPC`, `^NDX`, `^DJI`, `^RUT`, `BTC-USD`, `GC=F`) and ETF proxies for total-market benchmarks (`VTI`, `XIC.TO`)
+- Benchmark series are cached in localStorage, aligned to portfolio snapshot dates, and fall back to synthetic data only when the API is unavailable
+- Both charts now show a subtle status indicator for live benchmark data, loading, or fallback
+
+#### Holdings Heatmap Compact Selector Restore
+- **Files:** `src/components/holdings/HeatmapModeSelector.jsx`, `src/pages/Holdings.jsx`
+- Replaced the persistent heatmap panel with a compact toolbar control: left arrow, current mode text/dropdown, and right arrow
+- Heatmap mode controls now render only when the Heatmap toggle is on; the dropdown still supports hover/focus preview and click selection
+- Removed the unused persistent `HeatmapModeMenu` component
+
+#### Royal Purple Guest/Login Default
+- **Files:** `src/lib/ThemeContext.jsx`, `src/pages/Welcome.jsx`
+- Logged-out visitors and demo-mode entry now explicitly reset to the `royalpurple` theme so the login page and demo experience always use the purple Unifolio default
+- Signed-in users still load their saved Supabase theme preference after auth resolves
+
+#### Demo Sign-In Navigation Fix
+- **Files:** `src/lib/AuthContext.jsx`, `src/components/layout/DemoModeButton.jsx`, `src/components/layout/Sidebar.jsx`
+- Added explicit `exitDemoMode()` auth action so demo users can return to the login screen without a full reload
+- Demo-mode sign-in buttons now clear demo mode and navigate to `/`, where the app immediately renders the `Welcome` login screen
+- Signed-in logout behavior remains unchanged
+
+#### Supabase Import Backend + IBKR Flex Parser
+- **Files:** `src/lib/csvParser.js`, `src/lib/importPersistence.js`, `src/pages/ImportCenter.jsx`, `supabase/schema.sql`
+- Added section-aware parsing for IBKR Flex/activity reports using `BOS`/`HEADER`/`DATA`/`EOS` blocks instead of treating the report as a flat CSV
+- The importer now extracts account metadata, current positions, trades, dividends/fees/cash transactions, securities, FX balances, and section summaries from the uploaded IBKR export
+- Confirming an import now saves normalized holdings and transactions to Supabase (`institutions`, `accounts`, `holdings`, `transactions`) and records an audit payload in the new `import_batches` table
+- The raw broker file is not stored; large FX-rate sections are counted and trimmed in the audit payload to avoid turning imports into raw-file storage
+
+#### Imported Portfolio Sync + Realized Preview
+- **Files:** `src/lib/PortfolioDataContext.jsx`, `src/lib/csvParser.js`, `src/lib/importPersistence.js`, `src/pages/ImportCenter.jsx`, `supabase/schema.sql`
+- IBKR imports now reconstruct realized/closed positions from execution history and show Open Holdings, Realized Positions, and Transactions preview tabs before saving
+- Import preview uses the Holdings table column definitions so uploaded files expose the same fields users expect in the portfolio table
+- Added Supabase fields/table support for complete holdings metadata, transaction metadata, `realized_positions`, and active import tracking
+- Signed-in users with imported Supabase data now load that data through `PortfolioDataProvider`; demo/unsigned users continue to see sample data
+- Dashboard, Holdings, Accounts, Performance, Transactions, Tax Report, Insights, Institutions, portfolio breakdowns, holding details, and tax exports now read through the imported portfolio data layer where applicable
+
 ---
 
 ## Known Limitations / TODOs
@@ -123,7 +195,7 @@ This file tracks all significant feature additions, changes, and known limitatio
 - **Sort fields for stacked rows:** only `ticker`, `price`, `quantity`, `marketValue` sort fields are wired via `SortHeader`. Other fields (unrealized %, daily %) don't have sort buttons yet — they still render correctly, just aren't sortable by header click.
 - **Live data + stacking:** live price updates flow through `liveHoldings` per ticker, so stacked rows automatically use the same live price since all children share a ticker.
 - **`pctAssetClass` column:** currently renders "N/A" for all holdings — not yet computed per-holding.
-- **Real account data:** all data is currently sample/demo data from `sampleData.js`. Full integration with real brokerage APIs is a future milestone.
+- **Real account data:** IBKR CSV/Flex imports now save to Supabase and populate the app through `PortfolioDataProvider`; users must apply the latest `supabase/schema.sql` changes before saving complete imported holdings/realized-position metadata.
 
 ---
 

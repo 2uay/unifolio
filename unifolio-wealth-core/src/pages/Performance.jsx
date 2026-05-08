@@ -1,5 +1,4 @@
 import React, { useMemo } from 'react';
-import { holdings, accounts, portfolioSnapshots, getInstitutionForAccount } from '@/lib/mockData';
 import { formatCurrency, PnlValue, StatCard } from '@/components/shared/ValueDisplay';
 import { safeNumber, safeDivide, safeArray } from '@/lib/safeNum';
 import PageHeader from '@/components/shared/PageHeader';
@@ -8,10 +7,13 @@ import MonthlyReturnsTable from '@/components/performance/MonthlyReturnsTable';
 import { TrendingUp, BarChart3, Calendar } from 'lucide-react';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useCurrency } from '@/lib/CurrencyContext';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 
 export default function Performance() {
   const { convert, displayCurrency } = useCurrency();
   const { privacyMode } = usePrivacy();
+  const { holdings, accounts, portfolioSnapshots, getInstitutionForAccount, isEmptyPortfolio } = usePortfolioData();
   const PM = '••••••';
 
   const snapshots = safeArray(portfolioSnapshots);
@@ -29,7 +31,7 @@ export default function Performance() {
       totalUnrealizedGain += convert(safeNumber(h.unrealized_gain_loss_amount), cur);
     });
     return { totalRealizedGain, totalUnrealizedGain };
-  }, [convert, displayCurrency]);
+  }, [holdings, convert, displayCurrency]);
 
   const accountPerf = useMemo(() => accounts.map(acc => {
     const nativeCurrency = acc.base_currency || 'CAD';
@@ -45,7 +47,16 @@ export default function Performance() {
       unrealized,
       returnPct: safeDivide(unrealized, convert(costBasis, 'USD')) * 100,
     };
-  }).filter(a => a.value > 0).sort((a, b) => b.value - a.value), [convert, displayCurrency]);
+  }).filter(a => a.value > 0).sort((a, b) => b.value - a.value), [accounts, holdings, getInstitutionForAccount, convert, displayCurrency]);
+
+  if (isEmptyPortfolio) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Performance" description="Track your portfolio returns over time" />
+        <EmptyPortfolioState />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -1,8 +1,9 @@
 import { HEATMAP_MODES, HEATMAP_MODE_CONFIG } from './heatmapModes.js';
 import { safeNumber } from './safeNum.js';
 
-// Calculate heatmap style for a holding based on mode
-export function calculateHeatmapStyle(holding, mode, context = {}) {
+// Calculate heatmap style for a holding based on mode.
+// variant: 'default' (active holdings) | 'realized' (closed positions — alternate colorway)
+export function calculateHeatmapStyle(holding, mode, context = {}, variant = 'default') {
   if (!mode || mode === HEATMAP_MODES.OFF) {
     return { bgStyle: {}, label: '' };
   }
@@ -25,7 +26,7 @@ export function calculateHeatmapStyle(holding, mode, context = {}) {
   const intensity = calculateIntensity(value, mode, visibleHoldings, context, allRealizedHoldings);
   const colorScheme = HEATMAP_MODE_CONFIG[mode]?.colorScheme || 'neutral';
 
-  return generateColorStyle(intensity, colorScheme, value, mode, theme, accentColor);
+  return generateColorStyle(intensity, colorScheme, value, mode, theme, accentColor, variant);
 }
 
 // Extract the numeric value for a holding based on heatmap mode
@@ -127,25 +128,30 @@ function calculateIntensity(value, mode, visibleHoldings, context, allRealizedHo
 }
 
 // Generate HSL color style based on intensity and color scheme
-function generateColorStyle(intensity, colorScheme, value, mode, theme, accentColor) {
+function generateColorStyle(intensity, colorScheme, value, mode, theme, accentColor, variant = 'default') {
   if (colorScheme === 'concentration') {
-    return concentrationColor(intensity, value, theme, accentColor);
+    return concentrationColor(intensity, value, theme, accentColor, variant);
   } else if (colorScheme === 'pnl') {
-    return pnlColor(intensity, value, theme, mode);
+    return pnlColor(intensity, value, theme, mode, variant);
   } else if (colorScheme === 'volatility') {
-    return volatilityColor(intensity, theme);
+    return volatilityColor(intensity, theme, variant);
   }
   return { bgStyle: {}, label: '' };
 }
 
-// Concentration heatmap: tinted with the active theme's primary color
-function concentrationColor(intensity, value, _theme, accentColor) {
+// Concentration heatmap: tinted with the active theme's primary color (or purple for realized)
+function concentrationColor(intensity, value, _theme, accentColor, variant = 'default') {
   const opacity = Math.pow(intensity, 0.75) * 0.18;
-  // accentColor is an HSL components string from the --primary CSS variable ("217 91% 60%")
-  // or a legacy hex fallback — handle both
-  const bgColor = accentColor && accentColor.includes('%')
-    ? `hsl(${accentColor} / ${opacity})`
-    : `rgba(${hexToRgb(accentColor || '#3B82F6')}, ${opacity})`;
+  let bgColor;
+  if (variant === 'realized') {
+    bgColor = `rgba(147, 51, 234, ${opacity})`; // purple-600
+  } else {
+    // accentColor is an HSL components string from the --primary CSS variable ("217 91% 60%")
+    // or a legacy hex fallback — handle both
+    bgColor = accentColor && accentColor.includes('%')
+      ? `hsl(${accentColor} / ${opacity})`
+      : `rgba(${hexToRgb(accentColor || '#3B82F6')}, ${opacity})`;
+  }
 
   return {
     bgStyle: { backgroundColor: bgColor },
@@ -153,22 +159,25 @@ function concentrationColor(intensity, value, _theme, accentColor) {
   };
 }
 
-// P&L/Return heatmap: green/red tints
-function pnlColor(intensity, value, theme, mode) {
+// P&L/Return heatmap: green/red for active, cyan/amber for realized
+function pnlColor(intensity, value, theme, mode, variant = 'default') {
   const isGain = value >= 0;
   const opacity = Math.pow(Math.abs(intensity), 0.85) * 0.20; // Max 20% opacity
-  
-  // Use theme-specific colors if available
-  let gainColor = 'rgba(34, 197, 94, OPACITY)';    // Default green
-  let lossColor = 'rgba(239, 68, 68, OPACITY)';    // Default red
-  
-  if (theme === 'bloomberg') {
-    gainColor = 'rgba(76, 175, 80, OPACITY)';      // Bloomberg green
-    lossColor = 'rgba(229, 57, 53, OPACITY)';      // Bloomberg red
+
+  let gainColor, lossColor;
+  if (variant === 'realized') {
+    gainColor = 'rgba(6, 182, 212, OPACITY)';    // cyan-500
+    lossColor = 'rgba(245, 158, 11, OPACITY)';   // amber-500
+  } else if (theme === 'bloomberg') {
+    gainColor = 'rgba(76, 175, 80, OPACITY)';    // Bloomberg green
+    lossColor = 'rgba(229, 57, 53, OPACITY)';    // Bloomberg red
+  } else {
+    gainColor = 'rgba(34, 197, 94, OPACITY)';    // Default green
+    lossColor = 'rgba(239, 68, 68, OPACITY)';    // Default red
   }
-  
+
   const bgColor = (isGain ? gainColor : lossColor).replace('OPACITY', opacity);
-  
+
   let label;
   if (mode === HEATMAP_MODES.REALIZED_GAIN_CONTRIBUTION) {
     label = `${value >= 0 ? '+' : ''}${Math.abs(value).toFixed(1)}%`;
@@ -182,10 +191,12 @@ function pnlColor(intensity, value, theme, mode) {
   };
 }
 
-// Volatility heatmap: orange warning tint
-function volatilityColor(intensity, theme) {
+// Volatility heatmap: orange for active, pink for realized
+function volatilityColor(intensity, theme, variant = 'default') {
   const opacity = Math.pow(intensity, 0.75) * 0.16; // Max 16% opacity
-  const bgColor = `rgba(249, 115, 22, ${opacity})`; // Warm orange
+  const bgColor = variant === 'realized'
+    ? `rgba(236, 72, 153, ${opacity})`  // pink-500
+    : `rgba(249, 115, 22, ${opacity})`; // orange-500
   const label = `Vol: ${(intensity * 100).toFixed(0)}%`;
 
   return {

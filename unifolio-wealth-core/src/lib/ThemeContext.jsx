@@ -1,13 +1,19 @@
 // @ts-nocheck
 import { createContext, useContext, useEffect, useState } from 'react';
-import { applyTheme, getChartColors, generateMonochromeTheme } from './themes';
+import { applyTheme, getChartColors, generateMonochromeTheme, themes } from './themes';
 import { supabase } from '@/lib/supabaseClient';
 
 const ThemeContext = createContext(null);
 
-const DEFAULT_THEME = 'redblackwhiteaccent';
+const DEFAULT_THEME = 'royalpurple';
+const LEGACY_DEFAULT_THEME = 'redblackwhiteaccent';
 const LS_KEY = 'unifolio_default_theme';
 const LS_MONO_KEY = 'unifolio_mono_color';
+
+function persistDefaultTheme() {
+  localStorage.setItem(LS_KEY, DEFAULT_THEME);
+  localStorage.removeItem(LS_MONO_KEY);
+}
 
 async function saveToSupabase(userId, themeId, monoColor) {
   if (!userId) return;
@@ -47,14 +53,14 @@ export function ThemeProvider({ children }) {
   };
 
   useEffect(() => {
-    // Step 1: apply localStorage immediately (fast, no network wait)
-    const localTheme = localStorage.getItem(LS_KEY);
-    const localMono = localStorage.getItem(LS_MONO_KEY);
-    if (localTheme) {
-      applyById(localTheme, localMono);
-    } else {
-      applyTheme(DEFAULT_THEME);
+    // Step 1: apply the public/default theme immediately.
+    // Signed-in users get their saved theme after auth resolves; logged-out/demo
+    // visitors should always see the royal purple Unifolio default.
+    const storedTheme = localStorage.getItem(LS_KEY);
+    if (storedTheme === LEGACY_DEFAULT_THEME) {
+      persistDefaultTheme();
     }
+    applyById(DEFAULT_THEME);
 
     // Step 2: subscribe to auth state — load Supabase preference on sign-in
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -74,6 +80,19 @@ export function ThemeProvider({ children }) {
             if (monoColor) localStorage.setItem(LS_MONO_KEY, monoColor);
           }
         } catch { /* silent — keep current theme */ }
+      } else {
+        // Guest: pick a random theme once per browser session (sessionStorage clears on new tab)
+        const SESSION_KEY = 'unifolio_guest_theme';
+        const sessionTheme = sessionStorage.getItem(SESSION_KEY);
+        if (sessionTheme && themes[sessionTheme]) {
+          applyById(sessionTheme);
+        } else {
+          const ids = Object.keys(themes).filter(id => id !== 'custom-monochrome');
+          const pick = ids[Math.floor(Math.random() * ids.length)];
+          applyById(pick);
+          sessionStorage.setItem(SESSION_KEY, pick);
+          localStorage.setItem(LS_KEY, pick);
+        }
       }
       setIsLoading(false);
     });
@@ -94,6 +113,7 @@ export function ThemeProvider({ children }) {
 
     applyById(themeId, color);
     localStorage.setItem(LS_KEY, themeId);
+    sessionStorage.setItem('unifolio_guest_theme', themeId);
     if (color != null) localStorage.setItem(LS_MONO_KEY, color);
     else localStorage.removeItem(LS_MONO_KEY);
 
@@ -103,10 +123,17 @@ export function ThemeProvider({ children }) {
     } catch { /* silent */ }
   };
 
+  const resetToDefaultTheme = () => {
+    persistDefaultTheme();
+    applyById(DEFAULT_THEME);
+  };
+
   return (
     <ThemeContext.Provider value={{
       selectedTheme,
       changeTheme,
+      resetToDefaultTheme,
+      defaultTheme: DEFAULT_THEME,
       chartColors,
       isLoading,
       customMonochromeColor,

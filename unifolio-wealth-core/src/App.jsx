@@ -12,21 +12,25 @@ import { ThemeProvider } from '@/lib/ThemeContext';
 import { LiveDataProvider } from '@/lib/LiveDataContext';
 import { SecondaryColorsProvider } from '@/lib/SecondaryColorsContext';
 import { AccentBarsProvider } from '@/lib/AccentBarsContext';
+import { TopbarLogoProvider } from '@/lib/TopbarLogoContext';
 import { StarredStocksProvider } from '@/lib/StarredStocksContext';
 import { ProfilePictureProvider } from '@/lib/ProfilePictureContext';
+import { PortfolioDataProvider } from '@/lib/PortfolioDataContext';
 import AppLayout from '@/components/layout/AppLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Dashboard from '@/pages/Dashboard';
 import Holdings from '@/pages/Holdings';
 import Accounts from '@/pages/Accounts';
 import DebtsAndBalances from '@/pages/DebtsAndBalances';
-import PredictionMarkets from '@/pages/PredictionMarkets';
 import Performance from '@/pages/Performance';
 import Transactions from '@/pages/Transactions';
 import Watchlist from '@/pages/Watchlist';
 import Insights from '@/pages/Insights';
-import TradeCenter from '@/pages/TradeCenter';
 import Institutions from '@/pages/Institutions';
+import Instructions from '@/pages/Instructions';
+import PrivacyAndData from '@/pages/PrivacyAndData';
+import ImportCenter from '@/pages/ImportCenter';
+import TaxReport from '@/pages/TaxReport';
 import Settings from '@/pages/Settings';
 import Welcome from '@/pages/Welcome';
 
@@ -35,8 +39,8 @@ const AuthenticatedApp = () => {
 
   if (isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-black">
-        <div className="w-8 h-8 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
       </div>
     );
   }
@@ -53,13 +57,15 @@ const AuthenticatedApp = () => {
         <Route path="/holdings" element={<Holdings />} />
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/debts" element={<DebtsAndBalances />} />
-        <Route path="/prediction-markets" element={<PredictionMarkets />} />
         <Route path="/performance" element={<Performance />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/watchlist" element={<Watchlist />} />
         <Route path="/insights" element={<Insights />} />
-        <Route path="/trade" element={<TradeCenter />} />
         <Route path="/institutions" element={<Institutions />} />
+        <Route path="/instructions" element={<Instructions />} />
+        <Route path="/privacy" element={<PrivacyAndData />} />
+        <Route path="/import" element={<ImportCenter />} />
+        <Route path="/tax" element={<TaxReport />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
@@ -71,12 +77,14 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <LiveDataProvider>
-          <SecondaryColorsProvider>
-            <AccentBarsProvider>
-              <StarredStocksProvider>
-                <AuthProvider>
-                  <QueryClientProvider client={queryClientInstance}>
+        <SecondaryColorsProvider>
+          <AccentBarsProvider>
+            <TopbarLogoProvider>
+            <StarredStocksProvider>
+              <AuthProvider>
+                <QueryClientProvider client={queryClientInstance}>
+                  <PortfolioDataProvider>
+                    <LiveDataProvider>
                     <Router>
                       <SidebarProvider>
                         <CurrencyProvider>
@@ -90,13 +98,15 @@ function App() {
                         </CurrencyProvider>
                       </SidebarProvider>
                     </Router>
-                    <Toaster />
-                  </QueryClientProvider>
-                </AuthProvider>
-              </StarredStocksProvider>
-            </AccentBarsProvider>
-          </SecondaryColorsProvider>
-        </LiveDataProvider>
+                    </LiveDataProvider>
+                  </PortfolioDataProvider>
+                  <Toaster />
+                </QueryClientProvider>
+              </AuthProvider>
+            </StarredStocksProvider>
+            </TopbarLogoProvider>
+          </AccentBarsProvider>
+        </SecondaryColorsProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

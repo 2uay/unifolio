@@ -64,7 +64,7 @@ export default function PredictionMarketPlatformCard({ platform, connectedData }
 
   // Connected platform card
   const status = connectedData.connection_status || 'Not connected';
-  const statusStyle = STATUS_STYLES[status];
+  const statusStyle = STATUS_STYLES[status] || STATUS_STYLES['Not connected'];
   const lastSync = connectedData.last_sync_time ? new Date(connectedData.last_sync_time) : null;
   const daysSinceSync = lastSync ? Math.floor((Date.now() - lastSync) / (1000 * 60 * 60 * 24)) : null;
 

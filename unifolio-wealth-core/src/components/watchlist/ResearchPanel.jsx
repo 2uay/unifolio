@@ -75,6 +75,7 @@ export default function ResearchPanel({ item, onClose }) {
           lastPrice={item.lastPrice}
           seedVal={item.ticker?.charCodeAt(0) || 99}
           compact={true}
+          nativeCurrency={item.currency || 'USD'}
         />
 
         {/* Key stats */}

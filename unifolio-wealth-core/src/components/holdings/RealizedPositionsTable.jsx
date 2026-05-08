@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
-import { getAccount, getInstitutionForAccount } from '@/lib/mockData';
 import { safeNumber } from '@/lib/safeNum';
 import { cn } from '@/lib/utils';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 const SORT_OPTIONS = [
   { id: 'realized_gain_loss_amount_desc', label: 'Biggest Gain' },
@@ -34,6 +34,7 @@ function PnlCell({ value, pct }) {
 export default function RealizedPositionsTable({ positions, accountFilter, institutionFilter, assetClassFilter, currencyFilter }) {
   const [sortField, setSortField] = useState('close_date');
   const [sortDir, setSortDir] = useState('desc');
+  const { getAccount, getInstitutionForAccount } = usePortfolioData();
 
   const filtered = useMemo(() => {
     return positions.filter(p => {

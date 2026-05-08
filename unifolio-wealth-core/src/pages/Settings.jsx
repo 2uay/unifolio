@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import ThemedSwitch from '@/components/ui/switch-themed';
-import { accounts, getInstitution } from '@/lib/mockData';
 import PageHeader from '@/components/shared/PageHeader';
 import ThemeSelector from '@/components/settings/ThemeSelector';
 import CacheManagement from '@/components/settings/CacheManagement';
@@ -14,11 +13,15 @@ import { getCurrencyRates, FX_PROVIDER, FX_IS_SAMPLE } from '@/lib/exchangeRates
 import { useAuth } from '@/lib/AuthContext';
 import { useLiveData } from '@/lib/LiveDataContext';
 import { useAccentBars } from '@/lib/AccentBarsContext';
+import { useTopbarLogo } from '@/lib/TopbarLogoContext';
 import Avatar from '@/components/shared/Avatar';
 import { cn } from '@/lib/utils';
+import { exportFullBackupJSON, exportHoldingsCSV, exportTransactionsCSV } from '@/lib/exportEngine';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 export default function Settings() {
   const { displayCurrency, setDisplayCurrency, enabledCurrencies, setEnabledCurrencies, allCurrencies } = useCurrency();
+  const { accounts, holdings, transactions, institutions, getInstitution } = usePortfolioData();
   const { user, fullName, logout, updateFullName } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState('');
@@ -26,6 +29,7 @@ export default function Settings() {
   const [nameError, setNameError] = useState('');
   const { liveDataEnabled, setLiveDataEnabled } = useLiveData();
   const { accentBarsEnabled, toggleAccentBars } = useAccentBars();
+  const { logoVisible, toggleLogo } = useTopbarLogo();
   const [excludedAccounts, setExcludedAccounts] = useState([]);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [priceAlerts, setPriceAlerts] = useState(true);
@@ -343,7 +347,7 @@ export default function Settings() {
         <div className="space-y-3">
           <div className="flex items-center justify-between py-2">
             <div>
-              <p className="text-sm font-medium">Simulated Live Data</p>
+              <p className="text-sm font-medium">Simulated Holdings Data</p>
               <p className="text-xs text-muted-foreground">Show realistic price movements and updates across the app until live API connections are available</p>
             </div>
             <ThemedSwitch checked={liveDataEnabled} onCheckedChange={setLiveDataEnabled} />
@@ -387,14 +391,24 @@ export default function Settings() {
         <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-destructive/80 uppercase tracking-wider">
           <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4" /> Danger Zone
         </div>
-        <div className="flex items-center justify-between py-2 border-b border-border/40">
-          <div>
-            <p className="text-sm font-medium">Export My Data</p>
-            <p className="text-xs text-muted-foreground">Download a copy of your portfolio data</p>
+        <div className="py-2 border-b border-border/40 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Export My Data</p>
+              <p className="text-xs text-muted-foreground">Download a copy of your portfolio data</p>
+            </div>
           </div>
-          <Button variant="outline" size="sm" disabled className="gap-2 opacity-50">
-            <Download className="w-3.5 h-3.5" /> Export
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="gap-2 h-8 text-xs" onClick={() => exportHoldingsCSV(holdings, accounts, institutions)}>
+              <Download className="w-3 h-3" /> Holdings CSV
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2 h-8 text-xs" onClick={() => exportTransactionsCSV(transactions, accounts)}>
+              <Download className="w-3 h-3" /> Transactions CSV
+            </Button>
+            <Button variant="outline" size="sm" className="gap-2 h-8 text-xs" onClick={() => exportFullBackupJSON({ accounts, holdings, transactions, institutions })}>
+              <Download className="w-3 h-3" /> Full JSON Backup
+            </Button>
+          </div>
         </div>
         <div className="flex items-center justify-between py-2">
           <div>

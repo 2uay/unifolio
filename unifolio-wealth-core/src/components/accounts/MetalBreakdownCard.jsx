@@ -30,8 +30,8 @@ export default function MetalBreakdownCard({ metal }) {
 
   const metalType = metal.asset_details?.metalType || 'Other';
   const weight = metal.asset_details?.weight;
-  const weightUnit = metal.asset_details?.weightUnit || 'g';
-  const purity = metal.asset_details?.purity;
+  const weightUnit = String(metal.asset_details?.weightUnit || 'g');
+  const purity = Number(metal.asset_details?.purity || 0);
   const form = metal.asset_details?.form;
   const storage = metal.asset_details?.storageNickname;
 
@@ -52,7 +52,7 @@ export default function MetalBreakdownCard({ metal }) {
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div className="p-2 rounded bg-secondary/40">
           <p className="text-muted-foreground text-[9px] uppercase tracking-wider mb-0.5">Weight</p>
-          <p className="font-mono font-semibold">{weight} {weightUnit === 'troy_ounce' ? 'oz t' : weightUnit.charAt(0)}</p>
+          <p className="font-mono font-semibold">{weight ?? '—'} {weightUnit === 'troy_ounce' ? 'oz t' : weightUnit.charAt(0)}</p>
         </div>
         <div className="p-2 rounded bg-secondary/40">
           <p className="text-muted-foreground text-[9px] uppercase tracking-wider mb-0.5">Purity</p>

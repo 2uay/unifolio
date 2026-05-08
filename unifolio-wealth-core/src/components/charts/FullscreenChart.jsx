@@ -11,6 +11,7 @@ import {
   Newspaper, Sparkles, LayoutList, Bookmark, Save
 } from 'lucide-react';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
+import { useCurrency } from '@/lib/CurrencyContext';
 import { CustomStockTooltip } from '@/lib/chartTooltip';
 import IndicatorPanel from '@/components/charts/IndicatorPanel.jsx';
 import ComparePanel from '@/components/charts/ComparePanel.jsx';
@@ -39,8 +40,10 @@ export default function FullscreenChart({
   realCandles: realCandlesProp,
   range, chartType, activeIndicators,
   onRangeChange, onChartTypeChange, onIndicatorsChange, onClose,
+  nativeCurrency = 'USD',
 }) {
   const { privacyMode } = usePrivacy();
+  const { convert } = useCurrency();
   const saved = useMemo(() => loadChartLayout(), []);
 
   const [showIndicatorMenu, setShowIndicatorMenu] = useState(false);
@@ -211,7 +214,7 @@ export default function FullscreenChart({
 
         {/* Price */}
         <div className="flex items-center gap-1 md:gap-1.5 border-l border-border pl-1.5 md:pl-2 flex-shrink-0 min-w-0">
-          <span className="font-mono font-bold text-xs md:text-sm truncate">{privacyMode ? '••••' : `$${lastClose.toFixed(2)}`}</span>
+          <span className="font-mono font-bold text-xs md:text-sm truncate">{privacyMode ? '••••' : `$${convert(lastClose, nativeCurrency).toFixed(2)}`}</span>
           <span className={cn('text-[10px] md:text-[11px] font-mono flex items-center gap-0.5 flex-shrink-0', isUp ? 'text-emerald-400' : 'text-red-400')}>
             {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
             <span className="hidden sm:inline">{privacyMode ? '••••' : `${isUp ? '+' : ''}${pctChange.toFixed(2)}%`}</span>

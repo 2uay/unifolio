@@ -99,6 +99,7 @@ export default function MobileResearchPopup({ win }) {
                   lastPrice={item.lastPrice || 100}
                   seedVal={item.ticker.charCodeAt(0) * 31 + (item.ticker.charCodeAt(1) || 0) * 7}
                   compact={true}
+                  nativeCurrency={item.currency || 'USD'}
                 />
               </div>
 

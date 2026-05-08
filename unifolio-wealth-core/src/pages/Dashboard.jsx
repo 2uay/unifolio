@@ -5,7 +5,6 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { CustomPieTooltip } from '@/lib/chartTooltip';
 import DashboardPortfolioChart from '@/components/dashboard/DashboardPortfolioChart';
 import SlidingStockUpdater from '@/components/dashboard/SlidingStockUpdater';
-import { holdings, accounts, getInstitutionForAccount, getAccount } from '@/lib/mockData';
 import { formatCurrency, PnlValue, StatCard, MiniSparkline } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
 import { cn } from '@/lib/utils';
@@ -16,16 +15,19 @@ import { useCurrency } from '@/lib/CurrencyContext';
 import { useLiveHoldings } from '@/hooks/useLiveHoldings';
 import { useLiveData } from '@/lib/LiveDataContext';
 import SimulatedLiveLabel from '@/components/shared/SimulatedLiveLabel';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 
 export default function Dashboard() {
   const { privacyMode } = usePrivacy();
   const { chartColors } = useTheme();
   const { convert, displayCurrency } = useCurrency();
   const { registerTicker, liveHoldings } = useLiveData();
+  const { holdings, accounts, getAccount, getInstitutionForAccount, isEmptyPortfolio, isSample } = usePortfolioData();
   const PM = '••••••';
 
-  const allAccountIds = useMemo(() => accounts.filter((a) => a.included_in_portfolio !== false && !a.excluded).map((a) => a.id), []);
-  const baseActiveHoldings = useMemo(() => holdings.filter((h) => h.quantity > 0 && allAccountIds.includes(h.account_id ?? h.accountId)), [allAccountIds]);
+  const allAccountIds = useMemo(() => accounts.filter((a) => a.included_in_portfolio !== false && !a.excluded).map((a) => a.id), [accounts]);
+  const baseActiveHoldings = useMemo(() => holdings.filter((h) => h.quantity > 0 && allAccountIds.includes(h.account_id ?? h.accountId)), [holdings, allAccountIds]);
 
   // Register all tickers
   useEffect(() => {
@@ -38,7 +40,8 @@ export default function Dashboard() {
   const activeHoldings = useMemo(() => {
     return baseActiveHoldings.map((holding) => {
       const ticker = holding.ticker;
-      const livePrice = liveHoldings[ticker]?.price;
+      const liveData = liveHoldings[ticker];
+      const livePrice = liveData?.price;
 
       if (!livePrice) return holding;
 
@@ -50,7 +53,8 @@ export default function Dashboard() {
       const newMarketValue = quantity * livePrice;
       const newUnrealizedGainLoss = newMarketValue - costBasis;
       const newUnrealizedGainLossPercent = safeDivide(newUnrealizedGainLoss, costBasis) * 100;
-      const priceChange = livePrice - oldPrice;
+      const previousClose = safeNumber(liveData?.previousClose ?? liveData?.previous_close, oldPrice);
+      const priceChange = livePrice - previousClose;
       const newDailyPnl = priceChange * quantity;
       const newDailyPnlPercent = safeDivide(newDailyPnl, costBasis) * 100;
 
@@ -68,15 +72,21 @@ export default function Dashboard() {
         dailyPnl: newDailyPnl,
         daily_pnl_percent: newDailyPnlPercent,
         dailyPct: newDailyPnlPercent,
-        sparkline: liveHoldings[ticker]?.sparkline || holding.sparkline
+        sparkline: liveData?.sparkline || holding.sparkline,
+        price_source: liveData?.priceSource ?? holding.price_source,
+        valuation_status: liveData?.valuationStatus ?? holding.valuation_status,
       };
     });
   }, [baseActiveHoldings, liveHoldings]);
 
+  // For imported portfolios use the Yahoo-enriched base values (stable, real prices).
+  // For demo/sample mode use the live-simulated values so the animation feels alive.
+  const holdingsForTotals = isSample ? activeHoldings : baseActiveHoldings;
+
   // Convert all monetary totals to display currency
   const totals = useMemo(() => {
-    let totalValue = 0,totalDailyPnl = 0,totalUnrealizedGain = 0,cashTotal = 0;
-    activeHoldings.forEach((h) => {
+    let totalValue = 0, totalDailyPnl = 0, totalUnrealizedGain = 0, cashTotal = 0;
+    holdingsForTotals.forEach((h) => {
       const cur = h.currency || 'USD';
       totalValue += convert(safeNumber(h.market_value), cur);
       totalDailyPnl += convert(safeNumber(h.daily_pnl_amount), cur);
@@ -87,7 +97,7 @@ export default function Dashboard() {
     });
     totalValue += cashTotal;
     return { totalValue, totalDailyPnl, totalUnrealizedGain, cashTotal };
-  }, [activeHoldings, allAccountIds, convert, displayCurrency]);
+  }, [holdingsForTotals, allAccountIds, convert, displayCurrency]);
 
   const topMovers = useMemo(() => [...activeHoldings].
   sort((a, b) => Math.abs(convert(safeNumber(b.daily_pnl_amount), b.currency || 'USD')) - Math.abs(convert(safeNumber(a.daily_pnl_amount), a.currency || 'USD'))).
@@ -113,39 +123,17 @@ export default function Dashboard() {
     return Object.entries(map).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 })).sort((a, b) => b.value - a.value);
   }, [activeHoldings, convert, displayCurrency]);
 
+  if (isEmptyPortfolio) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Dashboard" description="Portfolio overview and key metrics" />
+        <EmptyPortfolioState />
+      </div>
+    );
+  }
+
   return (
     <>
-      {/* Asymmetric black background — outside space-y to avoid pushing PageHeader down */}
-      <div className="fixed inset-0 -z-10 bg-black overflow-hidden pointer-events-none">
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          {/* Large asymmetric circles - upper left and lower right */}
-          <circle cx="15%" cy="20%" r="320" fill="none" stroke="white" strokeWidth="1.5" opacity="0.12" />
-          <circle cx="18%" cy="18%" r="250" fill="none" stroke="white" strokeWidth="1" opacity="0.08" />
-          
-          <circle cx="85%" cy="70%" r="400" fill="none" stroke="white" strokeWidth="1.5" opacity="0.1" />
-          <circle cx="88%" cy="75%" r="300" fill="none" stroke="white" strokeWidth="1" opacity="0.07" />
-          
-          {/* Accent circles asymmetric */}
-          <circle cx="92%" cy="15%" r="150" fill="none" stroke="white" strokeWidth="1" opacity="0.06" />
-          <circle cx="8%" cy="85%" r="180" fill="none" stroke="white" strokeWidth="1" opacity="0.06" />
-          
-          {/* Diagonal flowing lines */}
-          <line x1="0%" y1="30%" x2="100%" y2="50%" stroke="white" strokeWidth="0.8" opacity="0.04" />
-          <line x1="0%" y1="60%" x2="100%" y2="40%" stroke="white" strokeWidth="0.8" opacity="0.04" />
-          
-          {/* Vertical accent lines */}
-          <line x1="20%" y1="0%" x2="20%" y2="100%" stroke="white" strokeWidth="0.6" opacity="0.03" />
-          <line x1="75%" y1="0%" x2="75%" y2="100%" stroke="white" strokeWidth="0.6" opacity="0.03" />
-          
-          {/* Subtle grid in background */}
-          <defs>
-            <pattern id="bgGrid" width="100" height="100" patternUnits="userSpaceOnUse">
-              <path d="M 100 0 L 0 0 0 100" fill="none" stroke="white" strokeWidth="0.3" opacity="0.02" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#bgGrid)" />
-        </svg>
-      </div>
       <div className="space-y-4">
       <PageHeader
         title="Dashboard"

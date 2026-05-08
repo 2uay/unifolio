@@ -217,6 +217,7 @@ export default function FloatingResearchWindow({ win }) {
             seedVal={item.ticker.charCodeAt(0) * 31 + (item.ticker.charCodeAt(1) || 0) * 7}
             compact={true}
             containerHeight={Math.max(140, Math.min(300, win.height - 200))}
+            nativeCurrency={item.currency || 'USD'}
           />
         </div>
 

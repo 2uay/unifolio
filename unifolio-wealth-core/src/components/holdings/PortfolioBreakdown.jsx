@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { holdings, accounts, getAccount, getInstitutionForAccount } from '@/lib/mockData';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import AccountsDropdown from '@/components/breakdown/AccountsDropdown';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { useTheme } from '@/lib/ThemeContext';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { CustomPieTooltip } from '@/lib/chartTooltip';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 function AllocationChart({ data, title, colors, privacyMode }) {
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -53,6 +53,7 @@ export default function PortfolioBreakdown() {
   const { convert, displayCurrency } = useCurrency();
   const { chartColors } = useTheme();
   const { privacyMode } = usePrivacy();
+  const { holdings, accounts, getAccount, getInstitutionForAccount } = usePortfolioData();
   const [selectedAccounts, setSelectedAccounts] = useState(['__all__']);
 
   const toggleAccount = (val) => {

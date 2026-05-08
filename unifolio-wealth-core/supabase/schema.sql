@@ -55,6 +55,23 @@ create table if not exists holdings (
 alter table holdings enable row level security;
 create policy "users own their holdings" on holdings
   for all using (auth.uid() = user_id);
+alter table holdings add column if not exists asset_name text;
+alter table holdings add column if not exists asset_class text;
+alter table holdings add column if not exists sub_category text;
+alter table holdings add column if not exists currency text default 'USD';
+alter table holdings add column if not exists current_price numeric default 0;
+alter table holdings add column if not exists market_value numeric default 0;
+alter table holdings add column if not exists cost_basis numeric default 0;
+alter table holdings add column if not exists unrealized_gain_loss_amount numeric default 0;
+alter table holdings add column if not exists unrealized_gain_loss_percent numeric default 0;
+alter table holdings add column if not exists daily_pnl_amount numeric default 0;
+alter table holdings add column if not exists daily_pnl_percent numeric default 0;
+alter table holdings add column if not exists exchange text;
+alter table holdings add column if not exists country text;
+alter table holdings add column if not exists sector text default 'Unknown';
+alter table holdings add column if not exists conid text;
+alter table holdings add column if not exists report_date date;
+alter table holdings add column if not exists import_batch_id text;
 
 -- Transactions
 create table if not exists transactions (
@@ -74,6 +91,75 @@ create table if not exists transactions (
 alter table transactions enable row level security;
 create policy "users own their transactions" on transactions
   for all using (auth.uid() = user_id);
+alter table transactions add column if not exists fees numeric default 0;
+alter table transactions add column if not exists settlement_date date;
+alter table transactions add column if not exists asset_name text;
+alter table transactions add column if not exists asset_class text;
+alter table transactions add column if not exists source_section text;
+alter table transactions add column if not exists import_batch_id text;
+alter table transactions add column if not exists broker_transaction_id text;
+alter table transactions add column if not exists transfer_direction text;
+alter table transactions add column if not exists source_account_id text;
+alter table transactions add column if not exists destination_account_id text;
+alter table transactions add column if not exists transfer_context jsonb default '{}'::jsonb;
+
+-- Realized Positions
+create table if not exists realized_positions (
+  id                           text primary key,
+  user_id                      uuid references auth.users not null,
+  account_id                   text references accounts(id),
+  ticker                       text not null,
+  asset_name                   text,
+  asset_class                  text,
+  sector                       text default 'Unknown',
+  country                      text,
+  exchange                     text,
+  currency                     text default 'USD',
+  quantity                     numeric default 0,
+  average_buy_price            numeric default 0,
+  average_sell_price           numeric default 0,
+  total_cost_basis             numeric default 0,
+  total_sale_value             numeric default 0,
+  realized_gain_loss_amount    numeric default 0,
+  realized_gain_loss_percent   numeric default 0,
+  open_date                    date,
+  close_date                   date,
+  holding_period_days          integer,
+  position_status              text default 'Realized',
+  source_section               text,
+  import_batch_id              text,
+  broker_transaction_id        text,
+  created_at                   timestamptz default now(),
+  updated_at                   timestamptz default now()
+);
+alter table realized_positions enable row level security;
+create policy "users own their realized positions" on realized_positions
+  for all using (auth.uid() = user_id);
+create index if not exists realized_positions_user_close_idx
+  on realized_positions (user_id, close_date desc);
+
+-- Import Batches
+-- Stores the normalized import payload for audit/replay without keeping the raw broker file.
+create table if not exists import_batches (
+  id                 text primary key,
+  user_id            uuid references auth.users not null,
+  broker             text not null,
+  institution_id     text references institutions(id),
+  account_id         text references accounts(id),
+  file_name          text not null,
+  file_size          bigint,
+  status             text default 'synced',
+  summary            jsonb default '{}',
+  report_metadata    jsonb default '{}',
+  normalized_payload jsonb default '{}',
+  imported_at        timestamptz default now(),
+  created_at         timestamptz default now()
+);
+alter table import_batches enable row level security;
+create policy "users own their import batches" on import_batches
+  for all using (auth.uid() = user_id);
+create index if not exists import_batches_user_imported_idx
+  on import_batches (user_id, imported_at desc);
 
 -- Watchlist
 create table if not exists watchlist (
@@ -109,9 +195,11 @@ create table if not exists user_profiles (
   sidebar_preference          text default 'open',
   stack_assets                boolean default false,
   holdings_columns            jsonb,
+  active_import_batch_id       text,
   created_at                  timestamptz default now(),
   updated_at                  timestamptz default now()
 );
 alter table user_profiles enable row level security;
 create policy "users own their profile" on user_profiles
   for all using (auth.uid() = user_id);
+alter table user_profiles add column if not exists active_import_batch_id text;

@@ -10,7 +10,8 @@ export default function PredictionMarketPositionsTable({ positions }) {
   const { convert } = useCurrency();
   const PM = '••••••';
 
-  const sortedPositions = [...positions].sort((a, b) => (b.unrealized_gain_loss || 0) - (a.unrealized_gain_loss || 0));
+  const safePositions = Array.isArray(positions) ? positions.filter(Boolean) : [];
+  const sortedPositions = [...safePositions].sort((a, b) => (b.unrealized_gain_loss || 0) - (a.unrealized_gain_loss || 0));
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">

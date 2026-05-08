@@ -2,12 +2,16 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { simulatePriceMovement, simulateProbabilityMovement, isMarketOpen } from '@/lib/globalSimulationEngine';
 import { safeNumber } from '@/lib/safeNum';
 import { supabase } from '@/lib/supabaseClient';
-import { fetchQuotes, getCacheAge } from '@/lib/stockApi';
+import { fetchValidatedPrices, getCacheAge } from '@/lib/stockApi';
 import { rawHoldings, watchlist, assets } from '@/lib/sampleData';
+import { useAuth } from '@/lib/AuthContext';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 const LiveDataContext = createContext(null);
 
 export function LiveDataProvider({ children }) {
+  const { isDemoMode } = useAuth();
+  const { holdings: portfolioHoldings, isSample, source } = usePortfolioData();
   const [liveDataEnabled, setLiveDataEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [liveHoldings, setLiveHoldings] = useState({}); // ticker -> { price, sparkline, lastUpdate }
@@ -58,6 +62,7 @@ export function LiveDataProvider({ children }) {
 
     setLiveHoldings(prev => {
       const next = { ...prev };
+      const shouldSimulate = isSample || isDemoMode || source === 'sample';
 
       tickersRef.current.forEach((config, ticker) => {
         const current = prev[ticker];
@@ -67,14 +72,28 @@ export function LiveDataProvider({ children }) {
           || 100;
         const assetClass = config.assetClass || 'stock';
 
-        // Skip stocks during market closed, but continue crypto
-        if (!marketNowOpen && ['stock', 'etf'].includes(assetClass)) {
-          // Move much more slowly
-          const slowPrice = currentPrice * (1 + (Math.random() - 0.5) * 0.0005);
+        if (!shouldSimulate) {
+          const apiPrice = realPricesRef.current[ticker]?.current_price;
+          const stablePrice = apiPrice || current?.price || currentPrice;
           next[ticker] = {
-            price: Math.max(slowPrice, 0.01),
+            price: stablePrice,
+            sparkline: apiPrice ? [...(current?.sparkline || []).slice(-99), stablePrice] : (current?.sparkline || []),
+            lastUpdate: Date.now(),
+            previousClose: realPricesRef.current[ticker]?.previous_close,
+            priceSource: realPricesRef.current[ticker]?.price_source || (apiPrice ? 'api' : 'broker'),
+            valuationStatus: realPricesRef.current[ticker]?.valuation_status,
+          };
+          return;
+        }
+
+        // Keep exchange-traded assets fixed while markets are closed. Imported
+        // portfolios should reflect trusted broker/API closes, not movement.
+        if (!marketNowOpen && ['stock', 'etf'].includes(assetClass)) {
+          next[ticker] = {
+            price: currentPrice,
             sparkline: (current?.sparkline || []).slice(-99),
             lastUpdate: Date.now(),
+            priceSource: current?.priceSource || realPricesRef.current[ticker]?.price_source || 'market_closed',
           };
           return;
         }
@@ -118,7 +137,7 @@ export function LiveDataProvider({ children }) {
     });
 
     setLastUpdateTime(Date.now());
-  }, []);
+  }, [isDemoMode, isSample, source]);
 
   // Load live data preference from profile
   useEffect(() => {
@@ -135,15 +154,33 @@ export function LiveDataProvider({ children }) {
     loadLiveDataFromProfile();
   }, []);
 
-  // Fetch real prices from Finnhub on mount, seed liveHoldings immediately
+  // Fetch real prices from Finnhub/Yahoo-backed data source and seed liveHoldings immediately.
   useEffect(() => {
-    const allTickers = [
-      ...rawHoldings.map(h => h.ticker),
-      ...watchlist.map(w => w.ticker),
-    ];
+    const importedRows = (portfolioHoldings || [])
+      .filter(h => safeNumber(h.quantity ?? h.position) > 0)
+      .filter(h => h.ticker);
+    const importedTickers = importedRows.map(h => h.ticker);
+    const allTickers = (isSample || isDemoMode || source === 'sample')
+      ? [
+          ...rawHoldings.map(h => h.ticker),
+          ...watchlist.map(w => w.ticker),
+        ]
+      : importedTickers;
     const unique = [...new Set(allTickers.filter(Boolean))];
+    tickersRef.current = new Map(unique.map(ticker => {
+      const imported = importedRows.find(h => h.ticker === ticker);
+      return [ticker, { assetClass: imported?.asset_class ?? imported?.assetClass ?? 'stock' }];
+    }));
+    realPricesRef.current = {};
+    setApiPricesLoaded(false);
+    setLiveHoldings(prev => Object.fromEntries(Object.entries(prev).filter(([ticker]) => unique.includes(ticker))));
+    if (unique.length === 0) return;
 
-    fetchQuotes(unique).then(prices => {
+    const pricePromise = (isSample || isDemoMode || source === 'sample')
+      ? fetchValidatedPrices(unique)
+      : fetchValidatedPrices(unique, importedRows);
+
+    pricePromise.then(prices => {
       if (Object.keys(prices).length === 0) return;
       realPricesRef.current = prices;
 
@@ -151,23 +188,27 @@ export function LiveDataProvider({ children }) {
       setLiveHoldings(prev => {
         const next = { ...prev };
         Object.entries(prices).forEach(([ticker, data]) => {
-          if (!next[ticker]) {
+          const existing = next[ticker];
+          if (!existing || source !== 'sample') {
             next[ticker] = {
               price: data.current_price,
-              sparkline: [],
+              sparkline: existing?.sparkline || [],
               lastUpdate: Date.now(),
+              previousClose: data.previous_close,
+              priceSource: data.price_source,
+              valuationStatus: data.valuation_status,
             };
           }
         });
         return next;
       });
 
-      setApiPricesLoaded(true);
+      setApiPricesLoaded(Object.values(prices).some(data => ['yahoo', 'finnhub'].includes(data.price_source)));
       setApiLastFetched(Date.now());
     }).catch(err => {
       console.warn('[LiveDataContext] Stock API fetch failed:', err.message);
     });
-  }, []);
+  }, [portfolioHoldings, isDemoMode, isSample, source]);
 
   // Handle setLiveDataEnabled with profile update
   const setLiveDataEnabledWithSync = useCallback(async (enabled) => {

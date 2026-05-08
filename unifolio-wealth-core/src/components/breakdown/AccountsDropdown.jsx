@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
-import { accounts, institutions } from '@/lib/mockData';
 import { cn } from '@/lib/utils';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 function useOutsideClick(ref, handler) {
   useEffect(() => {
@@ -12,7 +12,7 @@ function useOutsideClick(ref, handler) {
 }
 
 // Derive summary label from selected state
-function getSummaryLabel(selectedAccounts, connectedInsts) {
+function getSummaryLabel(selectedAccounts, connectedInsts, accounts) {
   if (selectedAccounts.includes('__all__')) return 'All';
   if (selectedAccounts.length === 0) return 'None selected';
 
@@ -43,6 +43,7 @@ function getSummaryLabel(selectedAccounts, connectedInsts) {
 }
 
 export default function AccountsDropdown({ selectedAccounts, onToggle }) {
+  const { accounts, institutions } = usePortfolioData();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef(null);
@@ -50,7 +51,7 @@ export default function AccountsDropdown({ selectedAccounts, onToggle }) {
 
   const connectedInsts = useMemo(() =>
     institutions.filter(i => (i.connection_status ?? i.status) === 'connected'),
-    []
+    [institutions]
   );
 
   const individualAccounts = useMemo(() =>
@@ -58,15 +59,15 @@ export default function AccountsDropdown({ selectedAccounts, onToggle }) {
       const inst = connectedInsts.find(i => i.id === (acc.institution_id ?? acc.institutionId));
       return !!inst;
     }),
-    [connectedInsts]
+    [accounts, connectedInsts]
   );
 
   const accountTypes = useMemo(() =>
     [...new Set(accounts.map(a => a.account_type ?? a.type))].filter(Boolean),
-    []
+    [accounts]
   );
 
-  const summaryLabel = getSummaryLabel(selectedAccounts, connectedInsts);
+  const summaryLabel = getSummaryLabel(selectedAccounts, connectedInsts, accounts);
   const isActive = (val) => selectedAccounts.includes(val);
 
   const groups = [

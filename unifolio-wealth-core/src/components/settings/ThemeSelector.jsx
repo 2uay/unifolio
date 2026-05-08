@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Check, ChevronDown, Palette, RotateCcw, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, Palette, RotateCcw, Sparkles, Search, X } from 'lucide-react';
 import { getAllThemes, DEFAULT_THEME } from '@/lib/themes';
 import { useTheme } from '@/lib/ThemeContext';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ export default function ThemeSelector() {
   const [open, setOpen] = useState(false);
   const [showMonochrome, setShowMonochrome] = useState(false);
   const [defaultTheme, setDefaultTheme] = useState(() => localStorage.getItem(DEFAULT_THEME_KEY) || DEFAULT_THEME);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef(null);
   const ref = useRef(null);
   const allThemes = getAllThemes();
   const current = selectedTheme === 'custom-monochrome'
@@ -25,6 +27,21 @@ export default function ThemeSelector() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 50);
+    else setSearchQuery('');
+  }, [open]);
+
+  const q = searchQuery.trim().toLowerCase();
+  const filteredThemes = q
+    ? allThemes.filter(t =>
+        t.name.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q) ||
+        (t.tags || []).some(tag => tag.toLowerCase().includes(q))
+      )
+    : allThemes;
 
   const handleSetDefault = async () => {
     localStorage.setItem(DEFAULT_THEME_KEY, selectedTheme);
@@ -95,29 +112,52 @@ export default function ThemeSelector() {
         {/* Dropdown */}
         {open && (
           <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-card border border-border rounded-xl shadow-2xl shadow-black/40 overflow-hidden">
-            <div className="max-h-96 overflow-y-auto">
-              {/* Custom Monochrome Button */}
-              <button
-                onClick={() => { setShowMonochrome(true); setOpen(false); }}
-                className={cn(
-                  'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 border-b border-border/50',
-                  selectedTheme === 'custom-monochrome'
-                    ? 'bg-primary/10 text-foreground'
-                    : 'hover:bg-secondary/60 text-foreground'
+            {/* Search bar */}
+            <div className="px-3 py-2 border-b border-border/50">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-secondary border border-border/50 focus-within:border-primary/40">
+                <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search themes, tags…"
+                  className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="flex-shrink-0 opacity-60 hover:opacity-100">
+                    <X className="w-3 h-3" />
+                  </button>
                 )}
-              >
-                <div className="flex gap-1 flex-shrink-0">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium truncate">Create Custom Monochrome</p>
-                  <p className="text-[10px] text-muted-foreground truncate">Design from a single color</p>
-                </div>
-                {selectedTheme === 'custom-monochrome' && <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-              </button>
+              </div>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto">
+              {/* Custom Monochrome Button — hide when searching */}
+              {!searchQuery && (
+                <button
+                  onClick={() => { setShowMonochrome(true); setOpen(false); }}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 border-b border-border/50',
+                    selectedTheme === 'custom-monochrome'
+                      ? 'bg-primary/10 text-foreground'
+                      : 'hover:bg-secondary/60 text-foreground'
+                  )}
+                >
+                  <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium truncate">Create Custom Monochrome</p>
+                    <p className="text-[10px] text-muted-foreground truncate">Design from a single color</p>
+                  </div>
+                  {selectedTheme === 'custom-monochrome' && <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
+                </button>
+              )}
 
               {/* Preset Themes */}
-              {allThemes.map((theme) => {
+              {filteredThemes.length === 0 && (
+                <p className="px-4 py-6 text-xs text-muted-foreground text-center">No themes match "{searchQuery}"</p>
+              )}
+              {filteredThemes.map((theme) => {
                 const isSelected = selectedTheme === theme.id;
                 return (
                   <button
@@ -125,25 +165,25 @@ export default function ThemeSelector() {
                     onClick={() => { changeTheme(theme.id); setOpen(false); }}
                     className={cn(
                       'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100',
-                      isSelected
-                        ? 'bg-primary/10 text-foreground'
-                        : 'hover:bg-secondary/60 text-foreground'
+                      isSelected ? 'bg-primary/10 text-foreground' : 'hover:bg-secondary/60 text-foreground'
                     )}
                   >
-                    {/* Swatches */}
                     <div className="flex gap-1 flex-shrink-0">
                       {theme.swatches.slice(0, 3).map((c, i) => (
                         <div key={i} className="w-3 h-3 rounded-full border border-white/10" style={{ backgroundColor: c }} />
                       ))}
                     </div>
-
-                    {/* Name + description */}
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium truncate">{theme.name}</p>
                       <p className="text-[10px] text-muted-foreground truncate">{theme.description}</p>
+                      {theme.tags?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {theme.tags.slice(0, 4).map(tag => (
+                            <span key={tag} className="text-[9px] px-1 py-0.5 rounded bg-secondary text-muted-foreground/70">{tag}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-
-                    {/* Checkmark */}
                     {isSelected && <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
                   </button>
                 );

@@ -4,7 +4,6 @@ import {
   ResponsiveContainer, CartesianGrid
 } from 'recharts';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { portfolioSnapshots, accounts, institutions, calcAccountValue } from '@/lib/mockData';
 import { safeNumber, safeArray, safeDivide } from '@/lib/safeNum';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import { cn } from '@/lib/utils';
@@ -12,35 +11,10 @@ import { Check, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { CustomLineTooltip } from '@/lib/chartTooltip';
-import { fetchBenchmarkCandles } from '@/lib/stockApi';
-
-function genBenchmark(base, seed, trend, points) {
-  const data = [];
-  let val = base;
-  let r = seed;
-  for (let i = 0; i < points; i++) {
-    r = (r * 1664525 + 1013904223) & 0xffffffff;
-    const rand = (r / 0xffffffff) - 0.45 + trend * 0.08;
-    val += rand * base * 0.012;
-    val = Math.max(val, base * 0.6);
-    data.push(Math.round(val * 100) / 100);
-  }
-  return data;
-}
-
-const BENCHMARKS = [
-  { id: 'sp500',    label: 'S&P 500',       color: '#f59e0b', base: 5200,  seed: 111 },
-  { id: 'nasdaq',   label: 'NASDAQ-100',    color: '#a78bfa', base: 18000, seed: 222 },
-  { id: 'dow',      label: 'Dow Jones',     color: '#60a5fa', base: 38000, seed: 333 },
-  { id: 'russell',  label: 'Russell 2000',  color: '#34d399', base: 2000,  seed: 444 },
-  { id: 'btc',      label: 'Bitcoin',       color: '#f97316', base: 65000, seed: 555 },
-  { id: 'gold',     label: 'Gold',          color: '#fbbf24', base: 2300,  seed: 666 },
-  { id: 'usmarket', label: 'US Total Mkt',  color: '#22d3ee', base: 220,   seed: 777 },
-  { id: 'camarket', label: 'CA Total Mkt',  color: '#fb7185', base: 180,   seed: 888 },
-];
+import { BENCHMARKS, COMMON_BENCHMARKS, fetchBenchmarkSeries, alignBenchmarkSeriesToDates } from '@/lib/benchmarks';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 const PERIOD_MAP = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
-const COMMON_BENCHMARKS = ['sp500', 'nasdaq', 'dow'];
 
 // Reusable hook to close dropdown on outside click
 function useOutsideClick(ref, handler) {
@@ -52,12 +26,14 @@ function useOutsideClick(ref, handler) {
 }
 
 // ---------- AccountsDropdown ----------
-function AccountsDropdown({ selectedAccounts, onToggle }) {
+function AccountsDropdown({ selectedAccounts, onToggle, accounts = [], institutions = [] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useOutsideClick(ref, () => setOpen(false));
 
-  const connectedInsts = institutions.filter(i => (i.connection_status ?? i.status) === 'connected');
+  const safeAccounts = safeArray(accounts);
+  const safeInstitutions = safeArray(institutions);
+  const connectedInsts = safeInstitutions.filter(i => (i.connection_status ?? i.status ?? 'connected') === 'connected');
 
   // Summary label
   let label;
@@ -67,10 +43,10 @@ function AccountsDropdown({ selectedAccounts, onToggle }) {
     // Try to find a nice name
     const val = selectedAccounts[0];
     if (val.startsWith('inst_')) {
-      const inst = institutions.find(i => 'inst_' + i.id === val);
+      const inst = safeInstitutions.find(i => 'inst_' + i.id === val);
       label = inst ? inst.name.split(' ')[0] : '1 selected';
     } else {
-      const acc = accounts.find(a => a.id === val);
+      const acc = safeAccounts.find(a => a.id === val);
       label = acc ? (acc.account_type ?? acc.type) : '1 selected';
     }
   } else {
@@ -86,9 +62,9 @@ function AccountsDropdown({ selectedAccounts, onToggle }) {
   ];
 
   // Handle type_ prefix in parent toggle too — we pass up, parent handles it
-  const individualAccounts = accounts.filter(acc => {
-    const inst = institutions.find(i => i.id === (acc.institution_id ?? acc.institutionId));
-    return inst && (inst.connection_status ?? inst.status) === 'connected';
+  const individualAccounts = safeAccounts.filter(acc => {
+    const inst = safeInstitutions.find(i => i.id === (acc.institution_id ?? acc.institutionId));
+    return !inst || (inst.connection_status ?? inst.status ?? 'connected') === 'connected';
   });
 
   return (
@@ -139,7 +115,7 @@ function AccountsDropdown({ selectedAccounts, onToggle }) {
             {/* Individual accounts */}
             <p className="px-3 pt-3 pb-1 text-[9px] uppercase tracking-widest text-muted-foreground/60">Individual</p>
             {individualAccounts.map(acc => {
-              const inst = institutions.find(i => i.id === (acc.institution_id ?? acc.institutionId));
+              const inst = safeInstitutions.find(i => i.id === (acc.institution_id ?? acc.institutionId));
               return (
                 <button
                   key={acc.id}
@@ -152,7 +128,7 @@ function AccountsDropdown({ selectedAccounts, onToggle }) {
                     {isActive(acc.id) && <Check className="w-2.5 h-2.5 text-white" />}
                   </span>
                   <span className={isActive(acc.id) ? 'text-foreground' : 'text-muted-foreground'}>
-                    {(acc.account_type ?? acc.type)} <span className="opacity-50">· {inst?.name.split(' ')[0]}</span>
+                    {(acc.account_type ?? acc.type ?? acc.account_name ?? 'Account')} {inst?.name ? <span className="opacity-50">· {inst.name.split(' ')[0]}</span> : null}
                   </span>
                 </button>
               );
@@ -238,61 +214,83 @@ function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
 export default function PortfolioChart() {
   const { displayCurrency, isSample } = useCurrency();
   const { privacyMode } = usePrivacy();
+  const { portfolioSnapshots, accounts, institutions, calcAccountValue } = usePortfolioData();
+  const safeAccounts = safeArray(accounts);
+  const safeInstitutions = safeArray(institutions);
+  const validBenchmarkIds = useMemo(() => new Set(BENCHMARKS.map(b => b.id)), []);
   const [period, setPeriod] = useState('1Y');
   const [viewMode, setViewMode] = useState('dollar');
-  const [activeBenchmarks, setActiveBenchmarks] = useState([]);
+  const [activeBenchmarks, setActiveBenchmarks] = useState(() => ['sp500', 'nasdaq', 'dow', 'btc', 'dxy'].filter(id => BENCHMARKS.some(b => b.id === id)));
   const [selectedAccounts, setSelectedAccounts] = useState(['__all__']);
-  const [realBenchmarkCandles, setRealBenchmarkCandles] = useState({});
+  const [realBenchmarkSeries, setRealBenchmarkSeries] = useState({});
+  const [benchmarkStatus, setBenchmarkStatus] = useState({});
+  const [benchmarksLoading, setBenchmarksLoading] = useState(false);
 
   const days = PERIOD_MAP[period] || 365;
   const baseSnapshots = safeArray(portfolioSnapshots).slice(-days);
+  const hasChartData = baseSnapshots.length > 0;
 
   const accountSnapshotMap = useMemo(() => {
     const map = {};
-    accounts.forEach(acc => {
+    safeAccounts.forEach(acc => {
       const base = calcAccountValue(acc.id);
       map[acc.id] = baseSnapshots.map((snap, i) => {
-        const drift = base * (1 + (i / baseSnapshots.length) * 0.15 * Math.sin(i * 0.3 + acc.id.charCodeAt(0)));
+        const divisor = Math.max(baseSnapshots.length, 1);
+        const drift = base * (1 + (i / divisor) * 0.15 * Math.sin(i * 0.3 + String(acc.id || '').charCodeAt(0)));
         return Math.round(Math.abs(drift) * 100) / 100;
       });
     });
     return map;
-  }, [days]);
+  }, [safeAccounts, baseSnapshots, calcAccountValue]);
 
   const activeAccountIds = useMemo(() => {
-    if (selectedAccounts.includes('__all__')) return accounts.map(a => a.id);
-    return accounts.filter(acc => {
+    if (selectedAccounts.includes('__all__')) return safeAccounts.map(a => a.id);
+    return safeAccounts.filter(acc => {
       if (selectedAccounts.includes(acc.id)) return true;
       if (selectedAccounts.includes('inst_' + (acc.institution_id ?? acc.institutionId))) return true;
       if (selectedAccounts.includes('type_' + (acc.account_type ?? acc.type))) return true;
       return false;
     }).map(a => a.id);
-  }, [selectedAccounts]);
+  }, [safeAccounts, selectedAccounts]);
+
+  useEffect(() => {
+    setActiveBenchmarks(prev => prev.filter(id => validBenchmarkIds.has(id)));
+  }, [validBenchmarkIds]);
 
   // Fetch real candle data when benchmarks are enabled
   useEffect(() => {
-    if (activeBenchmarks.length === 0) return;
-    fetchBenchmarkCandles(activeBenchmarks, days).then(candles => {
-      if (Object.keys(candles).length > 0) setRealBenchmarkCandles(prev => ({ ...prev, ...candles }));
-    }).catch(() => {});
-  }, [activeBenchmarks, days]);
+    const enabledBenchmarks = activeBenchmarks.filter(id => validBenchmarkIds.has(id));
+    if (enabledBenchmarks.length === 0 || !hasChartData) {
+      setBenchmarkStatus({});
+      return;
+    }
+
+    let cancelled = false;
+    setBenchmarksLoading(true);
+    fetchBenchmarkSeries(enabledBenchmarks, days)
+      .then(({ series, status }) => {
+        if (cancelled) return;
+        setRealBenchmarkSeries(prev => ({ ...prev, ...series }));
+        setBenchmarkStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBenchmarkStatus(Object.fromEntries(enabledBenchmarks.map(id => [id, 'fallback'])));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBenchmarksLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [activeBenchmarks, days, hasChartData, validBenchmarkIds]);
 
   const chartData = useMemo(() => {
+    const dates = baseSnapshots.map(snap => snap.date);
     const benchmarkSeries = {};
     BENCHMARKS.forEach(b => {
       if (!activeBenchmarks.includes(b.id)) return;
-      const realCandles = realBenchmarkCandles[b.id];
-      if (realCandles && realCandles.length >= days * 0.5) {
-        // Use real data — pad/trim to match chart length
-        const padded = Array(days).fill(null);
-        const offset = Math.max(0, days - realCandles.length);
-        realCandles.slice(-days).forEach((v, i) => { padded[offset + i] = v; });
-        // Forward-fill nulls at start
-        let last = padded.find(v => v !== null) || b.base;
-        benchmarkSeries[b.id] = padded.map(v => { if (v !== null) { last = v; } return last; });
-      } else {
-        benchmarkSeries[b.id] = genBenchmark(b.base, b.seed, 0.3, days);
-      }
+      benchmarkSeries[b.id] = alignBenchmarkSeriesToDates(realBenchmarkSeries[b.id], dates, b).map(point => point.close);
     });
 
     return baseSnapshots.map((snap, i) => {
@@ -307,7 +305,7 @@ export default function PortfolioChart() {
       Object.entries(benchmarkSeries).forEach(([id, arr]) => { row[id] = arr[i]; });
       return row;
     });
-  }, [baseSnapshots, activeBenchmarks, activeAccountIds, selectedAccounts, days, realBenchmarkCandles]);
+  }, [baseSnapshots, activeBenchmarks, activeAccountIds, selectedAccounts, accountSnapshotMap, realBenchmarkSeries]);
 
   const displayData = useMemo(() => {
     if (viewMode === 'dollar') return chartData;
@@ -324,6 +322,7 @@ export default function PortfolioChart() {
   }, [chartData, viewMode]);
 
   const toggleBenchmark = (id) => {
+    if (!validBenchmarkIds.has(id)) return;
     setActiveBenchmarks(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
@@ -347,7 +346,7 @@ export default function PortfolioChart() {
     return viewMode === 'pct' ? [val.toFixed(2) + '%', label] : [formatCurrency(val), label];
   };
 
-  const lineKeys = ['portfolio', ...activeBenchmarks];
+  const lineKeys = ['portfolio', ...activeBenchmarks.filter(id => validBenchmarkIds.has(id))];
   const lineColors = { portfolio: 'hsl(var(--primary))', ...Object.fromEntries(BENCHMARKS.map(b => [b.id, b.color])) };
   const xInterval = Math.floor(displayData.length / 6);
 
@@ -362,6 +361,17 @@ export default function PortfolioChart() {
             <span className="flex items-center gap-1 text-[10px] text-amber-400/70">
               <AlertTriangle className="w-2.5 h-2.5" />
               <span className="hidden sm:inline">Uses latest available FX rate</span>
+            </span>
+          )}
+          {activeBenchmarks.length > 0 && (
+            <span className={cn(
+              'flex items-center gap-1 text-[10px]',
+              Object.values(benchmarkStatus).includes('fallback') ? 'text-amber-400/80' : 'text-emerald-400/80'
+            )}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', benchmarksLoading ? 'bg-amber-400 animate-pulse' : Object.values(benchmarkStatus).includes('fallback') ? 'bg-amber-400' : 'bg-emerald-400')} />
+              <span className="hidden sm:inline">
+                {benchmarksLoading ? 'Loading benchmarks' : Object.values(benchmarkStatus).includes('fallback') ? 'Benchmark fallback' : 'Live benchmark data'}
+              </span>
             </span>
           )}
         </div>
@@ -388,13 +398,20 @@ export default function PortfolioChart() {
 
       {/* Row 2: Dropdown filters */}
       <div className="flex items-center gap-2 flex-wrap">
-        <AccountsDropdown selectedAccounts={selectedAccounts} onToggle={toggleAccount} />
+        <AccountsDropdown
+          selectedAccounts={selectedAccounts}
+          onToggle={toggleAccount}
+          accounts={safeAccounts}
+          institutions={safeInstitutions}
+        />
         <BenchmarksDropdown activeBenchmarks={activeBenchmarks} onToggle={toggleBenchmark} />
       </div>
 
       {/* Chart */}
       <div style={{ height: 'clamp(220px, 60vh, 520px)' }} className="w-full">
-        {activeAccountIds.length === 0 ? (
+        {!hasChartData ? (
+          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No performance snapshots yet</div>
+        ) : activeAccountIds.length === 0 ? (
           <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No accounts selected</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

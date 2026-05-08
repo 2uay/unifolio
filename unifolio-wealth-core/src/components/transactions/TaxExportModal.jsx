@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { X, FileText, Download, FileSpreadsheet, Calendar, ChevronDown, Check, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { transactions, accounts, institutions, getInstitutionForAccount, getAccount, DATA_IS_SAMPLE } from '@/lib/mockData';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { useAuth } from '@/lib/AuthContext';
 import { cn } from '@/lib/utils';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -18,9 +18,8 @@ const DATE_RANGE_OPTIONS = [
   { id: 'custom',   label: 'Custom Range',   getRange: null },
 ];
 
-const connectedInsts = institutions.filter(i => (i.connection_status ?? i.status) === 'connected');
-
-function buildAccountOptions() {
+function buildAccountOptions(accounts, institutions) {
+  const connectedInsts = institutions.filter(i => (i.connection_status ?? i.status) === 'connected');
   const groups = [
     { id: '__all__', label: 'All Accounts' },
     ...connectedInsts.map(i => ({ id: 'inst_' + i.id, label: `All ${i.name}` })),
@@ -33,7 +32,7 @@ function buildAccountOptions() {
   return { groups, individuals };
 }
 
-function resolveAccountIds(selectedAccounts) {
+function resolveAccountIds(selectedAccounts, accounts) {
   if (selectedAccounts.includes('__all__')) return accounts.map(a => a.id);
   return accounts.filter(acc => {
     if (selectedAccounts.includes(acc.id)) return true;
@@ -43,7 +42,7 @@ function resolveAccountIds(selectedAccounts) {
   }).map(a => a.id);
 }
 
-function filterTransactions(dateRange, customStart, customEnd, accountIds) {
+function filterTransactions(dateRange, customStart, customEnd, accountIds, transactions) {
   const range = dateRange.id === 'custom'
     ? { start: customStart, end: customEnd }
     : dateRange.getRange();
@@ -55,7 +54,8 @@ function filterTransactions(dateRange, customStart, customEnd, accountIds) {
   });
 }
 
-function buildRows(txns) {
+function buildRows(txns, helpers, isImported) {
+  const { getAccount, getInstitutionForAccount } = helpers;
   const FX_CAD_USD = 0.7246;
   return txns.map(t => {
     const acc = getAccount(t.account_id);
@@ -98,15 +98,15 @@ function buildRows(txns) {
       interest_amount: type.toLowerCase() === 'interest' ? gross : '—',
       notes: t.notes || '',
       data_source: 'Unifolio',
-      sample_data: DATA_IS_SAMPLE ? 'Yes' : 'No',
+      sample_data: isImported ? 'No' : 'Yes',
     };
   });
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 
-function TaxSummary({ txns, accountIds, dateRange, customStart, customEnd }) {
-  const rows = useMemo(() => buildRows(txns), [txns]);
+function TaxSummary({ txns, accountIds, dateRange, customStart, customEnd, accounts, helpers, isImported }) {
+  const rows = useMemo(() => buildRows(txns, helpers, isImported), [txns, helpers, isImported]);
   const totalProceeds    = rows.filter(r => r.type.toLowerCase() === 'sell').reduce((s, r) => s + r.gross_amount, 0);
   const totalCostBasis   = rows.filter(r => r.type.toLowerCase() === 'sell').reduce((s, r) => s + (typeof r.cost_basis === 'number' ? r.cost_basis : 0), 0);
   const totalDividends   = rows.filter(r => r.type.toLowerCase() === 'dividend').reduce((s, r) => s + r.gross_amount, 0);
@@ -155,7 +155,7 @@ function TaxSummary({ txns, accountIds, dateRange, customStart, customEnd }) {
           <span key={i} className="px-1.5 py-0.5 bg-secondary rounded text-foreground/70">{n}</span>
         ))}
       </div>
-      {DATA_IS_SAMPLE && (
+      {!isImported && (
         <div className="flex items-center gap-1.5 text-[10px] text-amber-400">
           <AlertTriangle className="w-3 h-3 flex-shrink-0" />
           Using sample data — connect real accounts for accurate tax exports.
@@ -167,8 +167,8 @@ function TaxSummary({ txns, accountIds, dateRange, customStart, customEnd }) {
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
-function exportCSV(txns, dateLabel, userEmail) {
-  const rows = buildRows(txns);
+function exportCSV(txns, dateLabel, userEmail, helpers, isImported) {
+  const rows = buildRows(txns, helpers, isImported);
   if (rows.length === 0) return;
 
   const headers = [
@@ -210,8 +210,8 @@ function exportCSV(txns, dateLabel, userEmail) {
   URL.revokeObjectURL(url);
 }
 
-function exportPDF(txns, dateLabel, userEmail, displayCurrency) {
-  const rows = buildRows(txns);
+function exportPDF(txns, dateLabel, userEmail, displayCurrency, helpers, isImported) {
+  const rows = buildRows(txns, helpers, isImported);
   const now = new Date().toLocaleString();
 
   const totalProceeds  = rows.filter(r => r.type.toLowerCase() === 'sell').reduce((s, r) => s + r.gross_amount, 0);
@@ -264,7 +264,7 @@ function exportPDF(txns, dateLabel, userEmail, displayCurrency) {
 </style>
 </head>
 <body>
-  <h1>Unifolio <span style="font-weight:300;color:#64748b">Tax Report</span>${DATA_IS_SAMPLE ? '<span class="sample-badge">SAMPLE DATA</span>' : ''}</h1>
+  <h1>Unifolio <span style="font-weight:300;color:#64748b">Tax Report</span>${isImported ? '' : '<span class="sample-badge">SAMPLE DATA</span>'}</h1>
   <p class="subtitle">${dateLabel} · Generated ${now}${userEmail ? ' · ' + userEmail : ''}</p>
 
   <div class="meta">
@@ -311,6 +311,8 @@ function exportPDF(txns, dateLabel, userEmail, displayCurrency) {
 export default function TaxExportModal({ onClose }) {
   const { displayCurrency } = useCurrency();
   const { user } = useAuth();
+  const { transactions, accounts, institutions, getAccount, getInstitutionForAccount, isImported } = usePortfolioData();
+  const helpers = useMemo(() => ({ getAccount, getInstitutionForAccount }), [getAccount, getInstitutionForAccount]);
 
   const [dateRangeId, setDateRangeId] = useState('ytd');
   const [customStart, setCustomStart] = useState('');
@@ -319,12 +321,12 @@ export default function TaxExportModal({ onClose }) {
   const [accountDropOpen, setAccountDropOpen] = useState(false);
 
   const dateRange = DATE_RANGE_OPTIONS.find(d => d.id === dateRangeId);
-  const { groups, individuals } = buildAccountOptions();
-  const accountIds = resolveAccountIds(selectedAccounts);
+  const { groups, individuals } = buildAccountOptions(accounts, institutions);
+  const accountIds = resolveAccountIds(selectedAccounts, accounts);
 
   const filteredTxns = useMemo(() =>
-    filterTransactions(dateRange, customStart, customEnd, accountIds),
-    [dateRange, customStart, customEnd, accountIds]
+    filterTransactions(dateRange, customStart, customEnd, accountIds, transactions),
+    [dateRange, customStart, customEnd, accountIds, transactions]
   );
 
   const toggleAccount = (val) => {
@@ -470,6 +472,9 @@ export default function TaxExportModal({ onClose }) {
             dateRange={dateRange}
             customStart={customStart}
             customEnd={customEnd}
+            accounts={accounts}
+            helpers={helpers}
+            isImported={isImported}
           />
 
           {/* Disclaimer */}
@@ -493,7 +498,7 @@ export default function TaxExportModal({ onClose }) {
             variant="outline"
             size="sm"
             disabled={!canExport}
-            onClick={() => exportCSV(filteredTxns, dateLabel, user?.email)}
+            onClick={() => exportCSV(filteredTxns, dateLabel, user?.email, helpers, isImported)}
             className="gap-1.5"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -502,7 +507,7 @@ export default function TaxExportModal({ onClose }) {
           <Button
             size="sm"
             disabled={!canExport}
-            onClick={() => exportPDF(filteredTxns, dateLabel, user?.email, displayCurrency)}
+            onClick={() => exportPDF(filteredTxns, dateLabel, user?.email, displayCurrency, helpers, isImported)}
             className="gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />

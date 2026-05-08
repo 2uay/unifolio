@@ -203,6 +203,7 @@ export default function WatchlistRow({ item, onRemove }) {
                       compact={true}
                       onChartClick={() => openWindow(item)}
                       clickableChart={true}
+                      nativeCurrency={nativeCur}
                     />
                     <button
                       onClick={(e) => { e.stopPropagation(); openWindow(item); }}

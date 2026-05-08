@@ -1,14 +1,18 @@
 import React from 'react';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
-import { getAccount, getInstitutionForAccount } from '@/lib/mockData';
 import { safeNumber } from '@/lib/safeNum';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useResearchWindows } from '@/lib/ResearchWindowContext';
+import { useCurrency } from '@/lib/CurrencyContext';
 import StockChart from '@/components/charts/StockChart';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 export default function HoldingDetailRow({ holding }) {
   const { privacyMode } = usePrivacy();
   const { openWindow } = useResearchWindows();
+  const { convert } = useCurrency();
+  const { getAccount, getInstitutionForAccount } = usePortfolioData();
+  const nativeCurrency = holding.currency || 'USD';
   const PM = '••••••';
   const acc = getAccount(holding.account_id ?? holding.accountId);
   const inst = getInstitutionForAccount(holding.account_id ?? holding.accountId);
@@ -35,9 +39,9 @@ export default function HoldingDetailRow({ holding }) {
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Position Details</h3>
               <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
                 <span className="text-muted-foreground">Market Value</span>
-                <span className="font-mono text-right">{privacyMode ? PM : formatCurrency(marketValue)}</span>
+                <span className="font-mono text-right">{privacyMode ? PM : formatCurrency(convert(marketValue, nativeCurrency))}</span>
                 <span className="text-muted-foreground">Cost Basis</span>
-                <span className="font-mono text-right">{privacyMode ? PM : formatCurrency(safeNumber(holding.cost_basis ?? holding.costBasis))}</span>
+                <span className="font-mono text-right">{privacyMode ? PM : formatCurrency(convert(safeNumber(holding.cost_basis ?? holding.costBasis), nativeCurrency))}</span>
                 <span className="text-muted-foreground">Unrealized P&L</span>
                 <PnlValue value={unrealizedAmt} className="text-right block" />
                 <span className="text-muted-foreground">Realized P&L</span>
@@ -73,6 +77,7 @@ export default function HoldingDetailRow({ holding }) {
                 })}
                 clickableChart={true}
                 referenceLines={referenceLines}
+                nativeCurrency={nativeCurrency}
               />
 
               {/* Purchase History badges */}
@@ -84,7 +89,7 @@ export default function HoldingDetailRow({ holding }) {
                       <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card border border-border text-xs">
                         <span className="text-[9px] font-semibold" style={{ color: '#a78bfa' }}>Lot {i + 1}</span>
                         <span className="text-muted-foreground">{new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
-                        <span className="font-mono text-emerald-400">+{safeNumber(p.qty)}</span>
+                        <span className="font-mono text-emerald-400">+{safeNumber(p.qty ?? p.quantity)}</span>
                         <span className="text-muted-foreground">@</span>
                         <span className="font-mono">{privacyMode ? '••••' : '$' + safeNumber(p.price).toFixed(2)}</span>
                       </div>

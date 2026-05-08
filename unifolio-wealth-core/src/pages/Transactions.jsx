@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, DollarSign, RefreshCw, ArrowLeftRight, Receipt, Repeat, Filter, FileText } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { transactions, getAccount, getInstitutionForAccount } from '@/lib/mockData';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
 import TaxExportModal from '@/components/transactions/TaxExportModal';
 import { cn } from '@/lib/utils';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useCurrency } from '@/lib/CurrencyContext';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 
 const typeConfig = {
   buy: { icon: ArrowDownLeft, color: 'text-emerald-400', bg: 'bg-emerald-400/10', label: 'Buy' },
@@ -17,18 +18,40 @@ const typeConfig = {
   deposit: { icon: ArrowDownLeft, color: 'text-blue-400', bg: 'bg-blue-400/10', label: 'Deposit' },
   withdrawal: { icon: ArrowUpRight, color: 'text-orange-400', bg: 'bg-orange-400/10', label: 'Withdrawal' },
   transfer: { icon: ArrowLeftRight, color: 'text-purple-400', bg: 'bg-purple-400/10', label: 'Transfer' },
+  transfer_in: { icon: ArrowDownLeft, color: 'text-purple-400', bg: 'bg-purple-400/10', label: 'Transfer In' },
+  transfer_out: { icon: ArrowUpRight, color: 'text-purple-400', bg: 'bg-purple-400/10', label: 'Transfer Out' },
+  position_transfer: { icon: ArrowLeftRight, color: 'text-cyan-400', bg: 'bg-cyan-400/10', label: 'Position Transfer' },
   fee: { icon: Receipt, color: 'text-red-400', bg: 'bg-red-400/10', label: 'Fee' },
   currency_conversion: { icon: Repeat, color: 'text-cyan-400', bg: 'bg-cyan-400/10', label: 'FX Conversion' },
 };
+
+function transferContextText(t) {
+  if (!['transfer', 'transfer_in', 'transfer_out', 'position_transfer', 'deposit', 'withdrawal'].includes(t.type)) return '';
+  const ctx = t.transfer_context || t.transferContext || {};
+  const source = t.source_account_id || ctx.sourceAccount || '';
+  const destination = t.destination_account_id || ctx.destinationAccount || '';
+  if (!source && !destination) return '';
+  return `${source || 'Unknown'} → ${destination || 'Unknown'}`;
+}
 
 export default function Transactions() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [showExport, setShowExport] = useState(false);
   const { privacyMode } = usePrivacy();
   const { convert, displayCurrency } = useCurrency();
+  const { transactions, getAccount, getInstitutionForAccount, isEmptyPortfolio } = usePortfolioData();
   const PM = '••••••';
 
   const filtered = typeFilter === 'all' ? transactions : transactions.filter(t => t.type === typeFilter);
+
+  if (isEmptyPortfolio) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Transactions" description="All activity across your accounts" />
+        <EmptyPortfolioState />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -77,25 +100,30 @@ export default function Transactions() {
             <tbody>
               {filtered.map(t => {
                 const cfg = typeConfig[t.type] ?? { icon: RefreshCw, color: 'text-muted-foreground', bg: 'bg-secondary', label: t.type || 'Other' };
-                const acc = getAccount(t.accountId);
-                const inst = getInstitutionForAccount(t.accountId);
+                const accountId = t.account_id ?? t.accountId;
+                const acc = getAccount(accountId);
+                const inst = getInstitutionForAccount(accountId);
                 const Icon = cfg.icon;
+                const transferText = transferContextText(t);
                 return (
                   <tr key={t.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{t.date}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <div className={cn('p-1 rounded', cfg.bg)}><Icon className={cn('w-3 h-3', cfg.color)} /></div>
-                        <span className="text-xs font-medium">{cfg.label}</span>
+                        <div>
+                          <span className="text-xs font-medium">{cfg.label}</span>
+                          {transferText && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{transferText}</p>}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-2.5 font-mono font-semibold">{t.ticker || '—'}</td>
-                    <td className="px-4 py-2.5 text-right font-mono">{t.qty || '—'}</td>
+                    <td className="px-4 py-2.5 text-right font-mono">{t.qty || t.quantity || '—'}</td>
                     <td className="px-4 py-2.5 text-right font-mono">{privacyMode ? PM : (t.price > 0 ? '$' + t.price.toFixed(2) : '—')}</td>
                     <td className="px-4 py-2.5 text-right font-mono font-medium">{privacyMode ? PM : formatCurrency(convert(t.total ?? t.total_amount ?? 0, t.currency || 'USD'))}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{privacyMode ? PM : (t.fees > 0 ? formatCurrency(convert(t.fees, t.currency || 'USD')) : '—')}</td>
                     <td className="px-4 py-2.5">
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{acc?.type}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{acc?.account_type ?? acc?.type}</span>
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">{inst?.name}</td>
                   </tr>
@@ -109,9 +137,11 @@ export default function Transactions() {
         <div className="md:hidden divide-y divide-border">
           {filtered.map(t => {
             const cfg = typeConfig[t.type] ?? { icon: RefreshCw, color: 'text-muted-foreground', bg: 'bg-secondary', label: t.type || 'Other' };
-            const acc = getAccount(t.accountId);
-            const inst = getInstitutionForAccount(t.accountId);
+            const accountId = t.account_id ?? t.accountId;
+            const acc = getAccount(accountId);
+            const inst = getInstitutionForAccount(accountId);
             const Icon = cfg.icon;
+            const transferText = transferContextText(t);
             return (
               <div key={t.id} className="p-4 flex items-center gap-3">
                 <div className={cn('p-2 rounded-lg', cfg.bg)}><Icon className={cn('w-4 h-4', cfg.color)} /></div>
@@ -120,7 +150,8 @@ export default function Transactions() {
                     <span className="text-sm font-medium">{cfg.label}</span>
                     {t.ticker && <span className="font-mono text-xs text-primary">{t.ticker}</span>}
                   </div>
-                  <p className="text-xs text-muted-foreground">{t.date} · {acc?.type} · {inst?.name}</p>
+                  <p className="text-xs text-muted-foreground">{t.date} · {acc?.account_type ?? acc?.type} · {inst?.name}</p>
+                  {transferText && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{transferText}</p>}
                 </div>
                 <span className="font-mono text-sm font-medium">{privacyMode ? PM : formatCurrency(convert(t.total ?? t.total_amount ?? 0, t.currency || 'USD'))}</span>
               </div>

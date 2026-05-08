@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Building2, Clock, Wallet, Hash, Plus } from 'lucide-react';
-import { accounts, holdings, institutions, getInstitution, calcAccountValue } from '@/lib/mockData';
+import { Clock, Wallet, Hash, Plus, Upload } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
 import { useCurrency } from '@/lib/CurrencyContext';
@@ -8,36 +8,42 @@ import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { cn } from '@/lib/utils';
 import AssetAppraisalModal from '@/components/accounts/AssetAppraisalModal';
 import CustomAssetCard from '@/components/accounts/CustomAssetCard';
 import MetalsBreakdownSection from '@/components/accounts/MetalsBreakdownSection';
 import NetValueSummary from '@/components/accounts/NetValueSummary';
-import { useLiveHoldings } from '@/hooks/useLiveHoldings';
 import { useLiveData } from '@/lib/LiveDataContext';
-import { safeNumber, safeDivide } from '@/lib/safeNum';
+import { safeNumber } from '@/lib/safeNum';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 
 export default function Accounts() {
+  const navigate = useNavigate();
   const { convert, displayCurrency } = useCurrency();
   const { privacyMode } = usePrivacy();
   const PM = '••••••';
   const queryClient = useQueryClient();
   const { registerTicker, liveHoldings: liveMarketData } = useLiveData();
+  const { accounts, holdings, getInstitution, calcAccountValue, isEmptyPortfolio } = usePortfolioData();
+  const safeAccounts = useMemo(() => Array.isArray(accounts) ? accounts.filter(Boolean) : [], [accounts]);
+  const safeHoldings = useMemo(() => Array.isArray(holdings) ? holdings.filter(Boolean) : [], [holdings]);
 
   // Register tickers
   useEffect(() => {
-    holdings.filter(h => h.quantity > 0).forEach(h => {
+    safeHoldings.filter(h => safeNumber(h.quantity ?? h.position) > 0).forEach(h => {
+      if (!h.ticker) return;
       registerTicker(h.ticker, h.asset_class ?? h.assetClass ?? 'stock');
     });
-  }, [registerTicker]);
+  }, [registerTicker, safeHoldings]);
 
   // Use live-updated holdings for account values with recalculated dependent values
   const liveHoldings = useMemo(() => {
-    return holdings.map(holding => {
+    return safeHoldings.map(holding => {
       const ticker = holding.ticker;
-      const livePrice = liveMarketData[ticker]?.price;
+      const liveData = ticker ? liveMarketData?.[ticker] : null;
+      const livePrice = liveData?.price;
       
-      if (!livePrice || holding.quantity <= 0) return holding;
+      if (!livePrice || safeNumber(holding.quantity ?? holding.position) <= 0) return holding;
 
       const quantity = safeNumber(holding.quantity ?? holding.position ?? 0);
       const avgPrice = safeNumber(holding.average_price ?? holding.avgPrice ?? livePrice);
@@ -46,7 +52,8 @@ export default function Accounts() {
 
       const newMarketValue = quantity * livePrice;
       const newUnrealizedGainLoss = newMarketValue - costBasis;
-      const newDailyPnl = (livePrice - oldPrice) * quantity;
+      const previousClose = safeNumber(liveData?.previousClose ?? liveData?.previous_close, oldPrice);
+      const newDailyPnl = (livePrice - previousClose) * quantity;
 
       return {
         ...holding,
@@ -58,22 +65,34 @@ export default function Accounts() {
         unrealizedAmt: newUnrealizedGainLoss,
         daily_pnl_amount: newDailyPnl,
         dailyPnl: newDailyPnl,
-        sparkline: liveMarketData[ticker]?.sparkline || holding.sparkline,
+        sparkline: liveData?.sparkline || holding.sparkline,
+        price_source: liveData?.priceSource ?? holding.price_source,
+        valuation_status: liveData?.valuationStatus ?? holding.valuation_status,
       };
     });
-  }, [holdings, liveMarketData]);
+  }, [safeHoldings, liveMarketData]);
 
   const [showModal, setShowModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null);
 
   // ── Custom assets from DB ──────────────────────────────────────
-  const { data: customAssets = [] } = useQuery({
+  const { data: customAssetsRaw = [], isLoading: customAssetsLoading, isError: customAssetsError } = useQuery({
     queryKey: ['customAssets'],
-    queryFn: () => base44.entities.CustomAsset.list('-created_date'),
+    queryFn: async () => {
+      try {
+        const list = await base44?.entities?.CustomAsset?.list?.('-created_date');
+        return Array.isArray(list) ? list : [];
+      } catch (err) {
+        console.warn('[Accounts] custom assets unavailable:', err?.message || err);
+        return [];
+      }
+    },
   });
+  const customAssets = Array.isArray(customAssetsRaw) ? customAssetsRaw.filter(Boolean) : [];
 
   const saveMutation = useMutation({
     mutationFn: (asset) => {
+      if (!base44?.entities?.CustomAsset) throw new Error('Custom assets service unavailable');
       if (asset.id) {
         const { id, created_date, updated_date, created_by, ...data } = asset;
         return base44.entities.CustomAsset.update(id, data);
@@ -88,7 +107,10 @@ export default function Accounts() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.CustomAsset.delete(id),
+    mutationFn: (id) => {
+      if (!base44?.entities?.CustomAsset) throw new Error('Custom assets service unavailable');
+      return base44.entities.CustomAsset.delete(id);
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customAssets'] }),
   });
 
@@ -99,24 +121,27 @@ export default function Accounts() {
   // ── Investment account totals ─────────────────────────────────
   const grouped = useMemo(() => {
     const g = {};
-    accounts.forEach(acc => {
+    safeAccounts.forEach(acc => {
+      if (!acc?.id) return;
       const instId = acc.institution_id ?? acc.institutionId;
+      if (!instId) return;
       if (!g[instId]) g[instId] = [];
       g[instId].push(acc);
     });
     return g;
-  }, []);
+  }, [safeAccounts]);
 
   const typeTotals = useMemo(() => {
     const t = {};
-    accounts.forEach(acc => {
-      const type = acc.account_type ?? acc.type;
+    safeAccounts.forEach(acc => {
+      if (!acc?.id) return;
+      const type = acc.account_type ?? acc.type ?? 'Account';
       const nativeValue = calcAccountValue(acc.id);
       const nativeCurrency = acc.base_currency || 'CAD';
       t[type] = (t[type] || 0) + convert(nativeValue, nativeCurrency);
     });
     return t;
-  }, [convert, displayCurrency]);
+  }, [safeAccounts, calcAccountValue, convert, displayCurrency]);
 
   const investmentTotal = useMemo(() =>
     Object.values(typeTotals).reduce((s, v) => s + v, 0),
@@ -134,15 +159,29 @@ export default function Accounts() {
     includedAssets.reduce((s, a) => s + convert(a.net_value || 0, a.currency || 'USD'), 0),
     [includedAssets, convert, displayCurrency]);
 
+  if (isEmptyPortfolio) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Accounts" description="Connected accounts and custom assets" />
+        <EmptyPortfolioState />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Accounts"
         description="Connected accounts and custom assets"
         actions={
-          <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Add Custom Asset
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => navigate('/import')} className="gap-1.5">
+              <Upload className="w-3.5 h-3.5" /> Import CSV
+            </Button>
+            <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
+              <Plus className="w-3.5 h-3.5" /> Add Custom Asset
+            </Button>
+          </div>
         }
       />
 
@@ -158,7 +197,7 @@ export default function Accounts() {
       {/* Account Type Totals */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {Object.entries(typeTotals).map(([type, total]) => {
-          const count = accounts.filter(a => (a.account_type ?? a.type) === type).length;
+          const count = safeAccounts.filter(a => (a.account_type ?? a.type ?? 'Account') === type).length;
           return (
             <div key={type} className="bg-card rounded-xl border border-border p-4">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{type} Total</p>

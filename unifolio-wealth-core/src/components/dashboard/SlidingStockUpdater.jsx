@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
-import { holdings, accounts } from '@/lib/mockData';
 import { useLiveData } from '@/lib/LiveDataContext';
 import { usePrivacy } from '@/lib/PrivacyContext';
 import { useStarredStocks } from '@/lib/StarredStocksContext';
 import { useTheme } from '@/lib/ThemeContext';
 import { useSecondaryColors } from '@/lib/SecondaryColorsContext';
 import { safeNumber } from '@/lib/safeNum';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 export default function SlidingStockUpdater({ activeHoldings = [] }) {
   const { liveHoldings, liveDataEnabled } = useLiveData();
@@ -13,6 +13,7 @@ export default function SlidingStockUpdater({ activeHoldings = [] }) {
   const { isStar } = useStarredStocks();
   const { theme } = useTheme();
   const { palette } = useSecondaryColors();
+  const { holdings } = usePortfolioData();
 
   // Compile ticker items from active holdings only
   const baseTickerItems = useMemo(() => {

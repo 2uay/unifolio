@@ -4,8 +4,17 @@ import { useCurrency } from '@/lib/CurrencyContext';
 import { hasRate } from '@/lib/exchangeRates';
 import { cn } from '@/lib/utils';
 
+function formatRelativeTime(isoString) {
+  if (!isoString) return '';
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.floor(mins / 60)}h ago`;
+}
+
 export default function CurrencySelector({ collapsed = false, openUpward = false }) {
-  const { displayCurrency, setDisplayCurrency, enabledCurrencies, allCurrencies } = useCurrency();
+  const { displayCurrency, setDisplayCurrency, enabledCurrencies, allCurrencies, bothMode, setBothMode, fxRates } = useCurrency();
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -39,7 +48,7 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
           collapsed ? 'p-2 justify-center w-full' : 'px-2.5 py-1.5'
         )}
       >
-        <span>{displayCurrency}</span>
+        <span>{bothMode ? `${displayCurrency}+${displayCurrency === 'CAD' ? 'USD' : 'CAD'}` : displayCurrency}</span>
         {!collapsed && <ChevronDown className={cn('w-3 h-3 text-muted-foreground transition-transform', open && 'rotate-180')} />}
       </button>
 
@@ -50,6 +59,23 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
         )}>
           <div className="px-3 py-2 border-b border-border/50">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Display Currency</p>
+          </div>
+          <div className="px-3 py-2 border-b border-border/50">
+            <button
+              onClick={() => setBothMode(b => !b)}
+              className={cn(
+                'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-colors',
+                bothMode ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:bg-secondary'
+              )}
+            >
+              <span>Show Both Currencies</span>
+              <span className={cn(
+                'text-[10px] font-mono px-1.5 py-0.5 rounded',
+                bothMode ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'
+              )}>
+                {bothMode ? 'ON' : 'OFF'}
+              </span>
+            </button>
           </div>
           <div className="py-1">
             {visibleCurrencies.map(c => {
@@ -94,6 +120,30 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
               <p className="text-[10px] text-amber-400">No rate available for {displayCurrency}</p>
             </div>
           )}
+
+          {/* FX rates footer */}
+          <div className="px-3 py-2.5 border-t border-border/50 bg-secondary/20 space-y-1">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={cn(
+                'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                fxRates?.isLive ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+              )} />
+              <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-medium">
+                {fxRates?.isLive ? 'Live FX' : 'Sample Rate'}
+              </p>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] text-muted-foreground">1 USD =</span>
+              <span className="text-[10px] font-mono font-semibold">{fxRates?.usdToCad?.toFixed(4)} CAD</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] text-muted-foreground">1 CAD =</span>
+              <span className="text-[10px] font-mono font-semibold">{fxRates?.cadToUsd?.toFixed(4)} USD</span>
+            </div>
+            {fxRates?.lastUpdated && (
+              <p className="text-[9px] text-muted-foreground/50 mt-0.5">Updated {formatRelativeTime(fxRates.lastUpdated)}</p>
+            )}
+          </div>
         </div>
       )}
     </div>

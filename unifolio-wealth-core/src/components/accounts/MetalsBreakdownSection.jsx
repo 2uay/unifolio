@@ -7,10 +7,11 @@ import MetalBreakdownCard from '@/components/accounts/MetalBreakdownCard';
 export default function MetalsBreakdownSection({ customAssets }) {
   const { privacyMode } = usePrivacy();
   const { convert } = useCurrency();
+  const safeAssets = useMemo(() => Array.isArray(customAssets) ? customAssets.filter(Boolean) : [], [customAssets]);
 
   const metalAssets = useMemo(() => {
-    return customAssets.filter(a => a.asset_type === 'Precious Metals');
-  }, [customAssets]);
+    return safeAssets.filter(a => a.asset_type === 'Precious Metals');
+  }, [safeAssets]);
 
   const metalsByType = useMemo(() => {
     const grouped = {};

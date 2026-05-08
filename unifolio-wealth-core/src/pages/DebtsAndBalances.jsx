@@ -22,29 +22,42 @@ export default function DebtsAndBalances() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const PM = '••••••';
+  const listEntity = async (entityName) => {
+    try {
+      const list = await base44?.entities?.[entityName]?.list?.('-created_date');
+      return Array.isArray(list) ? list.filter(Boolean) : [];
+    } catch (err) {
+      console.warn(`[DebtsAndBalances] ${entityName} unavailable:`, err?.message || err);
+      return [];
+    }
+  };
 
   // Fetch all debts and balances
-  const { data: creditCards = [] } = useQuery({
+  const { data: creditCardsRaw = [] } = useQuery({
     queryKey: ['creditCards'],
-    queryFn: () => base44.entities.CreditCard.list('-created_date'),
+    queryFn: () => listEntity('CreditCard'),
   });
 
-  const { data: loans = [] } = useQuery({
+  const { data: loansRaw = [] } = useQuery({
     queryKey: ['loans'],
-    queryFn: () => base44.entities.Loan.list('-created_date'),
+    queryFn: () => listEntity('Loan'),
   });
 
-  const { data: paymentBalances = [] } = useQuery({
+  const { data: paymentBalancesRaw = [] } = useQuery({
     queryKey: ['paymentBalances'],
-    queryFn: () => base44.entities.PaymentBalance.list('-created_date'),
+    queryFn: () => listEntity('PaymentBalance'),
   });
+  const creditCards = Array.isArray(creditCardsRaw) ? creditCardsRaw.filter(Boolean) : [];
+  const loans = Array.isArray(loansRaw) ? loansRaw.filter(Boolean) : [];
+  const paymentBalances = Array.isArray(paymentBalancesRaw) ? paymentBalancesRaw.filter(Boolean) : [];
 
   const saveMutation = useMutation({
     mutationFn: (payload) => {
       const { type, ...data } = payload;
-      if (type === 'CreditCard') return base44.entities.CreditCard.create(data);
-      if (type === 'Loan') return base44.entities.Loan.create(data);
-      if (type === 'PaymentBalance') return base44.entities.PaymentBalance.create(data);
+      if (type === 'CreditCard') return base44?.entities?.CreditCard?.create?.(data);
+      if (type === 'Loan') return base44?.entities?.Loan?.create?.(data);
+      if (type === 'PaymentBalance') return base44?.entities?.PaymentBalance?.create?.(data);
+      throw new Error('Unsupported debt entry type');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['creditCards'] });

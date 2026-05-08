@@ -3,7 +3,6 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid
 } from 'recharts';
-import { portfolioSnapshots } from '@/lib/mockData';
 import { safeNumber, safeArray, safeDivide } from '@/lib/safeNum';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import { cn } from '@/lib/utils';
@@ -12,31 +11,8 @@ import { useCurrency } from '@/lib/CurrencyContext';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useTheme } from '@/lib/ThemeContext';
 import { CustomLineTooltip } from '@/lib/chartTooltip';
-
-function genBenchmark(base, seed, trend, points) {
-  const data = [];
-  let val = base;
-  let r = seed;
-  for (let i = 0; i < points; i++) {
-    r = (r * 1664525 + 1013904223) & 0xffffffff;
-    const rand = (r / 0xffffffff) - 0.45 + trend * 0.08;
-    val += rand * base * 0.012;
-    val = Math.max(val, base * 0.6);
-    data.push(Math.round(val * 100) / 100);
-  }
-  return data;
-}
-
-const BENCHMARKS = [
-  { id: 'sp500',    label: 'S&P 500',       color: '#f59e0b', base: 5200,  seed: 111 },
-  { id: 'nasdaq',   label: 'NASDAQ-100',    color: '#a78bfa', base: 18000, seed: 222 },
-  { id: 'dow',      label: 'Dow Jones',     color: '#60a5fa', base: 38000, seed: 333 },
-  { id: 'russell',  label: 'Russell 2000',  color: '#34d399', base: 2000,  seed: 444 },
-  { id: 'btc',      label: 'Bitcoin',       color: '#f97316', base: 65000, seed: 555 },
-  { id: 'gold',     label: 'Gold',          color: '#fbbf24', base: 2300,  seed: 666 },
-  { id: 'usmarket', label: 'US Total Mkt',  color: '#22d3ee', base: 220,   seed: 777 },
-  { id: 'camarket', label: 'CA Total Mkt',  color: '#fb7185', base: 180,   seed: 888 },
-];
+import { BENCHMARKS, fetchBenchmarkSeries, alignBenchmarkSeriesToDates } from '@/lib/benchmarks';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 const PERIODS = ['1W', '1M', '3M', '6M', 'YTD', '1Y', 'ALL', 'Custom'];
 
@@ -156,36 +132,72 @@ export default function DashboardPortfolioChart() {
   const { displayCurrency, isSample, convert } = useCurrency();
   const { privacyMode } = usePrivacy();
   const { chartColors } = useTheme();
+  const { portfolioSnapshots } = usePortfolioData();
   const [period, setPeriod] = useState('1Y');
   const [viewMode, setViewMode] = useState('dollar');
-  const [activeBenchmarks, setActiveBenchmarks] = useState([]);
+  const [activeBenchmarks, setActiveBenchmarks] = useState(['sp500', 'nasdaq', 'dow', 'btc', 'dxy']);
+  const [benchmarkSeries, setBenchmarkSeries] = useState({});
+  const [benchmarkStatus, setBenchmarkStatus] = useState({});
+  const [benchmarksLoading, setBenchmarksLoading] = useState(false);
 
-  const allSnapshots = useMemo(() => safeArray(portfolioSnapshots), []);
+  const allSnapshots = useMemo(() => safeArray(portfolioSnapshots), [portfolioSnapshots]);
   const dataMin = allSnapshots[0]?.date || '';
   const dataMax = allSnapshots[allSnapshots.length - 1]?.date || '';
 
-  // Custom date range state
-  const [customFrom, setCustomFrom] = useState(dataMin);
-  const [customTo, setCustomTo] = useState(dataMax);
+  // Custom date range state — seed from data bounds; update when snapshots arrive
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  useEffect(() => {
+    if (dataMin) setCustomFrom(prev => prev || dataMin);
+    if (dataMax) setCustomTo(prev => prev || dataMax);
+  }, [dataMin, dataMax]);
 
   const baseSnapshots = useMemo(
     () => filterSnapshots(allSnapshots, period, customFrom, customTo),
     [allSnapshots, period, customFrom, customTo]
   );
 
+  useEffect(() => {
+    if (activeBenchmarks.length === 0 || baseSnapshots.length === 0) {
+      setBenchmarkStatus({});
+      return;
+    }
+
+    let cancelled = false;
+    setBenchmarksLoading(true);
+    fetchBenchmarkSeries(activeBenchmarks, Math.max(baseSnapshots.length, 30))
+      .then(({ series, status }) => {
+        if (cancelled) return;
+        setBenchmarkSeries(prev => ({ ...prev, ...series }));
+        setBenchmarkStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBenchmarkStatus(Object.fromEntries(activeBenchmarks.map(id => [id, 'fallback'])));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBenchmarksLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [activeBenchmarks, baseSnapshots.length]);
+
   const chartData = useMemo(() => {
-    const n = baseSnapshots.length;
-    const benchmarkSeries = {};
+    const dates = baseSnapshots.map(snap => snap.date);
+    const alignedBenchmarks = {};
     BENCHMARKS.forEach(b => {
-      if (activeBenchmarks.includes(b.id)) benchmarkSeries[b.id] = genBenchmark(b.base, b.seed, 0.3, n);
+      if (!activeBenchmarks.includes(b.id)) return;
+      alignedBenchmarks[b.id] = alignBenchmarkSeriesToDates(benchmarkSeries[b.id], dates, b).map(point => point.close);
     });
+
     return baseSnapshots.map((snap, i) => {
       const portfolioVal = viewMode === 'dollar' ? convert(snap.value, 'CAD') : snap.value;
       const row = { date: snap.date, portfolio: portfolioVal };
-      Object.entries(benchmarkSeries).forEach(([id, arr]) => { row[id] = arr[i]; });
+      Object.entries(alignedBenchmarks).forEach(([id, arr]) => { row[id] = arr[i]; });
       return row;
     });
-  }, [baseSnapshots, activeBenchmarks, convert, displayCurrency, viewMode]);
+  }, [baseSnapshots, activeBenchmarks, benchmarkSeries, convert, displayCurrency, viewMode]);
 
   const displayData = useMemo(() => {
     if (viewMode === 'dollar') return chartData;
@@ -228,6 +240,17 @@ export default function DashboardPortfolioChart() {
             <span className="flex items-center gap-1 text-[10px] text-amber-400/70">
               <AlertTriangle className="w-2.5 h-2.5" />
               <span className="hidden sm:inline">Sample FX rate</span>
+            </span>
+          )}
+          {activeBenchmarks.length > 0 && (
+            <span className={cn(
+              'flex items-center gap-1 text-[10px]',
+              Object.values(benchmarkStatus).includes('fallback') ? 'text-amber-400/80' : 'text-emerald-400/80'
+            )}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', benchmarksLoading ? 'bg-amber-400 animate-pulse' : Object.values(benchmarkStatus).includes('fallback') ? 'bg-amber-400' : 'bg-emerald-400')} />
+              <span className="hidden sm:inline">
+                {benchmarksLoading ? 'Loading benchmarks' : Object.values(benchmarkStatus).includes('fallback') ? 'Benchmark fallback' : 'Live benchmark data'}
+              </span>
             </span>
           )}
         </div>

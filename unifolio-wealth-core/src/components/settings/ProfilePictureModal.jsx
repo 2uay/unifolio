@@ -85,9 +85,16 @@ export default function ProfilePictureModal({ open, onClose, onSave }) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-card border-border max-w-md">
-        <DialogHeader>
+      <DialogContent className="bg-card border-border max-w-md [&>button]:hidden">
+        <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Change Profile Picture</DialogTitle>
+          <button
+            onClick={onClose}
+            className="opacity-70 hover:opacity-100 transition-opacity rounded-sm p-1 hover:bg-accent"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </DialogHeader>
 
         <div className="space-y-4 mt-4">

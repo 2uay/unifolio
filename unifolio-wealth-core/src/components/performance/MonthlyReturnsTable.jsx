@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { portfolioSnapshots } from '@/lib/mockData';
 import { safeNumber, safeArray } from '@/lib/safeNum';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -10,7 +10,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * Each month compares the last snapshot of the month vs. the last snapshot
  * of the prior month — never hardcoded values.
  */
-function deriveMonthlyReturns() {
+function deriveMonthlyReturns(portfolioSnapshots) {
   // Build a map: "YYYY-MM" -> last snapshot value of that month
   const monthEndMap = {};
   safeArray(portfolioSnapshots).forEach(snap => {
@@ -83,7 +83,8 @@ function ReturnCell({ value }) {
 }
 
 export default function MonthlyReturnsTable() {
-  const data = useMemo(() => deriveMonthlyReturns(), []);
+  const { portfolioSnapshots } = usePortfolioData();
+  const data = useMemo(() => deriveMonthlyReturns(portfolioSnapshots), [portfolioSnapshots]);
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">

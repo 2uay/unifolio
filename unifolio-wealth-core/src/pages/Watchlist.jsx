@@ -1,18 +1,40 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { watchlist as initialWatchlist, holdings } from '@/lib/mockData';
+import { watchlist as initialWatchlist } from '@/lib/mockData';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
 import WatchlistRow from '@/components/watchlist/WatchlistRow';
 import WatchlistDropdown from '@/components/watchlist/WatchlistDropdown';
 import NewWatchlistModal from '@/components/watchlist/NewWatchlistModal';
 import ExploreCarousel from '@/components/watchlist/ExploreCarousel';
+import WatchlistTreemap from '@/components/watchlist/WatchlistTreemap';
+import { cn } from '@/lib/utils';
 import { SAMPLE_WATCHLISTS } from '@/lib/watchlistData';
 import { useLiveData } from '@/lib/LiveDataContext';
 import { useStarredStocks } from '@/lib/StarredStocksContext';
+
+const SECTOR_MAP = {
+  AAPL: 'Technology', MSFT: 'Technology', GOOGL: 'Technology', GOOG: 'Technology',
+  NVDA: 'Technology', META: 'Technology', AMD: 'Technology', INTC: 'Technology',
+  TSMC: 'Technology', TSM: 'Technology', ASML: 'Technology', CRM: 'Technology',
+  ADBE: 'Technology', ORCL: 'Technology', SAP: 'Technology', NOW: 'Technology',
+  AMZN: 'Consumer', TSLA: 'Consumer', NKE: 'Consumer', SBUX: 'Consumer',
+  MCD: 'Consumer', WMT: 'Consumer', COST: 'Consumer', HD: 'Consumer',
+  BRKB: 'Finance', 'BRK.B': 'Finance', JPM: 'Finance', BAC: 'Finance',
+  GS: 'Finance', MS: 'Finance', V: 'Finance', MA: 'Finance', AXP: 'Finance',
+  JNJ: 'Healthcare', UNH: 'Healthcare', PFE: 'Healthcare', ABBV: 'Healthcare',
+  MRK: 'Healthcare', LLY: 'Healthcare', TMO: 'Healthcare', ABT: 'Healthcare',
+  XOM: 'Energy', CVX: 'Energy', COP: 'Energy', SLB: 'Energy',
+  CAT: 'Industrials', GE: 'Industrials', BA: 'Industrials', UPS: 'Industrials',
+  NEE: 'Utilities', DUK: 'Utilities', SO: 'Utilities',
+  VZ: 'Telecom', T: 'Telecom', TMUS: 'Telecom',
+  SPY: 'ETF', QQQ: 'ETF', IWM: 'ETF', VTI: 'ETF', GLD: 'ETF',
+  BTC: 'Crypto', ETH: 'Crypto', SOL: 'Crypto',
+};
+const SECTORS = ['Technology', 'Consumer', 'Finance', 'Healthcare', 'Energy', 'Industrials', 'ETF', 'Crypto', 'Telecom', 'Utilities', 'Other'];
 
 // Enrich mock watchlist with extra data
 function enrichItem(w) {
@@ -22,11 +44,12 @@ function enrichItem(w) {
     const base = w.lastPrice || 100;
     return +(base * (0.95 + rng(c + i * 7) * 0.1)).toFixed(2);
   });
-  const relatedHolding = holdings.find(h => h.ticker === w.ticker && h.position > 0) || null;
+  const sector = w.sector || SECTOR_MAP[w.ticker] || SECTORS[c % SECTORS.length];
 
   return {
     ...w,
     sparkline: sl,
+    sector,
     marketCap: ['$2.1T', '$1.8T', '$890B', '$340B', '$210B', '$95B'][c % 6],
     volume: ['48.2M', '22.5M', '15.8M', '9.1M', '5.3M', '2.8M'][c % 6],
     high52: +(w.lastPrice * (1.1 + rng(c + 1) * 0.3)).toFixed(2),
@@ -35,7 +58,7 @@ function enrichItem(w) {
     divYield: rng(c + 4) > 0.5 ? (rng(c + 5) * 3).toFixed(2) + '%' : null,
     analystRating: ['Strong Buy', 'Buy', 'Hold', 'Buy', 'Strong Buy', 'Hold', 'Sell'][c % 7],
     overview: `${w.name} is a leading company in its sector. Connect a market data source to view full company overview, financials, and analyst reports.`,
-    relatedHolding,
+    relatedHolding: null,
   };
 }
 
@@ -63,6 +86,9 @@ export default function Watchlist() {
   const [newTarget, setNewTarget] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('unifolio_watchlist_view') || 'treemap');
+
+  const setView = (v) => { setViewMode(v); localStorage.setItem('unifolio_watchlist_view', v); };
 
   // Items for the active watchlist with live prices
   const baseItems = itemsMap[activeWatchlistId] || [];
@@ -167,6 +193,23 @@ export default function Watchlist() {
         description="Track and research securities you're interested in"
         actions={
           <div className="flex items-center gap-2">
+            {/* View mode toggle */}
+            <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-0.5 border border-border">
+              <button
+                onClick={() => setView('treemap')}
+                className={cn('p-1.5 rounded-md transition-colors', viewMode === 'treemap' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground')}
+                title="Treemap view"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setView('list')}
+                className={cn('p-1.5 rounded-md transition-colors', viewMode === 'list' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground')}
+                title="List view"
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
@@ -230,46 +273,46 @@ export default function Watchlist() {
         )}
       </div>
 
-      {/* Table */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-[10px] sm:text-sm">
-            <thead>
-              <tr className="border-b border-border bg-secondary/30">
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-left text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ticker / Name</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-left text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Trend</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Price</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Chg %</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Mkt Cap</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Volume</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden xl:table-cell">52W H/L</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-center text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden xl:table-cell">Rating</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Target</th>
-                <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 w-16 sm:w-24"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(w => (
-                <WatchlistRow
-                  key={w.id}
-                  item={w}
-                  onRemove={handleRemove}
-                />
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={11} className="px-2 sm:px-4 py-8 sm:py-12 text-center text-muted-foreground text-[10px] sm:text-sm">
-                    {search
-                      ? 'No securities match your search.'
-                      : <span>This watchlist is empty. <button className="text-primary hover:underline" onClick={() => setDialogOpen(true)}>Add a security</button> or pick one from Explore below.</span>
-                    }
-                  </td>
+      {/* Treemap or List view */}
+      {viewMode === 'treemap' ? (
+        <WatchlistTreemap items={filtered} height={560} />
+      ) : (
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px] sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/30">
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-left text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ticker / Name</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-left text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Trend</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Price</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Chg %</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Mkt Cap</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Volume</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden xl:table-cell">52W H/L</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-center text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden xl:table-cell">Rating</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Target</th>
+                  <th className="px-2 sm:px-4 py-1.5 sm:py-2.5 w-16 sm:w-24"></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(w => (
+                  <WatchlistRow key={w.id} item={w} onRemove={handleRemove} />
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={11} className="px-2 sm:px-4 py-8 sm:py-12 text-center text-muted-foreground text-[10px] sm:text-sm">
+                      {search
+                        ? 'No securities match your search.'
+                        : <span>This watchlist is empty. <button className="text-primary hover:underline" onClick={() => setDialogOpen(true)}>Add a security</button> or pick one from Explore below.</span>
+                      }
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Explore section */}
       <ExploreCarousel

@@ -6,6 +6,7 @@ import {
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Activity, Maximize2, ExternalLink } from 'lucide-react';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
+import { useCurrency } from '@/lib/CurrencyContext';
 import { useResearchWindows } from '@/lib/ResearchWindowContext';
 import { CustomStockTooltip } from '@/lib/chartTooltip';
 import FullscreenChart from '@/components/charts/FullscreenChart';
@@ -16,8 +17,9 @@ import {
 } from '@/lib/chartEngine.js';
 import { fetchStockCandles } from '@/lib/stockApi';
 
-export default function StockChart({ ticker, name, lastPrice, seedVal = 42, compact = false, onChartClick, clickableChart = true, referenceLines = [] }) {
+export default function StockChart({ ticker, name, lastPrice, seedVal = 42, compact = false, onChartClick, clickableChart = true, referenceLines = [], nativeCurrency = 'USD' }) {
   const { privacyMode } = usePrivacy();
+  const { convert } = useCurrency();
   const { openWindow } = useResearchWindows();
   const saved = useMemo(() => loadChartLayout(), []);
   const chartContainerRef = useRef(null);
@@ -162,6 +164,7 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
         onChartTypeChange={handleChartType}
         onIndicatorsChange={setActiveIndicators}
         onClose={() => setFullscreen(false)}
+        nativeCurrency={nativeCurrency}
       />
     );
   }
@@ -186,7 +189,7 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
             {!compact && <span className="text-xs text-muted-foreground ml-2">{name}</span>}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="font-mono font-bold text-sm">{privacyMode ? '••••••' : `$${lastClose.toFixed(2)}`}</span>
+            <span className="font-mono font-bold text-sm">{privacyMode ? '••••••' : `$${convert(lastClose, nativeCurrency).toFixed(2)}`}</span>
             <span className={cn('text-xs font-mono flex items-center gap-0.5', isUp ? 'text-emerald-400' : 'text-red-400')}>
               {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
               {isUp ? '+' : ''}{pctChange.toFixed(2)}%

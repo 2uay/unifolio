@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link2, CheckCircle, AlertCircle, Circle, ExternalLink, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { institutions, accounts, holdings, calcAccountValue } from '@/lib/mockData';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
 import { cn } from '@/lib/utils';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 
 const statusConfig = {
   connected: { icon: CheckCircle, color: 'text-emerald-400', label: 'Connected', bg: 'bg-emerald-400/10 border-emerald-400/20' },
@@ -13,8 +14,18 @@ const statusConfig = {
 };
 
 export default function Institutions() {
+  const { institutions, accounts, holdings, calcAccountValue, isEmptyPortfolio } = usePortfolioData();
   const connected = institutions.filter(i => (i.connection_status ?? i.status) === 'connected');
   const available = institutions.filter(i => (i.connection_status ?? i.status) !== 'connected');
+
+  if (isEmptyPortfolio) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Connected Institutions" description="Manage your brokerage and bank connections" />
+        <EmptyPortfolioState />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
