@@ -535,5 +535,12 @@ export function PortfolioDataProvider({ children }) {
 export function usePortfolioData() {
   const context = useContext(PortfolioDataContext);
   if (!context) throw new Error('usePortfolioData must be used within PortfolioDataProvider');
-  return context;
+  return {
+    getInstitution: () => null,
+    getInstitutionForAccount: () => null,
+    getAccount: () => null,
+    calcAccountValue: () => 0,
+    calcPortfolioTotals: () => ({}),
+    ...context,
+  };
 }
