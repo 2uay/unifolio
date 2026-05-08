@@ -22,6 +22,16 @@ export default defineConfig({
           return `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}&includePrePost=false`;
         },
       },
+      '/api/yquote': {
+        target: 'https://query1.finance.yahoo.com',
+        changeOrigin: true,
+        rewrite: (path) => {
+          const url = new URL(path, 'http://localhost');
+          const symbols = url.searchParams.get('symbols') || '';
+          const fields = 'regularMarketPrice,regularMarketPreviousClose,regularMarketChangePercent,currency';
+          return `/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&fields=${fields}`;
+        },
+      },
     },
   },
 });

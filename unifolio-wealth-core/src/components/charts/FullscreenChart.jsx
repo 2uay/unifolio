@@ -22,6 +22,7 @@ import {
   COMPARE_OPTIONS, EVENT_TYPES, DEFAULT_LAYOUT, saveChartLayout, loadChartLayout
 } from '@/lib/chartEngine';
 import { fetchStockCandles } from '@/lib/stockApi';
+import CandlestickBar from '@/components/charts/CandlestickBar';
 
 // Generate a synthetic comparison line (% from start)
 function genCompareLine(seedVal, points, key) {
@@ -83,6 +84,15 @@ export default function FullscreenChart({
 
   const firstClose = chartData[0]?.close || 1;
   const lastClose = chartData[chartData.length - 1]?.close || 1;
+  const isCandle = chartType === 'candle';
+  const priceMin = useMemo(() => {
+    if (!isCandle) return undefined;
+    return Math.min(...chartData.map(d => d.low || d.close || 0)) * 0.999;
+  }, [chartData, isCandle]);
+  const priceMax = useMemo(() => {
+    if (!isCandle) return undefined;
+    return Math.max(...chartData.map(d => d.high || d.close || 0)) * 1.001;
+  }, [chartData, isCandle]);
   const pctChange = ((lastClose - firstClose) / firstClose) * 100;
   const absChange = lastClose - firstClose;
   const isUp = pctChange >= 0;
@@ -413,7 +423,7 @@ export default function FullscreenChart({
                     if (privacyMode) return '••••';
                     return compareLines.length > 0 ? v.toFixed(1) + '%' : `$${v.toFixed(0)}`;
                   }}
-                  domain={['auto', 'auto']}
+                  domain={isCandle ? [priceMin, priceMax] : ['auto', 'auto']}
                 />
                 <Tooltip content={<TooltipComp />} />
 
@@ -427,8 +437,10 @@ export default function FullscreenChart({
                 {chartType === 'bar' && (
                   <Bar yAxisId="price" dataKey="close" fill={strokeColor} opacity={0.7} />
                 )}
-                {chartType === 'candle' && (
-                  <Area yAxisId="price" type="monotone" dataKey="close" stroke={strokeColor} strokeWidth={2} fill={`url(#${gradId})`} dot={false} />
+                {isCandle && (
+                  <Bar yAxisId="price" dataKey="close" isAnimationActive={false}
+                    shape={(p) => <CandlestickBar {...p} priceMin={priceMin} priceMax={priceMax} />}
+                  />
                 )}
 
                 {/* Comparison lines */}

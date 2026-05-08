@@ -16,6 +16,7 @@ import {
   CHART_TYPES, TIME_RANGES, RANGE_DAYS, ALL_INDICATORS, DEFAULT_LAYOUT, loadChartLayout, saveChartLayout
 } from '@/lib/chartEngine.js';
 import { fetchStockCandles } from '@/lib/stockApi';
+import CandlestickBar from '@/components/charts/CandlestickBar';
 
 export default function StockChart({ ticker, name, lastPrice, seedVal = 42, compact = false, onChartClick, clickableChart = true, referenceLines = [], nativeCurrency = 'USD' }) {
   const { privacyMode } = usePrivacy();
@@ -171,6 +172,17 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
 
   // Compact chart types (just area/line)
   const effectiveType = compact && !['area', 'line'].includes(chartType) ? 'area' : chartType;
+  const isCandle = effectiveType === 'candle';
+
+  // For candle mode: compute explicit price domain so CandlestickBar can reconstruct pixel positions
+  const priceMin = useMemo(() => {
+    if (!isCandle) return undefined;
+    return Math.min(...chartData.map(d => d.low || d.close || 0)) * 0.999;
+  }, [chartData, isCandle]);
+  const priceMax = useMemo(() => {
+    if (!isCandle) return undefined;
+    return Math.max(...chartData.map(d => d.high || d.close || 0)) * 1.001;
+  }, [chartData, isCandle]);
 
   return (
     <div
@@ -288,7 +300,7 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
             <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} interval={xInterval} />
-            <YAxis yAxisId="price" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} width={52} tickFormatter={v => privacyMode ? '••' : ('$' + v.toFixed(0))} domain={['auto', 'auto']} />
+            <YAxis yAxisId="price" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} width={52} tickFormatter={v => privacyMode ? '••' : ('$' + v.toFixed(0))} domain={isCandle ? [priceMin, priceMax] : ['auto', 'auto']} />
             <Tooltip content={<TooltipComp />} />
 
             {/* Price series */}
@@ -301,8 +313,10 @@ export default function StockChart({ ticker, name, lastPrice, seedVal = 42, comp
             {effectiveType === 'bar' && (
               <Bar yAxisId="price" dataKey="close" fill={strokeColor} opacity={0.7} />
             )}
-            {effectiveType === 'candle' && (
-              <Area yAxisId="price" type="monotone" dataKey="close" stroke={strokeColor} strokeWidth={1.5} fill={`url(#${gradId})`} dot={false} />
+            {isCandle && (
+              <Bar yAxisId="price" dataKey="close" isAnimationActive={false}
+                shape={(p) => <CandlestickBar {...p} priceMin={priceMin} priceMax={priceMax} />}
+              />
             )}
 
             {/* Overlay indicators */}

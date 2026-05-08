@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Clock, Wallet, Hash, Plus, Upload } from 'lucide-react';
+import { Clock, Wallet, Hash, Plus, Upload, Trash2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
@@ -16,6 +16,12 @@ import { useLiveData } from '@/lib/LiveDataContext';
 import { safeNumber } from '@/lib/safeNum';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import { supabase } from '@/lib/supabaseClient';
+import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function Accounts() {
   const navigate = useNavigate();
@@ -24,7 +30,7 @@ export default function Accounts() {
   const PM = '••••••';
   const queryClient = useQueryClient();
   const { registerTicker, liveHoldings: liveMarketData } = useLiveData();
-  const { accounts, holdings, getInstitution, calcAccountValue, isEmptyPortfolio } = usePortfolioData();
+  const { accounts, holdings, getInstitution, calcAccountValue, isEmptyPortfolio, refreshPortfolioData } = usePortfolioData();
   const safeAccounts = useMemo(() => Array.isArray(accounts) ? accounts.filter(Boolean) : [], [accounts]);
   const safeHoldings = useMemo(() => Array.isArray(holdings) ? holdings.filter(Boolean) : [], [holdings]);
 
@@ -74,6 +80,41 @@ export default function Accounts() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null);
+  const [pendingDeleteAcc, setPendingDeleteAcc] = useState(null);
+  const [deletingAcc, setDeletingAcc] = useState(false);
+
+  const handleDeleteAccount = (acc) => setPendingDeleteAcc(acc);
+
+  const confirmDeleteAccount = async () => {
+    if (!pendingDeleteAcc) return;
+    setDeletingAcc(true);
+    try {
+      const accId = pendingDeleteAcc.id;
+      await supabase.from('holdings').delete().eq('account_id', accId);
+      await supabase.from('transactions').delete().eq('account_id', accId);
+      await supabase.from('realized_positions').delete().eq('account_id', accId).then(() => {});
+      await supabase.from('import_batches').delete().eq('account_id', accId).then(() => {});
+      await supabase.from('accounts').delete().eq('id', accId);
+
+      try {
+        const raw = localStorage.getItem(IMPORT_PORTFOLIO_KEY);
+        if (raw) {
+          const bundle = JSON.parse(raw);
+          bundle.accounts     = (bundle.accounts     || []).filter(a => a.id !== accId);
+          bundle.holdings     = (bundle.holdings     || []).filter(h => (h.account_id ?? h.accountId) !== accId);
+          bundle.transactions = (bundle.transactions || []).filter(t => (t.account_id ?? t.accountId) !== accId);
+          localStorage.setItem(IMPORT_PORTFOLIO_KEY, JSON.stringify(bundle));
+        }
+      } catch { /* ignore */ }
+
+      await refreshPortfolioData?.();
+    } catch (err) {
+      console.error('[Accounts] delete failed:', err);
+    } finally {
+      setDeletingAcc(false);
+      setPendingDeleteAcc(null);
+    }
+  };
 
   // ── Custom assets from DB ──────────────────────────────────────
   const { data: customAssetsRaw = [], isLoading: customAssetsLoading, isError: customAssetsError } = useQuery({
@@ -244,7 +285,7 @@ export default function Accounts() {
                 return (
                   <div key={acc.id} className="bg-card rounded-xl border border-border p-5 hover:border-primary/30 transition-colors">
                     <div className="flex items-start justify-between">
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{acc.account_type ?? acc.type}</span>
                           {isInternational && (
@@ -261,11 +302,18 @@ export default function Accounts() {
                           </p>
                         )}
                       </div>
-                      {showConversion && (
-                        <div className="text-right">
+                      <div className="flex flex-col items-end gap-1.5 ml-2 flex-shrink-0">
+                        {showConversion && (
                           <span className="text-[10px] text-muted-foreground/50">{nativeCurrency} → {displayCurrency}</span>
-                        </div>
-                      )}
+                        )}
+                        <button
+                          onClick={() => handleDeleteAccount(acc)}
+                          title="Delete account"
+                          className="p-1 rounded text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-4 space-y-2 text-sm">
@@ -349,6 +397,30 @@ export default function Accounts() {
           initialData={editingAsset}
         />
       )}
+
+      {/* Confirm account delete dialog */}
+      <AlertDialog open={!!pendingDeleteAcc} onOpenChange={(open) => { if (!open && !deletingAcc) setPendingDeleteAcc(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the
+              <strong className="text-foreground"> {pendingDeleteAcc?.account_type ?? pendingDeleteAcc?.type} </strong>
+              account and all its holdings, transactions, and import history. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAcc}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteAccount}
+              disabled={deletingAcc}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deletingAcc ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Deleting…</> : 'Yes, delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

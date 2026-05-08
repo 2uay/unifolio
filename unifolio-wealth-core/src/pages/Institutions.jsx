@@ -1,22 +1,73 @@
-import React from 'react';
-import { Link2, CheckCircle, AlertCircle, Circle, ExternalLink, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link2, CheckCircle, AlertCircle, Circle, RefreshCw, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
 import { cn } from '@/lib/utils';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import { supabase } from '@/lib/supabaseClient';
+import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const statusConfig = {
-  connected: { icon: CheckCircle, color: 'text-emerald-400', label: 'Connected', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-  disconnected: { icon: AlertCircle, color: 'text-amber-400', label: 'Disconnected', bg: 'bg-amber-400/10 border-amber-400/20' },
-  not_connected: { icon: Circle, color: 'text-muted-foreground', label: 'Not Connected', bg: 'bg-secondary border-border' },
+  connected:     { icon: CheckCircle, color: 'text-emerald-400', label: 'Connected',     bg: 'bg-emerald-400/10 border-emerald-400/20' },
+  disconnected:  { icon: AlertCircle, color: 'text-amber-400',   label: 'Disconnected',  bg: 'bg-amber-400/10 border-amber-400/20' },
+  not_connected: { icon: Circle,      color: 'text-muted-foreground', label: 'Not Connected', bg: 'bg-secondary border-border' },
 };
 
 export default function Institutions() {
-  const { institutions, accounts, holdings, calcAccountValue, isEmptyPortfolio } = usePortfolioData();
-  const connected = institutions.filter(i => (i.connection_status ?? i.status) === 'connected');
-  const available = institutions.filter(i => (i.connection_status ?? i.status) !== 'connected');
+  const { institutions, accounts, holdings, calcAccountValue, isEmptyPortfolio, refreshPortfolioData } = usePortfolioData();
+  const [pendingDelete, setPendingDelete] = useState(null); // inst object
+  const [deleting, setDeleting] = useState(false);
+
+  const connected  = institutions.filter(i => (i.connection_status ?? i.status) === 'connected');
+  const available  = institutions.filter(i => (i.connection_status ?? i.status) !== 'connected');
+
+  const handleDisconnect = (inst) => setPendingDelete(inst);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const inst = pendingDelete;
+      const instAccounts = accounts.filter(a => (a.institution_id ?? a.institutionId) === inst.id);
+      const accountIds = instAccounts.map(a => a.id);
+
+      // Cascade delete in dependency order
+      if (accountIds.length > 0) {
+        await supabase.from('holdings').delete().in('account_id', accountIds);
+        await supabase.from('transactions').delete().in('account_id', accountIds);
+        await supabase.from('realized_positions').delete().in('account_id', accountIds).then(() => {});
+        await supabase.from('import_batches').delete().in('account_id', accountIds).then(() => {});
+      }
+      await supabase.from('import_batches').delete().eq('institution_id', inst.id);
+      await supabase.from('accounts').delete().eq('institution_id', inst.id);
+      await supabase.from('institutions').delete().eq('id', inst.id);
+
+      // Prune localStorage
+      try {
+        const raw = localStorage.getItem(IMPORT_PORTFOLIO_KEY);
+        if (raw) {
+          const bundle = JSON.parse(raw);
+          bundle.accounts  = (bundle.accounts  || []).filter(a => (a.institution_id ?? a.institutionId) !== inst.id);
+          bundle.holdings  = (bundle.holdings  || []).filter(h => !accountIds.includes(h.account_id ?? h.accountId));
+          bundle.transactions = (bundle.transactions || []).filter(t => !accountIds.includes(t.account_id ?? t.accountId));
+          localStorage.setItem(IMPORT_PORTFOLIO_KEY, JSON.stringify(bundle));
+        }
+      } catch { /* ignore */ }
+
+      await refreshPortfolioData?.();
+    } catch (err) {
+      console.error('[Institutions] delete failed:', err);
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+    }
+  };
 
   if (isEmptyPortfolio) {
     return (
@@ -81,8 +132,12 @@ export default function Institutions() {
                   <Button variant="outline" size="sm" className="flex-1 text-xs gap-1">
                     <RefreshCw className="w-3 h-3" /> Sync
                   </Button>
-                  <Button variant="outline" size="sm" className="flex-1 text-xs gap-1 text-red-400 hover:text-red-400">
-                    Disconnect
+                  <Button
+                    variant="outline" size="sm"
+                    className="flex-1 text-xs gap-1 text-red-400 hover:text-red-300 hover:border-red-400/40"
+                    onClick={() => handleDisconnect(inst)}
+                  >
+                    <Trash2 className="w-3 h-3" /> Disconnect
                   </Button>
                 </div>
               </div>
@@ -119,6 +174,29 @@ export default function Institutions() {
           })}
         </div>
       </div>
+
+      {/* Confirm delete dialog */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open && !deleting) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect {pendingDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all accounts, holdings, transactions, and import history for
+              <strong className="text-foreground"> {pendingDelete?.name}</strong>. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Deleting…</> : 'Yes, disconnect'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

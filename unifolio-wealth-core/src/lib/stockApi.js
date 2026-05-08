@@ -165,6 +165,38 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
+/**
+ * Fetch current quotes from Yahoo Finance's v7 quote endpoint via /api/yquote proxy.
+ * Returns { [ticker]: { current_price, previous_close, change_pct } }.
+ * This is the most reliable source for regularMarketPreviousClose, especially for
+ * TSX (.TO) tickers where Finnhub free-tier often returns null previous_close.
+ */
+export async function fetchYahooQuotes(tickers) {
+  const unique = [...new Set(tickers.filter(Boolean))];
+  if (unique.length === 0) return {};
+  try {
+    const url = `/api/yquote?symbols=${encodeURIComponent(unique.join(','))}`;
+    const res = await fetch(url);
+    if (!res.ok) return {};
+    const json = await res.json();
+    const quotes = json?.quoteResponse?.result ?? [];
+    return Object.fromEntries(
+      quotes
+        .filter(q => q.symbol && q.regularMarketPrice)
+        .map(q => [q.symbol, {
+          current_price:   q.regularMarketPrice,
+          previous_close:  q.regularMarketPreviousClose ?? q.regularMarketPrice,
+          change_pct:      q.regularMarketChangePercent ?? 0,
+          currency:        q.currency ?? 'USD',
+          source: 'yahoo_quote',
+        }])
+    );
+  } catch (err) {
+    console.warn('[stockApi] Yahoo quotes failed:', err.message);
+    return {};
+  }
+}
+
 async function fetchLatestYahooPrices(tickers) {
   const entries = await mapWithConcurrency(tickers, 5, async (ticker) => {
     try {
@@ -266,13 +298,27 @@ export async function fetchValidatedPrices(tickers, brokerRows = []) {
   const brokerByTicker = normalizeBrokerRows(brokerRows);
   const quoteSymbolByTicker = Object.fromEntries(unique.map(ticker => [ticker, brokerByTicker[ticker]?.quote_symbol || ticker]));
   const quoteSymbols = [...new Set(Object.values(quoteSymbolByTicker).filter(Boolean))];
-  const [finnhubQuotes, yahooQuotes] = await Promise.all([
+  const [finnhubQuotes, yahooCandleQuotes, yahooSpotQuotes] = await Promise.all([
     fetchQuotes(quoteSymbols).catch(error => {
       console.warn('[stockApi] Finnhub validation quotes failed:', error?.message || error);
       return {};
     }),
     fetchLatestYahooPrices(quoteSymbols),
+    fetchYahooQuotes(quoteSymbols).catch(() => ({})),
   ]);
+
+  // Patch previous_close with regularMarketPreviousClose from Yahoo spot quotes.
+  // This is especially important for TSX (.TO) tickers where Finnhub returns null
+  // and the candle approach gives the second-to-last bar rather than end-of-session.
+  const yahooQuotes = { ...yahooCandleQuotes };
+  Object.entries(yahooSpotQuotes).forEach(([ticker, spotData]) => {
+    if (yahooQuotes[ticker]) {
+      // Patch previous_close but keep candle's current_price (more reliable for closed markets)
+      yahooQuotes[ticker] = { ...yahooQuotes[ticker], previous_close: spotData.previous_close };
+    } else if (isUsablePrice(spotData.current_price)) {
+      yahooQuotes[ticker] = spotData;
+    }
+  });
 
   return unique.reduce((acc, ticker) => {
     const quoteSymbol = quoteSymbolByTicker[ticker];

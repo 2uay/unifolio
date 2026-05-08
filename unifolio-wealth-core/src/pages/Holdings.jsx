@@ -15,7 +15,7 @@ import DateRangeFilter from '@/components/holdings/DateRangeFilter';
 import { filterRealizedByDateRange } from '@/lib/realizedPositions';
 import { getSavedColumnOrder, saveColumnOrder, loadColumnOrderFromSupabase, COLUMN_DEFINITIONS } from '@/lib/columnConfig';
 import { supabase } from '@/lib/supabaseClient';
-import { stackHoldings } from '@/lib/stackingEngine';
+import { stackHoldings, stackCDRGroups } from '@/lib/stackingEngine';
 import PortfolioBreakdown from '@/components/holdings/PortfolioBreakdown';
 import HeatmapModeSelector from '@/components/holdings/HeatmapModeSelector';
 import { HEATMAP_MODES } from '@/lib/heatmapModes.js';
@@ -134,6 +134,9 @@ export default function Holdings() {
   const [stackAssets, setStackAssets] = useState(() => {
     return localStorage.getItem('unifolio_stack_assets') === 'true';
   });
+  const [stackCDRs, setStackCDRs] = useState(() => {
+    return localStorage.getItem('unifolio_stack_cdrs') === 'true';
+  });
   const [extractedOpen, setExtractedOpen] = useState(false);
   const [extractedFullscreen, setExtractedFullscreen] = useState(false);
   const extractedPanelRef = useRef(null);
@@ -233,6 +236,15 @@ export default function Holdings() {
   const handleStackToggle = (val) => {
     setStackAssets(val);
     localStorage.setItem('unifolio_stack_assets', String(val));
+    if (!val) {
+      setStackCDRs(false);
+      localStorage.setItem('unifolio_stack_cdrs', 'false');
+    }
+  };
+
+  const handleCDRToggle = (val) => {
+    setStackCDRs(val);
+    localStorage.setItem('unifolio_stack_cdrs', String(val));
   };
 
   const toggleExtractedFullscreen = async () => {
@@ -421,8 +433,12 @@ export default function Holdings() {
   // Stack same-ticker holdings across accounts when toggle is on
   const displayHoldings = useMemo(() => {
     if (!stackAssets) return filteredCurrent;
-    return stackHoldings(filteredCurrent, { getAccount, getInstitutionForAccount });
-  }, [filteredCurrent, stackAssets]);
+    let stacked = stackHoldings(filteredCurrent, { getAccount, getInstitutionForAccount });
+    if (stackCDRs) {
+      stacked = stackCDRGroups(stacked, { convert, displayCurrency, getAccount, getInstitutionForAccount });
+    }
+    return stacked;
+  }, [filteredCurrent, stackAssets, stackCDRs, convert, displayCurrency, getAccount, getInstitutionForAccount]);
 
   const compressTable = visibleColumns.length >= 9;
 
@@ -523,8 +539,16 @@ export default function Holdings() {
 
     switch (colId) {
       case 'ticker':
+        if (h._isCDRGroup) {
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="font-mono font-semibold text-xs text-primary leading-tight">{h._isCDRGroupName}</span>
+              <span className="text-[9px] text-muted-foreground/50 leading-tight font-mono">{h._stackedChildren?.map(c => c.ticker).join(' + ')}</span>
+            </div>
+          );
+        }
         return (
-          <TickerWithStar 
+          <TickerWithStar
             ticker={h.ticker}
             onStarClick={() => toggleStar(h.ticker)}
             interactive={true}
@@ -535,6 +559,7 @@ export default function Holdings() {
       case 'company':
         return <span className="text-muted-foreground text-xs max-w-[200px] truncate">{h.name}</span>;
       case 'price': {
+        if (!lp || lp <= 0) return <span className="text-right font-mono tabular-nums text-muted-foreground/40">—</span>;
         const pPrimary = convert(safeNumber(lp), nativeCurrency);
         if (bothMode) {
           const pSecondary = convertSecondary(safeNumber(lp), nativeCurrency);
@@ -543,7 +568,7 @@ export default function Holdings() {
         return <span className="text-right font-mono tabular-nums" title={getValuationTitle(h)}>{pPrimary.toFixed(2)}</span>;
       }
       case 'quantity':
-        return <span className="text-right font-mono tabular-nums">{h.position}</span>;
+        return <span className="text-right font-mono tabular-nums">{h.position ?? '—'}</span>;
       case 'pctPortfolio':
         return <span className="text-right font-mono tabular-nums text-muted-foreground">{privacyMode ? '••••' : pctOfNav.toFixed(2) + '%'}</span>;
       case 'pctAccount':
@@ -551,7 +576,7 @@ export default function Holdings() {
       case 'avgPrice': {
         const rawAvg = safeNumber(h.average_price ?? h.avgPrice);
         if (privacyMode) return <span className="text-right font-mono tabular-nums">{PM}</span>;
-        if (rawAvg <= 0) return <span className="text-right font-mono tabular-nums">—</span>;
+        if (!rawAvg || rawAvg <= 0) return <span className="text-right font-mono tabular-nums text-muted-foreground/40">—</span>;
         const aPrimary = convert(rawAvg, nativeCurrency);
         if (bothMode) {
           const aSecondary = convertSecondary(rawAvg, nativeCurrency);
@@ -778,12 +803,33 @@ export default function Holdings() {
             Stack Assets
           </label>
         </div>
+        {stackAssets && (
+          <div className="flex items-center gap-2">
+            <ThemedSwitch
+              id="stack-cdrs"
+              checked={stackCDRs}
+              onCheckedChange={handleCDRToggle}
+              className="scale-90"
+            />
+            <label htmlFor="stack-cdrs" className="text-xs text-muted-foreground cursor-pointer select-none">
+              Stack ETF CDRs
+            </label>
+            <span
+              title="Groups ETFs that track the same index across markets (e.g. VOO USD + VFV.TO CAD → S&P 500). Values converted to your display currency."
+              className="text-muted-foreground/50 hover:text-muted-foreground cursor-help transition-colors"
+            >
+              <Info className="w-3 h-3" />
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Position count */}
       <div className="flex items-center justify-between">
         {stackAssets && (
-          <span className="text-[10px] text-amber-400/80 italic">Stacked by ticker</span>
+          <span className="text-[10px] text-amber-400/80 italic">
+            {stackCDRs ? 'Stacked by ticker · CDR groups merged' : 'Stacked by ticker'}
+          </span>
         )}
         <span className="text-[10px] sm:text-xs text-muted-foreground ml-auto">
           {displayHoldings.length} active{showRealized && (Object.keys(realizedByActive).length > 0 || realizedUnmatched.length > 0) ? ` · ${(Object.values(realizedByActive).flat() || []).length + realizedUnmatched.length} realized` : ''}
@@ -873,7 +919,12 @@ export default function Holdings() {
                     h._stackedChildren.forEach((child, childIdx) => {
                       const childAcc = getAccount(child.account_id ?? child.accountId);
                       const childInst = getInstitutionForAccount(child.account_id ?? child.accountId);
-                      const childAccType = childAcc?.account_type ?? childAcc?.type ?? '—';
+                      const childAccType = child._isStacked
+                        ? (child._accountLabel ?? '—')
+                        : (childAcc?.account_type ?? childAcc?.type ?? '—');
+                      const childInstName = child._isStacked
+                        ? (child._institutionLabel ?? '—')
+                        : (childInst?.name ?? '—');
                       const childCurrency = child.currency || 'USD';
                       const childMarketValue = convert(safeNumber(child.market_value ?? child.marketValue), childCurrency);
                       const childUnrealized = safeNumber(child.unrealized_gain_loss_amount ?? child.unrealizedAmt);
@@ -899,8 +950,9 @@ export default function Holdings() {
                           <td colSpan={visibleColumns.length} className="px-3 py-2">
                             <div className="flex flex-wrap gap-x-4 gap-y-1 pl-4 text-xs text-muted-foreground items-center">
                               <span className="text-muted-foreground/50 mr-1">↳</span>
+                              {h._isCDRGroup && <span className="font-mono font-semibold text-primary text-xs">{child.ticker}</span>}
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 text-foreground/70 font-medium">{childAccType}</span>
-                              <span className="font-medium text-foreground/80">{childInst?.name ?? '—'}</span>
+                              <span className="font-medium text-foreground/80">{childInstName}</span>
                               <span className="font-mono tabular-nums">{childQty} shares</span>
                               <span className="text-muted-foreground/60">avg {privacyMode ? PM : `$${childAvgPrice.toFixed(2)}`}</span>
                               <span className="font-mono tabular-nums">{privacyMode ? PM : formatCurrency(childMarketValue)}</span>
