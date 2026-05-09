@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, DollarSign, RefreshCw, ArrowLeftRight, Receipt, Repeat, Filter, FileText } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, DollarSign, RefreshCw, ArrowLeftRight, Receipt, Repeat, Filter, FileText, Pencil, Check, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
+import { formatCurrency } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
 import TaxExportModal from '@/components/transactions/TaxExportModal';
 import { cn } from '@/lib/utils';
@@ -37,12 +37,43 @@ function transferContextText(t) {
 export default function Transactions() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [showExport, setShowExport] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
   const { privacyMode } = usePrivacy();
   const { convert, displayCurrency } = useCurrency();
-  const { transactions, getAccount, getInstitutionForAccount, isEmptyPortfolio } = usePortfolioData();
+  const { transactions, accounts, getAccount, getInstitutionForAccount, isEmptyPortfolio, updateTransferTransaction } = usePortfolioData();
   const PM = '••••••';
 
   const filtered = typeFilter === 'all' ? transactions : transactions.filter(t => t.type === typeFilter);
+  const editableTransferTypes = new Set(['transfer', 'transfer_in', 'transfer_out', 'position_transfer', 'deposit', 'withdrawal']);
+  const startEdit = (t) => {
+    setEditingId(t.id);
+    setEditDraft({
+      source_account_id: t.source_account_id || t.transfer_context?.sourceAccount || '',
+      destination_account_id: t.destination_account_id || t.transfer_context?.destinationAccount || '',
+      notes: t.notes || '',
+    });
+  };
+  const saveEdit = async (t) => {
+    setSavingEdit(true);
+    try {
+      await updateTransferTransaction(t.id, {
+        ...editDraft,
+        transfer_context: {
+          ...(t.transfer_context || t.transferContext || {}),
+          sourceAccount: editDraft.source_account_id || '',
+          destinationAccount: editDraft.destination_account_id || '',
+          notes: editDraft.notes || '',
+          editedManually: true,
+        },
+      });
+      setEditingId(null);
+      setEditDraft({});
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   if (isEmptyPortfolio) {
     return (
@@ -95,6 +126,7 @@ export default function Transactions() {
                 <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Fees</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Account</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Institution</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Edit</th>
               </tr>
             </thead>
             <tbody>
@@ -105,6 +137,8 @@ export default function Transactions() {
                 const inst = getInstitutionForAccount(accountId);
                 const Icon = cfg.icon;
                 const transferText = transferContextText(t);
+                const isEditing = editingId === t.id;
+                const canEdit = editableTransferTypes.has(t.type);
                 return (
                   <tr key={t.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{t.date}</td>
@@ -114,6 +148,30 @@ export default function Transactions() {
                         <div>
                           <span className="text-xs font-medium">{cfg.label}</span>
                           {transferText && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{transferText}</p>}
+                          {isEditing && (
+                            <div className="mt-2 grid gap-1.5 min-w-[260px]">
+                              <input
+                                list="transaction-account-options"
+                                value={editDraft.source_account_id || ''}
+                                onChange={e => setEditDraft(prev => ({ ...prev, source_account_id: e.target.value }))}
+                                placeholder="Source account"
+                                className="h-7 rounded-md border border-border/50 bg-secondary px-2 text-[11px] text-foreground outline-none"
+                              />
+                              <input
+                                list="transaction-account-options"
+                                value={editDraft.destination_account_id || ''}
+                                onChange={e => setEditDraft(prev => ({ ...prev, destination_account_id: e.target.value }))}
+                                placeholder="Destination account"
+                                className="h-7 rounded-md border border-border/50 bg-secondary px-2 text-[11px] text-foreground outline-none"
+                              />
+                              <input
+                                value={editDraft.notes || ''}
+                                onChange={e => setEditDraft(prev => ({ ...prev, notes: e.target.value }))}
+                                placeholder="Transfer notes"
+                                className="h-7 rounded-md border border-border/50 bg-secondary px-2 text-[11px] text-foreground outline-none"
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -126,11 +184,26 @@ export default function Transactions() {
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{acc?.account_type ?? acc?.type}</span>
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">{inst?.name}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      {canEdit && (isEditing ? (
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" disabled={savingEdit} onClick={() => saveEdit(t)}><Check className="h-3 w-3" /></Button>
+                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" disabled={savingEdit} onClick={() => setEditingId(null)}><X className="h-3 w-3" /></Button>
+                        </div>
+                      ) : (
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => startEdit(t)}><Pencil className="h-3 w-3" /></Button>
+                      ))}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          <datalist id="transaction-account-options">
+            {accounts.map(account => (
+              <option key={account.id} value={account.id}>{account.account_name || account.account_type || account.id}</option>
+            ))}
+          </datalist>
         </div>
 
         {/* Mobile Cards */}

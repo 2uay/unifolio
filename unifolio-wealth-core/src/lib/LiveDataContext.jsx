@@ -159,7 +159,7 @@ export function LiveDataProvider({ children }) {
     const importedRows = (portfolioHoldings || [])
       .filter(h => safeNumber(h.quantity ?? h.position) > 0)
       .filter(h => h.ticker);
-    const importedTickers = importedRows.map(h => h.ticker);
+    const importedTickers = importedRows.map(h => h.quote_symbol || h.quoteSymbol || h.ticker);
     const allTickers = (isSample || isDemoMode || source === 'sample')
       ? [
           ...rawHoldings.map(h => h.ticker),
@@ -169,7 +169,8 @@ export function LiveDataProvider({ children }) {
     const unique = [...new Set(allTickers.filter(Boolean))];
     tickersRef.current = new Map(unique.map(ticker => {
       const imported = importedRows.find(h => h.ticker === ticker);
-      return [ticker, { assetClass: imported?.asset_class ?? imported?.assetClass ?? 'stock' }];
+      const importedByQuote = importedRows.find(h => (h.quote_symbol || h.quoteSymbol || h.ticker) === ticker);
+      return [ticker, { assetClass: importedByQuote?.asset_class ?? importedByQuote?.assetClass ?? imported?.asset_class ?? imported?.assetClass ?? 'stock' }];
     }));
     realPricesRef.current = {};
     setApiPricesLoaded(false);

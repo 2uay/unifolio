@@ -4,6 +4,8 @@
 // auto-maps columns, validates rows, and returns normalized data.
 // ============================================================
 
+import { buildSecurityAmbiguities, resolveSecurityIdentity, securityKey } from '@/lib/securityIdentity';
+
 // ─── RAW CSV PARSING ──────────────────────────────────────────
 
 export function parseCSVText(text) {
@@ -326,7 +328,7 @@ export function parseRows(rows, headers, columnMap) {
     if (rowErrors.length > 0) {
       errors.push({ rowIndex: i, row: record, errors: rowErrors });
     } else {
-      valid.push(record);
+      valid.push(resolveSecurityIdentity(record));
     }
   }
 
@@ -359,7 +361,7 @@ export function parseHoldingsRows(rows, headers, columnMap) {
       continue;
     }
 
-    valid.push({
+    valid.push(resolveSecurityIdentity({
       ticker,
       name: getCell(row, columnMap, 'name') || ticker,
       assetClass: getCell(row, columnMap, 'assetClass') || 'Equity',
@@ -372,7 +374,7 @@ export function parseHoldingsRows(rows, headers, columnMap) {
       account: getCell(row, columnMap, 'account') || '',
       accountType: getCell(row, columnMap, 'accountType') || '',
       institution: getCell(row, columnMap, 'institution') || '',
-    });
+    }));
   }
 
   return { valid, errors };
@@ -483,6 +485,15 @@ function buildRealizedPositionsFromTrades(trades, account, securityBySymbol = {}
       accountType: trade.accountType || account.accountType,
       institution,
       ticker,
+      raw_ticker: trade.raw_ticker || ticker,
+      security_key: securityKey(trade),
+      display_ticker: trade.display_ticker || ticker,
+      quote_symbol: trade.quote_symbol || ticker,
+      listing_exchange: trade.listing_exchange || sec.ListingExchange || '',
+      listing_currency: trade.listing_currency || trade.currency || account.currency || 'USD',
+      security_identity: trade.security_identity || '',
+      identity_confidence: trade.identity_confidence || '',
+      underlying_ticker: trade.underlying_ticker || ticker,
       name: trade.name || sec.Description || ticker,
       asset_class: trade.assetClass || normalizedAssetClass(sec.AssetClass),
       assetClass: trade.assetClass || normalizedAssetClass(sec.AssetClass),
@@ -596,7 +607,7 @@ function buildWealthsimpleTransaction(row, index) {
     : Math.abs(quantityRaw);
   const date = parseWealthsimpleDate(row.transaction_date);
 
-  return {
+  return resolveSecurityIdentity({
     id: `wealthsimple-${cleanWsValue(row.account_id) || 'account'}-${date || 'date'}-${index}`,
     date,
     settlementDate: parseWealthsimpleDate(row.settlement_date),
@@ -628,7 +639,7 @@ function buildWealthsimpleTransaction(row, index) {
     destinationAccount: '',
     rawActivityType: cleanWsValue(row.activity_type),
     rawActivitySubType: cleanWsValue(row.activity_sub_type),
-  };
+  });
 }
 
 function parseWealthsimpleActivityReport(dataRows, headers, filename) {
@@ -688,7 +699,7 @@ function parseWealthsimpleActivityReport(dataRows, headers, filename) {
   };
 
   sorted.forEach(row => {
-    const key = `${row.account}::${row.ticker}`;
+    const key = `${row.account}::${securityKey(row)}`;
     lotsByKey[key] = lotsByKey[key] || [];
     purchaseHistoryByKey[key] = purchaseHistoryByKey[key] || [];
 
@@ -706,6 +717,10 @@ function parseWealthsimpleActivityReport(dataRows, headers, filename) {
         currency: row.currency,
         tradeId: row.tradeId,
         sourceType: row.type,
+        security_key: securityKey(row),
+        display_ticker: row.display_ticker || row.ticker,
+        quote_symbol: row.quote_symbol,
+        sourceAccount: row.account,
       };
       lotsByKey[key].push(lot);
       purchaseHistoryByKey[key].push(lot);
@@ -738,6 +753,15 @@ function parseWealthsimpleActivityReport(dataRows, headers, filename) {
       accountType: row.accountType,
       institution: 'Wealthsimple',
       ticker: row.ticker,
+      raw_ticker: row.raw_ticker || row.ticker,
+      security_key: securityKey(row),
+      display_ticker: row.display_ticker || row.ticker,
+      quote_symbol: row.quote_symbol || row.ticker,
+      listing_exchange: row.listing_exchange || '',
+      listing_currency: row.listing_currency || row.currency,
+      security_identity: row.security_identity || '',
+      identity_confidence: row.identity_confidence || '',
+      underlying_ticker: row.underlying_ticker || row.ticker,
       name: row.name || row.ticker,
       asset_class: row.assetClass,
       assetClass: row.assetClass,
@@ -764,18 +788,27 @@ function parseWealthsimpleActivityReport(dataRows, headers, filename) {
 
   const positions = Object.entries(lotsByKey)
     .map(([key, lots]) => {
-      const [accountId, ticker] = key.split('::');
+      const [accountId, securityKeyValue] = key.split('::');
       const quantity = lots.reduce((sum, lot) => sum + lot.quantity, 0);
       if (Math.abs(quantity) <= 0.000001) return null;
       const costBasis = lots.reduce((sum, lot) => sum + Math.max(lot.cost || lot.quantity * lot.price, 0), 0);
       const avgPrice = quantity ? costBasis / quantity : 0;
-      const source = transactions.find(row => row.account === accountId && row.ticker === ticker) || {};
+      const source = transactions.find(row => row.account === accountId && securityKey(row) === securityKeyValue) || {};
       return {
-        id: `holding-${accountId}-${ticker}`,
-        ticker,
-        name: source.name || ticker,
-        assetClass: source.assetClass || inferAssetClass(ticker, source.name),
-        asset_class: source.assetClass || inferAssetClass(ticker, source.name),
+        id: `holding-${accountId}-${securityKeyValue}`,
+        ticker: source.display_ticker || source.ticker || securityKeyValue,
+        raw_ticker: source.raw_ticker || source.ticker || '',
+        security_key: securityKeyValue,
+        display_ticker: source.display_ticker || source.ticker || securityKeyValue,
+        quote_symbol: source.quote_symbol || source.ticker || securityKeyValue,
+        listing_exchange: source.listing_exchange || '',
+        listing_currency: source.listing_currency || source.currency || 'CAD',
+        security_identity: source.security_identity || '',
+        identity_confidence: source.identity_confidence || '',
+        underlying_ticker: source.underlying_ticker || source.ticker || '',
+        name: source.name || source.display_ticker || source.ticker || securityKeyValue,
+        assetClass: source.assetClass || inferAssetClass(source.ticker, source.name),
+        asset_class: source.assetClass || inferAssetClass(source.ticker, source.name),
         subCategory: '',
         quantity,
         position: quantity,
@@ -820,6 +853,10 @@ function parseWealthsimpleActivityReport(dataRows, headers, filename) {
           currency: lot.currency,
           tradeId: lot.tradeId,
           sourceType: lot.sourceType,
+          sourceAccount: lot.sourceAccount,
+          security_key: lot.security_key,
+          display_ticker: lot.display_ticker,
+          quote_symbol: lot.quote_symbol,
         })),
       };
     })
@@ -853,6 +890,7 @@ function parseWealthsimpleActivityReport(dataRows, headers, filename) {
       openHoldings: positions,
       realizedPositions,
       transactions,
+      securityAmbiguities: buildSecurityAmbiguities([...positions, ...transactions, ...realizedPositions]),
       sectionSummary,
       securities: [],
     },
@@ -864,10 +902,11 @@ function parseWealthsimpleHoldingsReport(dataRows, headers, filename) {
   const columnMap = autoMapColumns(headers, 'wealthsimple_holdings');
   const { valid, errors } = parseHoldingsRows(dataRows, headers, columnMap);
   const positions = valid.map(row => {
+    const resolved = resolveSecurityIdentity(row);
     const accountId = row.account || 'wealthsimple-account';
     return {
-      ...row,
-      id: `holding-${accountId}-${row.ticker}`,
+      ...resolved,
+      id: `holding-${accountId}-${securityKey(resolved)}`,
       account: accountId,
       account_id: accountId,
       accountId,
@@ -922,6 +961,7 @@ function parseWealthsimpleHoldingsReport(dataRows, headers, filename) {
       openHoldings: positions,
       realizedPositions: [],
       transactions: [],
+      securityAmbiguities: buildSecurityAmbiguities(positions),
       sectionSummary: [{ code: 'WS_HOLDINGS', name: 'Wealthsimple Holdings Report', rowCount: positions.length }],
       securities: [],
     },
@@ -1015,7 +1055,7 @@ function parseIBKRSectionedReport(allRows, filename) {
       const marketValue = parseNum(row.PositionValue || row.PositionValueInBase) || quantity * price;
       const costBasis = parseNum(row.CostBasisMoney) || quantity * avgPrice;
       const realizedGL = parseNum(fifo.TotalRealizedPnl);
-      return {
+      return resolveSecurityIdentity({
         id: `holding-${row.ClientAccountID || account.clientAccountId}-${ticker}`,
         ticker,
         name: row.Description || security.Description || ticker,
@@ -1058,7 +1098,7 @@ function parseIBKRSectionedReport(allRows, filename) {
         sector: 'Unknown',
         reportDate: compactDate(row.ReportDate),
         sourceSection: 'POST',
-      };
+      });
     });
 
   const tradeRows = getSectionRows(sections, 'TRNT')
@@ -1075,7 +1115,7 @@ function parseIBKRSectionedReport(allRows, filename) {
     const type = inferredType === 'Position Transfer'
       ? 'Position Transfer'
       : isFx ? 'Currency Conversion' : side === 'SELL' || qty < 0 ? 'Sell' : side === 'BUY' ? 'Buy' : inferredType;
-    return {
+    return resolveSecurityIdentity({
       id: row.TransactionID || row.TradeID || row.IBExecID || '',
       date: compactDate(row.TradeDate || row.DateTime || row.ReportDate),
       settlementDate: compactDate(row.SettleDateTarget),
@@ -1101,7 +1141,7 @@ function parseIBKRSectionedReport(allRows, filename) {
       transferDirection: transferDirection(type),
       sourceAccount: row.FromAccount || row.SourceAccount || '',
       destinationAccount: row.ToAccount || row.DestinationAccount || '',
-    };
+    });
   });
 
   const cashTransactions = getSectionRows(sections, 'CTRN')
@@ -1116,7 +1156,7 @@ function parseIBKRSectionedReport(allRows, filename) {
       else if (/transfer/i.test(rawType) && amount < 0) type = 'Transfer Out';
       else if (/deposit/i.test(rawType) && amount >= 0) type = 'Deposit';
       else if (/withdraw/i.test(rawType) && amount < 0) type = 'Withdrawal';
-      return {
+      return resolveSecurityIdentity({
         id: row.TransactionID || row.TradeID || '',
         date: compactDate(row['Date/Time'] || row.ReportDate),
         settlementDate: compactDate(row.SettleDate),
@@ -1141,7 +1181,7 @@ function parseIBKRSectionedReport(allRows, filename) {
         transferDirection: transferDirection(type),
         sourceAccount: row.FromAccount || row.SourceAccount || '',
         destinationAccount: row.ToAccount || row.DestinationAccount || '',
-      };
+      });
     });
 
   const transactions = [...tradeTransactions, ...cashTransactions].filter(row => row.date);
@@ -1191,6 +1231,7 @@ function parseIBKRSectionedReport(allRows, filename) {
       openHoldings: positions,
       realizedPositions,
       transactions,
+      securityAmbiguities: buildSecurityAmbiguities([...positions, ...transactions, ...realizedPositions]),
       fxBalances: getSectionRows(sections, 'FXPO'),
       conversionRates: getSectionRows(sections, 'RATE'),
       securities: getSectionRows(sections, 'SECU'),
@@ -1243,11 +1284,11 @@ function composeWealthsimpleFiles(files) {
   const activityPositions = activityFiles.flatMap(parsed => bundleRows(parsed, 'positions'));
   const snapshotPositions = holdingsFiles.flatMap(parsed => bundleRows(parsed, 'positions'));
   const reconciliationWarnings = [];
-  const activityByKey = Object.fromEntries(activityPositions.map(row => [`${row.account || row.account_id || row.accountId}::${row.ticker}`, row]));
+  const activityByKey = Object.fromEntries(activityPositions.map(row => [`${row.account || row.account_id || row.accountId}::${securityKey(row)}`, row]));
 
   const positions = snapshotPositions.length
     ? snapshotPositions.map(position => {
-      const key = `${position.account || position.account_id || position.accountId}::${position.ticker}`;
+      const key = `${position.account || position.account_id || position.accountId}::${securityKey(position)}`;
       const activityPosition = activityByKey[key];
       const snapshotQty = Number(position.quantity || 0);
       const activityQty = Number(activityPosition?.quantity || 0);
@@ -1306,6 +1347,7 @@ function composeWealthsimpleFiles(files) {
       openHoldings: positions,
       realizedPositions,
       transactions,
+      securityAmbiguities: buildSecurityAmbiguities([...positions, ...transactions, ...realizedPositions]),
       sectionSummary,
       securities: [],
       sourceFiles,

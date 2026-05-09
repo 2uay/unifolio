@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import {
   parseFile, parseRows, parseHoldingsRows, composeParsedImports, BROKER_LABELS, FIELD_LABELS,
 } from '@/lib/csvParser';
+import { applySecurityChoice, buildSecurityAmbiguities } from '@/lib/securityIdentity';
 import { bankExportInstructions, downloadInstructionAsset } from '@/lib/bankExportInstructions';
 import { saveParsedImport } from '@/lib/importPersistence';
 import { COLUMN_DEFINITIONS } from '@/lib/columnConfig';
@@ -29,9 +30,16 @@ function saveHistory(entry) {
 
 // ─── STEP INDICATOR ──────────────────────────────────────────
 
-function StepIndicator({ step, hasTransfers }) {
-  const steps = ['Upload', 'Map & Preview', 'Accounts', ...(hasTransfers ? ['Transfers'] : []), 'Confirm'];
-  const visibleStep = !hasTransfers && step === 5 ? 4 : step;
+function StepIndicator({ step, hasTransfers, hasSecurityReview }) {
+  const steps = ['Upload', 'Map & Preview', ...(hasSecurityReview ? ['Securities'] : []), 'Accounts', ...(hasTransfers ? ['Transfers'] : []), 'Confirm'];
+  const activeLabel = step === 1 ? 'Upload'
+    : step === 2 ? 'Map & Preview'
+    : step === 3 && hasSecurityReview ? 'Securities'
+    : (step === 3 || step === 4) && !hasSecurityReview ? 'Accounts'
+    : step === 4 ? 'Accounts'
+    : step === 5 && hasTransfers ? 'Transfers'
+    : 'Confirm';
+  const visibleStep = Math.max(1, steps.indexOf(activeLabel) + 1);
   return (
     <div className="flex items-center gap-1">
       {steps.map((label, i) => {
@@ -347,6 +355,97 @@ function applyAccountResolutions(parsed, resolutions) {
       accountResolutions: resolutions,
     },
   };
+}
+
+function getSecurityAmbiguities(parsed) {
+  const bundle = parsed?.importBundle || {};
+  const rows = [
+    ...(bundle.positions || parsed?.valid || []),
+    ...(bundle.transactions || []),
+    ...(bundle.realizedPositions || []),
+  ];
+  return bundle.securityAmbiguities || buildSecurityAmbiguities(rows);
+}
+
+function applySecurityChoices(parsed, choices) {
+  const patchRows = rows => (rows || []).map(row => {
+    const ambiguity = getSecurityAmbiguities(parsed).find(item => item.rows?.includes(row.id || row.tradeId)
+      || `${row.account || row.account_id || row.accountId || ''}::${row.underlying_ticker || row.raw_ticker || row.ticker}` === item.id);
+    const choice = ambiguity ? choices[ambiguity.id] : null;
+    return choice ? applySecurityChoice(row, choice) : row;
+  });
+  const bundle = parsed.importBundle || {};
+  const positions = patchRows(bundle.positions || parsed.valid || []);
+  const transactions = patchRows(bundle.transactions || []);
+  const realizedPositions = patchRows(bundle.realizedPositions || []);
+  return {
+    ...parsed,
+    valid: parsed.isHoldings ? positions : transactions,
+    importBundle: {
+      ...bundle,
+      positions,
+      openHoldings: positions,
+      transactions,
+      realizedPositions,
+      securityAmbiguities: [],
+      securityChoices: choices,
+    },
+  };
+}
+
+function SecurityReviewStep({ parsed, onApply, onBack }) {
+  const ambiguities = useMemo(() => getSecurityAmbiguities(parsed), [parsed]);
+  const [choices, setChoices] = useState(() => Object.fromEntries(
+    ambiguities.map(item => [item.id, item.candidates[0]])
+  ));
+  const apply = () => onApply(applySecurityChoices(parsed, choices));
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+        <p className="text-sm font-semibold text-foreground">Confirm ambiguous listings</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          These rows could represent different listings or CDRs. Choose the traded security so lots, realized gains, and live prices stay separate.
+        </p>
+      </div>
+      <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
+        <div className="divide-y divide-border/20">
+          {ambiguities.map(item => (
+            <div key={item.id} className="grid gap-3 px-4 py-3 md:grid-cols-[180px_1fr]">
+              <div>
+                <p className="text-xs font-semibold text-foreground">{item.rawTicker}</p>
+                <p className="text-[10px] text-muted-foreground">{item.account || 'Imported account'} · {item.rows?.length || 0} row refs</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {item.candidates.map(candidate => {
+                  const selected = choices[item.id]?.security_key === candidate.security_key;
+                  return (
+                    <button
+                      key={candidate.security_key}
+                      type="button"
+                      onClick={() => setChoices(prev => ({ ...prev, [item.id]: candidate }))}
+                      className={cn(
+                        'rounded-lg border px-3 py-2 text-left transition-colors',
+                        selected ? 'border-primary bg-primary/10' : 'border-border/40 bg-secondary/20 hover:border-primary/40'
+                      )}
+                    >
+                      <p className="text-xs font-semibold text-foreground">{candidate.display_ticker}</p>
+                      <p className="text-[10px] text-muted-foreground">{candidate.quote_symbol} · {candidate.listing_exchange || 'Exchange unknown'} · {candidate.listing_currency}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{candidate.reason || candidate.confidence}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center justify-between pt-1">
+        <Button variant="outline" size="sm" onClick={onBack}><ChevronLeft className="h-3.5 w-3.5 mr-1" />Back</Button>
+        <Button size="sm" onClick={apply}>Confirm securities <ChevronRight className="h-3.5 w-3.5 ml-1" /></Button>
+      </div>
+    </div>
+  );
 }
 
 function MapPreviewStep({ parsed, onUpdateMap, onNext, onBack }) {
@@ -1005,6 +1104,7 @@ export default function ImportCenter() {
   const [completedSession, setCompletedSession] = useState([]);
   const { accounts: existingAccounts = [], institutions = [] } = usePortfolioData();
   const hasTransfers = useMemo(() => buildTransferGroups(parsed).length > 0, [parsed]);
+  const hasSecurityReview = useMemo(() => getSecurityAmbiguities(parsed).length > 0, [parsed]);
 
   const handleParsed = (bundles) => {
     const queue = Array.isArray(bundles) ? bundles : [bundles].filter(Boolean);
@@ -1029,8 +1129,9 @@ export default function ImportCenter() {
   const handleBack = () => {
     if (step === 2) { setParsed(null); setStep(1); }
     else if (step === 3) setStep(2);
-    else if (step === 4) setStep(3);
-    else if (step === 5) setStep(hasTransfers ? 4 : 3);
+    else if (step === 4) setStep(hasSecurityReview ? 3 : 2);
+    else if (step === 5) setStep(4);
+    else if (step === 6) setStep(hasTransfers ? 5 : 4);
     else setStep(null);
   };
 
@@ -1076,7 +1177,7 @@ export default function ImportCenter() {
 
       {step !== null && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/30 bg-card/40 px-4 py-3">
-          <StepIndicator step={step} hasTransfers={hasTransfers} />
+          <StepIndicator step={step} hasTransfers={hasTransfers} hasSecurityReview={hasSecurityReview} />
           {importQueue.length > 1 && (
             <span className="text-[11px] text-muted-foreground">
               Group {queueIndex + 1} of {importQueue.length}
@@ -1112,31 +1213,39 @@ export default function ImportCenter() {
         <MapPreviewStep
           parsed={parsed}
           onUpdateMap={handleUpdateMap}
-          onNext={() => setStep(3)}
+          onNext={() => setStep(hasSecurityReview ? 3 : 4)}
           onBack={handleBack}
         />
       )}
 
-      {step === 3 && parsed && (
-        <AccountHandlingStep
+      {step === 3 && parsed && hasSecurityReview && (
+        <SecurityReviewStep
           parsed={parsed}
-          existingAccounts={existingAccounts}
-          institutions={institutions}
-          onApply={(nextParsed) => { setParsed(nextParsed); setStep(hasTransfers ? 4 : 5); }}
+          onApply={(nextParsed) => { setParsed(nextParsed); setStep(4); }}
           onBack={handleBack}
         />
       )}
 
       {step === 4 && parsed && (
-        <TransferContextStep
+        <AccountHandlingStep
           parsed={parsed}
-          onApply={(nextParsed) => { setParsed(nextParsed); setStep(5); }}
-          onSkip={(nextParsed) => { setParsed(nextParsed); setStep(5); }}
+          existingAccounts={existingAccounts}
+          institutions={institutions}
+          onApply={(nextParsed) => { setParsed(nextParsed); setStep(buildTransferGroups(nextParsed).length > 0 ? 5 : 6); }}
           onBack={handleBack}
         />
       )}
 
       {step === 5 && parsed && (
+        <TransferContextStep
+          parsed={parsed}
+          onApply={(nextParsed) => { setParsed(nextParsed); setStep(6); }}
+          onSkip={(nextParsed) => { setParsed(nextParsed); setStep(6); }}
+          onBack={handleBack}
+        />
+      )}
+
+      {step === 6 && parsed && (
           <ConfirmStep
           parsed={parsed}
           onBack={handleBack}

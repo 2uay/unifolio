@@ -4,17 +4,13 @@ import SimulatedDataLabel from '@/components/shared/SimulatedDataLabel';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { CustomPieTooltip } from '@/lib/chartTooltip';
 import DashboardPortfolioChart from '@/components/dashboard/DashboardPortfolioChart';
-import SlidingStockUpdater from '@/components/dashboard/SlidingStockUpdater';
 import { formatCurrency, PnlValue, StatCard, MiniSparkline } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
-import { cn } from '@/lib/utils';
 import { safeNumber, safeDivide } from '@/lib/safeNum';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useTheme } from '@/lib/ThemeContext';
 import { useCurrency } from '@/lib/CurrencyContext';
-import { useLiveHoldings } from '@/hooks/useLiveHoldings';
 import { useLiveData } from '@/lib/LiveDataContext';
-import SimulatedLiveLabel from '@/components/shared/SimulatedLiveLabel';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 
@@ -23,7 +19,7 @@ export default function Dashboard() {
   const { chartColors } = useTheme();
   const { convert, displayCurrency } = useCurrency();
   const { registerTicker, liveHoldings } = useLiveData();
-  const { holdings, accounts, getAccount, getInstitutionForAccount, isEmptyPortfolio, isSample } = usePortfolioData();
+  const { holdings, accounts, getAccount, getInstitutionForAccount, isEmptyPortfolio, isSample, calcContributionTotals } = usePortfolioData();
   const PM = '••••••';
 
   const allAccountIds = useMemo(() => accounts.filter((a) => a.included_in_portfolio !== false && !a.excluded).map((a) => a.id), [accounts]);
@@ -32,14 +28,14 @@ export default function Dashboard() {
   // Register all tickers
   useEffect(() => {
     baseActiveHoldings.forEach((h) => {
-      registerTicker(h.ticker, h.asset_class ?? h.assetClass ?? 'stock');
+      registerTicker(h.quote_symbol || h.ticker, h.asset_class ?? h.assetClass ?? 'stock');
     });
   }, [registerTicker, baseActiveHoldings]);
 
   // Enhanced live holdings with recalculated values
   const activeHoldings = useMemo(() => {
     return baseActiveHoldings.map((holding) => {
-      const ticker = holding.ticker;
+      const ticker = holding.quote_symbol || holding.ticker;
       const liveData = liveHoldings[ticker];
       const livePrice = liveData?.price;
 
@@ -99,6 +95,14 @@ export default function Dashboard() {
     return { totalValue, totalDailyPnl, totalUnrealizedGain, cashTotal };
   }, [holdingsForTotals, allAccountIds, convert, displayCurrency]);
 
+  const contributionTotals = calcContributionTotals();
+  const convertedDeposited = useMemo(() => Object.entries(contributionTotals.byCurrency || {}).reduce((sum, [currency, value]) => (
+    sum + convert(safeNumber(value.deposited), currency)
+  ), 0), [contributionTotals, convert, displayCurrency]);
+  const convertedNetContributions = useMemo(() => Object.entries(contributionTotals.byCurrency || {}).reduce((sum, [currency, value]) => (
+    sum + convert(safeNumber(value.deposited) - safeNumber(value.withdrawn), currency)
+  ), 0), [contributionTotals, convert, displayCurrency]);
+
   const topMovers = useMemo(() => [...activeHoldings].
   sort((a, b) => Math.abs(convert(safeNumber(b.daily_pnl_amount), b.currency || 'USD')) - Math.abs(convert(safeNumber(a.daily_pnl_amount), a.currency || 'USD'))).
   slice(0, 6), [activeHoldings, convert, displayCurrency]);
@@ -146,7 +150,7 @@ export default function Dashboard() {
       
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
         <StatCard
           title={`Total Portfolio (${displayCurrency})`}
           value={formatCurrency(totals.totalValue)}
@@ -173,6 +177,11 @@ export default function Dashboard() {
           value={formatCurrency(totals.cashTotal)}
           icon={Wallet}
           subtitle={`${(safeDivide(totals.cashTotal, totals.totalValue) * 100).toFixed(1)}% of portfolio`} />
+        <StatCard
+          title="Total Deposited"
+          value={privacyMode ? PM : formatCurrency(convertedDeposited)}
+          icon={Zap}
+          subtitle={`Net ${privacyMode ? PM : formatCurrency(convertedNetContributions)}`} />
         
       </div>
 

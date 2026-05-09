@@ -59,13 +59,13 @@ function formatMMDDYYYY(date) {
 function buildRealizedTickerGroups(rows) {
   const groups = {};
   rows.forEach(row => {
-    const ticker = row.ticker?.toUpperCase();
+    const ticker = (row.security_key || row.securityKey || row.ticker)?.toUpperCase();
     if (!ticker) return;
     if (!groups[ticker]) {
       groups[ticker] = {
         ...row,
         id: `realized-stack-${ticker}`,
-        ticker,
+        ticker: row.ticker?.toUpperCase() || ticker,
         name: row.name || row.asset_name || ticker,
         quantity: 0,
         total_cost_basis: 0,
@@ -158,9 +158,17 @@ export default function Holdings() {
     getInstitutionForAccount,
     calcPortfolioTotals,
     calcAccountValue,
+    calcContributionTotals,
   } = usePortfolioData();
   const PM = '••••••'; // privacy mask shorthand
   const totals = calcPortfolioTotals();
+  const contributionTotals = calcContributionTotals();
+  const convertedDeposited = useMemo(() => Object.entries(contributionTotals.byCurrency || {}).reduce((sum, [currency, value]) => (
+    sum + convert(safeNumber(value.deposited), currency)
+  ), 0), [contributionTotals, convert, displayCurrency]);
+  const convertedNetContributions = useMemo(() => Object.entries(contributionTotals.byCurrency || {}).reduce((sum, [currency, value]) => (
+    sum + convert(safeNumber(value.deposited) - safeNumber(value.withdrawn), currency)
+  ), 0), [contributionTotals, convert, displayCurrency]);
 
   const isRealizedExpanded = (key) => expandedRealizedKeys.has(key);
   const toggleRealizedExpanded = (key) => {
@@ -212,7 +220,7 @@ export default function Holdings() {
   // Register tickers for live updates
   useEffect(() => {
     holdings.filter(h => h.quantity > 0).forEach(h => {
-      registerTicker(h.ticker, h.asset_class ?? h.assetClass ?? 'stock');
+      registerTicker(h.quote_symbol || h.ticker, h.asset_class ?? h.assetClass ?? 'stock');
     });
   }, [registerTicker]);
 
@@ -307,7 +315,7 @@ export default function Holdings() {
   const baseHoldings = useMemo(() => filterHoldingsByDate(holdings, dateFilter), [dateFilter]);
   const liveUpdatedBaseHoldings = useMemo(() => {
     return baseHoldings.map(holding => {
-      const ticker = holding.ticker;
+      const ticker = holding.quote_symbol || holding.ticker;
       const liveData = liveHoldings[ticker];
       const livePrice = liveData?.price;
       
@@ -463,17 +471,18 @@ export default function Holdings() {
    const unmatched = [];
 
    filteredRealized.forEach(r => {
-     const rTicker = r.ticker?.toUpperCase();
+     const rTicker = (r.security_key || r.securityKey || r.ticker)?.toUpperCase();
      const rAccount = r.account_id ?? r.accountId;
 
      // A realized position should only nest under an active holding that shares
      // the same account — prevents IBKR closed LLY from nesting under a
      // Wealthsimple active LLY that happens to share the same ticker string.
      const matchingActive = displayHoldings.find(h => {
-       if (h.ticker?.toUpperCase() !== rTicker) return false;
+       if ((h.security_key || h.securityKey || h.ticker)?.toUpperCase() !== rTicker) return false;
        if (h._isStacked && h._stackedChildren) {
          return h._stackedChildren.some(c =>
            (c.account_id ?? c.accountId) === rAccount
+           && ((c.security_key || c.securityKey || c.ticker)?.toUpperCase() === rTicker)
          );
        }
        return (h.account_id ?? h.accountId) === rAccount;
@@ -954,6 +963,17 @@ export default function Holdings() {
           <span>Showing estimated holdings as of <strong>{dateFilter.label}</strong> based on purchase history. Connect full transaction history for greater accuracy.</span>
         </div>
       )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rounded-lg border border-border/30 bg-card/50 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Deposited</p>
+          <p className="mt-1 font-mono text-sm font-semibold">{privacyMode ? PM : formatCurrency(convertedDeposited)}</p>
+        </div>
+        <div className="rounded-lg border border-border/30 bg-card/50 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Net Contributions</p>
+          <p className="mt-1 font-mono text-sm font-semibold">{privacyMode ? PM : formatCurrency(convertedNetContributions)}</p>
+        </div>
+      </div>
 
       {/* Realized + Stack toggles */}
       <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">

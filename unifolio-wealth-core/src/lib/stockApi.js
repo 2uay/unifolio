@@ -135,7 +135,7 @@ function inferQuoteSymbol(row = {}) {
 
 function normalizeBrokerRows(rows = []) {
   return rows.reduce((acc, row) => {
-    const ticker = row?.ticker;
+    const ticker = row?.quote_symbol || row?.quoteSymbol || row?.ticker;
     if (!ticker || acc[ticker]) return acc;
     const brokerPrice = asFiniteNumber(row.current_price ?? row.lastPrice ?? row.price);
     if (isUsablePrice(brokerPrice)) {
@@ -144,7 +144,7 @@ function normalizeBrokerRows(rows = []) {
         previous_close: brokerPrice,
         price_source: 'broker',
         valuation_status: 'broker_fallback',
-        quote_symbol: row.quote_symbol || inferQuoteSymbol(row),
+        quote_symbol: row.quote_symbol || row.quoteSymbol || inferQuoteSymbol(row),
       };
     }
     return acc;

@@ -16,6 +16,7 @@ import { safeNumber, safeDivide } from '@/lib/safeNum';
 import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
 import { fetchValidatedPrices, fetchHistoricalPricesForTickers } from '@/lib/stockApi';
 import { getLocallyDeletedAccountIds, isLocalDeleteAllPending } from '@/lib/dataDeletion';
+import { displayTicker, securityKey } from '@/lib/securityIdentity';
 
 const PortfolioDataContext = createContext(null);
 
@@ -42,7 +43,16 @@ function withAliases(holding, accountMap = {}) {
     id: holding.id,
     account_id: holding.account_id ?? holding.accountId,
     accountId: holding.account_id ?? holding.accountId,
-    ticker: holding.ticker,
+    ticker: displayTicker(holding) || holding.ticker,
+    security_key: securityKey(holding),
+    securityKey: securityKey(holding),
+    display_ticker: displayTicker(holding) || holding.ticker,
+    quote_symbol: holding.quote_symbol ?? holding.quoteSymbol ?? holding.ticker,
+    listing_exchange: holding.listing_exchange ?? holding.listingExchange ?? holding.exchange ?? '',
+    listing_currency: holding.listing_currency ?? holding.listingCurrency ?? holding.currency ?? account?.base_currency ?? 'USD',
+    security_identity: holding.security_identity ?? holding.securityIdentity ?? '',
+    identity_confidence: holding.identity_confidence ?? holding.identityConfidence ?? '',
+    underlying_ticker: holding.underlying_ticker ?? holding.underlyingTicker ?? holding.ticker,
     name: holding.asset_name ?? holding.name ?? holding.ticker,
     quantity: qty,
     position: qty,
@@ -82,6 +92,15 @@ function normalizeTransaction(row) {
     ...row,
     account_id: row.account_id ?? row.accountId,
     accountId: row.account_id ?? row.accountId,
+    security_key: securityKey(row),
+    securityKey: securityKey(row),
+    display_ticker: displayTicker(row) || row.ticker,
+    quote_symbol: row.quote_symbol ?? row.quoteSymbol ?? row.ticker,
+    listing_exchange: row.listing_exchange ?? row.listingExchange ?? '',
+    listing_currency: row.listing_currency ?? row.listingCurrency ?? row.currency ?? 'USD',
+    security_identity: row.security_identity ?? row.securityIdentity ?? '',
+    identity_confidence: row.identity_confidence ?? row.identityConfidence ?? '',
+    underlying_ticker: row.underlying_ticker ?? row.underlyingTicker ?? row.ticker,
     transaction_type: type,
     type: String(type).toLowerCase().replace(/\s+/g, '_'),
     qty: safeNumber(row.quantity),
@@ -108,7 +127,16 @@ function normalizeRealized(row) {
     ...row,
     account_id: row.account_id ?? row.accountId,
     accountId: row.account_id ?? row.accountId,
-    ticker: row.ticker,
+    ticker: displayTicker(row) || row.ticker,
+    security_key: securityKey(row),
+    securityKey: securityKey(row),
+    display_ticker: displayTicker(row) || row.ticker,
+    quote_symbol: row.quote_symbol ?? row.quoteSymbol ?? row.ticker,
+    listing_exchange: row.listing_exchange ?? row.listingExchange ?? row.exchange ?? '',
+    listing_currency: row.listing_currency ?? row.listingCurrency ?? row.currency ?? 'USD',
+    security_identity: row.security_identity ?? row.securityIdentity ?? '',
+    identity_confidence: row.identity_confidence ?? row.identityConfidence ?? '',
+    underlying_ticker: row.underlying_ticker ?? row.underlyingTicker ?? row.ticker,
     name: row.asset_name ?? row.name ?? row.ticker,
     asset_class: row.asset_class ?? row.assetClass ?? 'Stock',
     assetClass: row.asset_class ?? row.assetClass ?? 'Stock',
@@ -154,8 +182,8 @@ async function buildHistoricalSnapshots(holdings, accounts, transactions) {
   const tradeTickers = [...new Set([
     ...sorted
       .filter(t => t.ticker)
-      .map(t => t.ticker),
-    ...holdings.filter(h => h.ticker && safeNumber(h.quantity) > 0).map(h => h.ticker),
+      .map(t => t.quote_symbol || t.ticker),
+    ...holdings.filter(h => h.ticker && safeNumber(h.quantity) > 0).map(h => h.quote_symbol || h.ticker),
   ].filter(Boolean))];
 
   // Fetch historical closing prices per ticker
@@ -171,8 +199,9 @@ async function buildHistoricalSnapshots(holdings, accounts, transactions) {
   // Seed last-known prices from current holdings so gaps near today are filled
   const lastKnownPrice = {};
   holdings.forEach(h => {
-    if (h.ticker && safeNumber(h.current_price) > 0) {
-      lastKnownPrice[h.ticker] = safeNumber(h.current_price);
+    const priceKey = h.quote_symbol || h.ticker;
+    if (priceKey && safeNumber(h.current_price) > 0) {
+      lastKnownPrice[priceKey] = safeNumber(h.current_price);
     }
   });
 
@@ -194,7 +223,7 @@ async function buildHistoricalSnapshots(holdings, accounts, transactions) {
     while (txIdx < sorted.length && String(sorted[txIdx].date).slice(0, 10) <= date) {
       const t = sorted[txIdx];
       const rawType = String(t.transaction_type ?? t.type ?? '').toLowerCase().trim();
-      const ticker = t.ticker;
+      const ticker = t.quote_symbol || t.ticker;
       const qty = safeNumber(t.quantity ?? t.qty);
       const amount = Math.abs(safeNumber(t.total_amount ?? t.total));
 
@@ -273,7 +302,7 @@ async function buildHistoricalSnapshots(holdings, accounts, transactions) {
 async function enrichHoldingsWithMarketData(holdings) {
   const activeTickers = [...new Set(holdings
     .filter(h => safeNumber(h.quantity) > 0)
-    .map(h => h.ticker)
+    .map(h => h.quote_symbol || h.ticker)
     .filter(Boolean))];
 
   if (activeTickers.length === 0) return holdings;
@@ -286,7 +315,8 @@ async function enrichHoldingsWithMarketData(holdings) {
   }
 
   return holdings.map(holding => {
-    const quote = quotes[holding.ticker];
+    const quoteKey = holding.quote_symbol || holding.ticker;
+    const quote = quotes[quoteKey];
     const qty = safeNumber(holding.quantity);
     const brokerPrice = safeNumber(holding.current_price ?? holding.lastPrice ?? holding.price);
     const validatedPrice = safeNumber(quote?.current_price, null);
@@ -319,6 +349,74 @@ async function enrichHoldingsWithMarketData(holdings) {
       price_source: priceSource,
       valuation_status: valuationStatus,
       quote_rejected: quote?.rejected_quote || null,
+    };
+  });
+}
+
+function isExternalCashContribution(t, knownAccountIds) {
+  const type = String(t.transaction_type ?? t.type ?? '').toLowerCase().replace(/\s+/g, '_');
+  const hasTicker = Boolean(t.ticker);
+  const source = t.source_account_id || t.transfer_context?.sourceAccount || '';
+  const destination = t.destination_account_id || t.transfer_context?.destinationAccount || '';
+  const internalTransfer = knownAccountIds.has(source) && knownAccountIds.has(destination);
+  if (hasTicker || internalTransfer) return null;
+  if (type === 'deposit' || type === 'transfer_in') return 'deposit';
+  if (type === 'withdrawal' || type === 'transfer_out') return 'withdrawal';
+  return null;
+}
+
+function calculateContributionTotals(transactions = [], accounts = []) {
+  const knownAccountIds = new Set(accounts.flatMap(a => [a.id, a.account_name]).filter(Boolean));
+  return transactions.reduce((totals, t) => {
+    const kind = isExternalCashContribution(t, knownAccountIds);
+    if (!kind) return totals;
+    const amount = Math.abs(safeNumber(t.total_amount ?? t.total ?? t.netAmount ?? t.grossAmount));
+    if (kind === 'deposit') totals.totalDeposited += amount;
+    if (kind === 'withdrawal') totals.totalWithdrawn += amount;
+    totals.byCurrency[t.currency || 'USD'] = totals.byCurrency[t.currency || 'USD'] || { deposited: 0, withdrawn: 0 };
+    totals.byCurrency[t.currency || 'USD'][kind === 'deposit' ? 'deposited' : 'withdrawn'] += amount;
+    totals.netContributions = totals.totalDeposited - totals.totalWithdrawn;
+    return totals;
+  }, { totalDeposited: 0, totalWithdrawn: 0, netContributions: 0, byCurrency: {} });
+}
+
+function applyTransferContextToHoldings(holdings = [], transactions = [], accounts = []) {
+  const accountLookup = new Map(accounts.flatMap(a => [[a.id, a], [a.account_name, a]].filter(([key]) => key)));
+  const activeTransfers = transactions
+    .filter(t => ['position_transfer', 'transfer_in', 'transfer_out'].includes(t.type))
+    .filter(t => t.ticker && safeNumber(t.quantity) > 0)
+    .filter(t => t.destination_account_id || t.transfer_context?.destinationAccount);
+
+  if (!activeTransfers.length) return holdings;
+
+  return holdings.map(holding => {
+    const match = activeTransfers.find(t => {
+      const sameSecurity = securityKey(t) === securityKey(holding);
+      const sameSource = !t.source_account_id || t.source_account_id === holding.account_id || t.transfer_context?.sourceAccount === holding.account_id;
+      return sameSecurity && sameSource && Math.abs(safeNumber(t.quantity) - safeNumber(holding.quantity)) <= Math.max(0.01, safeNumber(holding.quantity) * 0.01);
+    });
+    if (!match) return holding;
+    const destinationRaw = match.destination_account_id || match.transfer_context?.destinationAccount;
+    const destination = accountLookup.get(destinationRaw);
+    if (!destination?.id || destination.id === holding.account_id) return holding;
+    return {
+      ...holding,
+      account_id: destination.id,
+      accountId: destination.id,
+      accountType: destination.account_type || holding.accountType,
+      transfer_context: match.transfer_context,
+      purchase_history: (holding.purchase_history || []).map(lot => ({
+        ...lot,
+        transferDate: match.date,
+        sourceAccount: match.source_account_id || match.transfer_context?.sourceAccount || holding.account_id,
+        destinationAccount: destination.id,
+      })),
+      purchaseHistory: (holding.purchase_history || []).map(lot => ({
+        ...lot,
+        transferDate: match.date,
+        sourceAccount: match.source_account_id || match.transfer_context?.sourceAccount || holding.account_id,
+        destinationAccount: destination.id,
+      })),
     };
   });
 }
@@ -370,8 +468,8 @@ function loadLocalImportedBundle() {
     if (accounts.length === 0 && holdingsRaw.length === 0) return null;
 
     const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
-    const holdings = holdingsRaw.map(h => withAliases(h, accountMap));
     const transactions = (stored.transactions || []).filter(keepAccount).map(normalizeTransaction);
+    const holdings = applyTransferContextToHoldings(holdingsRaw.map(h => withAliases(h, accountMap)), transactions, accounts);
     const realizedPositions = (stored.realizedPositions || []).filter(keepAccount).map(normalizeRealized);
     const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 
@@ -451,8 +549,9 @@ export function PortfolioDataProvider({ children }) {
       }
 
       const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
-      const holdings = await enrichHoldingsWithMarketData(holdingsRaw.map(h => withAliases(h, accountMap)));
       const transactions = (transactionsRes.data || []).filter(keepAccount).map(normalizeTransaction);
+      const transferAdjusted = applyTransferContextToHoldings(holdingsRaw.map(h => withAliases(h, accountMap)), transactions, accounts);
+      const holdings = await enrichHoldingsWithMarketData(transferAdjusted);
       const realizedPositions = realizedRes.error ? [] : (realizedRes.data || []).filter(keepAccount).map(normalizeRealized);
       const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 
@@ -529,15 +628,52 @@ export function PortfolioDataProvider({ children }) {
         accountCount: bundle.accounts.length,
       };
     };
-    return { getAccount, getInstitution, getInstitutionForAccount, calcAccountValue, calcPortfolioTotals };
+    const calcContributionTotals = () => calculateContributionTotals(bundle.transactions, bundle.accounts);
+    return { getAccount, getInstitution, getInstitutionForAccount, calcAccountValue, calcPortfolioTotals, calcContributionTotals };
   }, [bundle]);
+
+  const updateTransferTransaction = useCallback(async (transactionId, updates) => {
+    if (!transactionId) throw new Error('Missing transaction id.');
+    const now = new Date().toISOString();
+    const patch = {
+      source_account_id: updates.source_account_id ?? updates.sourceAccount ?? '',
+      destination_account_id: updates.destination_account_id ?? updates.destinationAccount ?? '',
+      transfer_context: updates.transfer_context ?? updates.transferContext ?? {},
+      notes: updates.notes ?? '',
+      transfer_edited_at: now,
+    };
+
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem(IMPORT_PORTFOLIO_KEY) || 'null');
+        if (stored?.transactions) {
+          stored.transactions = stored.transactions.map(row => row.id === transactionId ? { ...row, ...patch } : row);
+          localStorage.setItem(IMPORT_PORTFOLIO_KEY, JSON.stringify(stored));
+        }
+      } catch {
+        // Supabase remains authoritative when local fallback cannot be updated.
+      }
+    }
+
+    if (user?.id) {
+      const { error } = await supabase
+        .from('transactions')
+        .update(patch)
+        .eq('user_id', user.id)
+        .eq('id', transactionId);
+      if (error) throw error;
+    }
+
+    await refreshPortfolioData();
+  }, [refreshPortfolioData, user?.id]);
 
   const value = useMemo(() => ({
     ...bundle,
     ...helpers,
     isLoadingPortfolio,
     refreshPortfolioData,
-  }), [bundle, helpers, isLoadingPortfolio, refreshPortfolioData]);
+    updateTransferTransaction,
+  }), [bundle, helpers, isLoadingPortfolio, refreshPortfolioData, updateTransferTransaction]);
 
   return <PortfolioDataContext.Provider value={value}>{children}</PortfolioDataContext.Provider>;
 }
@@ -551,6 +687,7 @@ export function usePortfolioData() {
     getAccount: () => null,
     calcAccountValue: () => 0,
     calcPortfolioTotals: () => ({}),
+    calcContributionTotals: () => ({ totalDeposited: 0, totalWithdrawn: 0, netContributions: 0, byCurrency: {} }),
     ...context,
   };
 }

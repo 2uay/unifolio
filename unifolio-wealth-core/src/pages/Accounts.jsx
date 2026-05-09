@@ -31,7 +31,7 @@ export default function Accounts() {
   const PM = '••••••';
   const queryClient = useQueryClient();
   const { registerTicker, liveHoldings: liveMarketData } = useLiveData();
-  const { accounts, holdings, getInstitution, calcAccountValue, isEmptyPortfolio, refreshPortfolioData } = usePortfolioData();
+  const { accounts, holdings, getInstitution, calcAccountValue, isEmptyPortfolio, refreshPortfolioData, calcContributionTotals } = usePortfolioData();
   const { user } = useAuth();
   const safeAccounts = useMemo(() => Array.isArray(accounts) ? accounts.filter(Boolean) : [], [accounts]);
   const safeHoldings = useMemo(() => Array.isArray(holdings) ? holdings.filter(Boolean) : [], [holdings]);
@@ -40,14 +40,14 @@ export default function Accounts() {
   useEffect(() => {
     safeHoldings.filter(h => safeNumber(h.quantity ?? h.position) > 0).forEach(h => {
       if (!h.ticker) return;
-      registerTicker(h.ticker, h.asset_class ?? h.assetClass ?? 'stock');
+      registerTicker(h.quote_symbol || h.ticker, h.asset_class ?? h.assetClass ?? 'stock');
     });
   }, [registerTicker, safeHoldings]);
 
   // Use live-updated holdings for account values with recalculated dependent values
   const liveHoldings = useMemo(() => {
     return safeHoldings.map(holding => {
-      const ticker = holding.ticker;
+      const ticker = holding.quote_symbol || holding.ticker;
       const liveData = ticker ? liveMarketData?.[ticker] : null;
       const livePrice = liveData?.price;
       
@@ -174,6 +174,13 @@ export default function Accounts() {
   const investmentTotal = useMemo(() =>
     Object.values(typeTotals).reduce((s, v) => s + v, 0),
     [typeTotals]);
+  const contributionTotals = calcContributionTotals();
+  const convertedDeposited = useMemo(() => Object.entries(contributionTotals.byCurrency || {}).reduce((sum, [currency, value]) => (
+    sum + convert(safeNumber(value.deposited), currency)
+  ), 0), [contributionTotals, convert, displayCurrency]);
+  const convertedNetContributions = useMemo(() => Object.entries(contributionTotals.byCurrency || {}).reduce((sum, [currency, value]) => (
+    sum + convert(safeNumber(value.deposited) - safeNumber(value.withdrawn), currency)
+  ), 0), [contributionTotals, convert, displayCurrency]);
 
   // ── Custom asset totals (convert each to display currency) ────
   const includedAssets = customAssets.filter(a => a.include_in_net_value !== false);
@@ -221,6 +228,19 @@ export default function Accounts() {
         customAssetsNet={customAssetsNet}
         customAssetsCount={customAssets.length}
       />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Deposited</p>
+          <p className="text-lg font-bold font-mono mt-1">{privacyMode ? PM : formatCurrency(convertedDeposited)}</p>
+          <p className="text-xs text-muted-foreground mt-1">External cash in</p>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Net Contributions</p>
+          <p className="text-lg font-bold font-mono mt-1">{privacyMode ? PM : formatCurrency(convertedNetContributions)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Deposits minus withdrawals</p>
+        </div>
+      </div>
 
       {/* Account Type Totals */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

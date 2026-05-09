@@ -72,6 +72,14 @@ alter table holdings add column if not exists sector text default 'Unknown';
 alter table holdings add column if not exists conid text;
 alter table holdings add column if not exists report_date date;
 alter table holdings add column if not exists import_batch_id text;
+alter table holdings add column if not exists security_key text;
+alter table holdings add column if not exists display_ticker text;
+alter table holdings add column if not exists quote_symbol text;
+alter table holdings add column if not exists listing_exchange text;
+alter table holdings add column if not exists listing_currency text;
+alter table holdings add column if not exists security_identity text;
+alter table holdings add column if not exists identity_confidence text;
+alter table holdings add column if not exists underlying_ticker text;
 
 -- Transactions
 create table if not exists transactions (
@@ -102,6 +110,15 @@ alter table transactions add column if not exists transfer_direction text;
 alter table transactions add column if not exists source_account_id text;
 alter table transactions add column if not exists destination_account_id text;
 alter table transactions add column if not exists transfer_context jsonb default '{}'::jsonb;
+alter table transactions add column if not exists security_key text;
+alter table transactions add column if not exists display_ticker text;
+alter table transactions add column if not exists quote_symbol text;
+alter table transactions add column if not exists listing_exchange text;
+alter table transactions add column if not exists listing_currency text;
+alter table transactions add column if not exists security_identity text;
+alter table transactions add column if not exists identity_confidence text;
+alter table transactions add column if not exists underlying_ticker text;
+alter table transactions add column if not exists transfer_edited_at timestamptz;
 
 -- Realized Positions
 create table if not exists realized_positions (
@@ -137,6 +154,14 @@ create policy "users own their realized positions" on realized_positions
   for all using (auth.uid() = user_id);
 create index if not exists realized_positions_user_close_idx
   on realized_positions (user_id, close_date desc);
+alter table realized_positions add column if not exists security_key text;
+alter table realized_positions add column if not exists display_ticker text;
+alter table realized_positions add column if not exists quote_symbol text;
+alter table realized_positions add column if not exists listing_exchange text;
+alter table realized_positions add column if not exists listing_currency text;
+alter table realized_positions add column if not exists security_identity text;
+alter table realized_positions add column if not exists identity_confidence text;
+alter table realized_positions add column if not exists underlying_ticker text;
 
 -- Import Batches
 -- Stores the normalized import payload for audit/replay without keeping the raw broker file.

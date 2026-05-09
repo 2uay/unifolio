@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { clearLocalDeleteTombstones } from '@/lib/dataDeletion';
+import { displayTicker, securityKey } from '@/lib/securityIdentity';
 
 const IMPORT_HISTORY_KEY = 'unifolio_import_history';
 export const IMPORT_PORTFOLIO_KEY = 'unifolio_latest_imported_portfolio';
@@ -132,7 +133,7 @@ function buildSummary(parsed) {
   const positions = bundle.positions || (parsed.isHoldings ? parsed.valid : []);
   const realizedPositions = bundle.realizedPositions || [];
   const transactions = bundle.transactions || (!parsed.isHoldings ? parsed.valid : []);
-  const uniqueTickers = new Set(positions.map(row => row.ticker).filter(Boolean));
+  const uniqueTickers = new Set(positions.map(row => securityKey(row) || row.ticker).filter(Boolean));
   const uniqueAccounts = new Set(positions.map(row => row.account).filter(Boolean));
   return {
     positions: positions.length,
@@ -312,6 +313,8 @@ export async function saveParsedImport(parsed) {
       conversionRateCount: (bundle.conversionRates || []).length,
       securities: bundle.securities || [],
       accountResolutions: resolutions,
+      securityChoices: bundle.securityChoices || {},
+      securityAmbiguities: bundle.securityAmbiguities || [],
       sourceFiles: bundle.sourceFiles || parsed.sourceFiles || [],
       reconciliationWarnings: bundle.reconciliationWarnings || parsed.reconciliationWarnings || [],
     },
@@ -324,10 +327,10 @@ export async function saveParsedImport(parsed) {
     .map(row => {
       const rowAccountId = accountIdForRaw(row.account || row.account_id || row.accountId || importedAccountId);
       return {
-      id: stableId(userId, rowAccountId, row.ticker),
+      id: stableId(userId, rowAccountId, securityKey(row) || row.ticker),
       user_id: userId,
       account_id: rowAccountId,
-      ticker: row.ticker,
+      ticker: displayTicker(row) || row.ticker,
       asset_name: row.name || row.asset_name || row.ticker,
       asset_class: row.asset_class || row.assetClass || 'Stock',
       sub_category: row.subCategory || null,
@@ -349,6 +352,14 @@ export async function saveParsedImport(parsed) {
       report_date: row.reportDate || null,
       import_batch_id: batchId,
       purchase_history: row.purchase_history || [],
+      security_key: securityKey(row) || null,
+      display_ticker: displayTicker(row) || row.ticker,
+      quote_symbol: row.quote_symbol || displayTicker(row) || row.ticker,
+      listing_exchange: row.listing_exchange || row.exchange || row.listingExchange || null,
+      listing_currency: row.listing_currency || row.currency || account.currency || 'USD',
+      security_identity: row.security_identity || null,
+      identity_confidence: row.identity_confidence || null,
+      underlying_ticker: row.underlying_ticker || row.raw_ticker || row.ticker,
       updated_at: now,
     };
     });
@@ -358,10 +369,10 @@ export async function saveParsedImport(parsed) {
     .map((row, index) => {
       const rowAccountId = accountIdForRaw(row.account || row.account_id || row.accountId || importedAccountId);
       return {
-      id: stableId(userId, rowAccountId, 'realized', row.tradeId || row.id || row.ticker, row.close_date, index),
+      id: stableId(userId, rowAccountId, 'realized', row.tradeId || row.id || securityKey(row) || row.ticker, row.close_date, index),
       user_id: userId,
       account_id: rowAccountId,
-      ticker: row.ticker,
+      ticker: displayTicker(row) || row.ticker,
       asset_name: row.name || row.asset_name || row.ticker,
       asset_class: row.asset_class || row.assetClass || 'Stock',
       sector: row.sector || 'Unknown',
@@ -382,6 +393,14 @@ export async function saveParsedImport(parsed) {
       source_section: row.sourceSection || 'TRNT',
       import_batch_id: batchId,
       broker_transaction_id: row.tradeId || '',
+      security_key: securityKey(row) || null,
+      display_ticker: displayTicker(row) || row.ticker,
+      quote_symbol: row.quote_symbol || displayTicker(row) || row.ticker,
+      listing_exchange: row.listing_exchange || row.exchange || null,
+      listing_currency: row.listing_currency || row.currency || account.currency || 'USD',
+      security_identity: row.security_identity || null,
+      identity_confidence: row.identity_confidence || null,
+      underlying_ticker: row.underlying_ticker || row.raw_ticker || row.ticker,
       updated_at: now,
     };
     });
@@ -396,7 +415,7 @@ export async function saveParsedImport(parsed) {
       account_id: rowAccountId,
       date: row.date,
       transaction_type: transactionTypeForDb(row.type),
-      ticker: row.ticker || null,
+      ticker: displayTicker(row) || row.ticker || null,
       quantity: Number(row.quantity || 0),
       price: Number(row.price || 0),
       total_amount: Number(row.netAmount || row.grossAmount || 0),
@@ -412,6 +431,14 @@ export async function saveParsedImport(parsed) {
       source_account_id: row.sourceAccount || '',
       destination_account_id: row.destinationAccount || '',
       transfer_context: row.transferContext || {},
+      security_key: securityKey(row) || null,
+      display_ticker: displayTicker(row) || row.ticker || null,
+      quote_symbol: row.quote_symbol || displayTicker(row) || row.ticker || null,
+      listing_exchange: row.listing_exchange || row.exchange || null,
+      listing_currency: row.listing_currency || row.currency || account.currency || 'USD',
+      security_identity: row.security_identity || null,
+      identity_confidence: row.identity_confidence || null,
+      underlying_ticker: row.underlying_ticker || row.raw_ticker || row.ticker || null,
       notes: [
         row.name,
         row.notes,

@@ -18,7 +18,7 @@ export function stackHoldings(holdings, { getAccount, getInstitutionForAccount }
   const order = []; // preserve first-seen order
 
   holdings.forEach(h => {
-    const key = (h.asset_id || h.ticker || h.name || 'unknown').toLowerCase();
+    const key = (h.asset_id || h.security_key || h.securityKey || h.ticker || h.name || 'unknown').toLowerCase();
     if (!groups.has(key)) {
       groups.set(key, []);
       order.push(key);
