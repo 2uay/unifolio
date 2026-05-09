@@ -35,17 +35,6 @@ const SCATTER_DOTS = [
 ];
 
 const DOT_POP_ORDER_MS = [180, 520, 300, 1180, 760, 1460, 1040, 2140, 410, 1660, 1320, 2360];
-const MATRIX_GLYPHS = Array.from({ length: 54 }, (_, i) => ({
-  id: i,
-  value: String((i * 7 + 3) % 10),
-  x: (7 + ((i * 17) % 88)) % 96,
-  y: 8 + ((i * 29) % 78),
-  delay: 120 + ((i * 137) % 2260),
-  size: 10 + ((i * 5) % 18),
-  driftX: ((i * 19) % 34) - 17,
-  driftY: ((i * 23) % 30) - 15,
-}));
-
 function dotKeyframes(index, popAtMs) {
   const popStart = (popAtMs / INTRO_DURATION_MS) * 100;
   const popPeak = ((popAtMs + 160) / INTRO_DURATION_MS) * 100;
@@ -117,11 +106,6 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
     };
   });
 
-  const matrixGlyphs = MATRIX_GLYPHS.map((glyph) => ({
-    ...glyph,
-    color: logoColors[glyph.id % logoColors.length],
-  }));
-
   return (
     <div
       className="login-intro fixed inset-0 z-50 overflow-hidden bg-black"
@@ -146,24 +130,6 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
       </div>
 
       <div aria-hidden="true">
-        {matrixGlyphs.map((glyph) => (
-          <span
-            key={glyph.id}
-            className="login-intro-code"
-            style={{
-              '--code-x': `${glyph.x}vw`,
-              '--code-y': `${glyph.y}vh`,
-              '--code-delay': `${glyph.delay}ms`,
-              '--code-size': `${glyph.size}px`,
-              '--code-drift-x': `${glyph.driftX}px`,
-              '--code-drift-y': `${glyph.driftY}px`,
-              '--code-color': glyph.color,
-            }}
-          >
-            {glyph.value}
-          </span>
-        ))}
-
         {dots.map((dot) => (
           <span
             key={dot.id}
@@ -187,12 +153,14 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
         height={LOGO_SIZE}
         aria-hidden="true"
       >
-        {Array.from({ length: N_DOTS }, (_, i) => {
-          const angle = (i / N_DOTS) * Math.PI * 2;
-          const x = 14 + 11 * Math.cos(angle);
-          const y = 14 + 11 * Math.sin(angle);
-          return <circle key={i} cx={x} cy={y} r={2.5} fill={logoColors[i]} />;
-        })}
+        <g className="login-intro-wheel-dots">
+          {Array.from({ length: N_DOTS }, (_, i) => {
+            const angle = (i / N_DOTS) * Math.PI * 2;
+            const x = 14 + 11 * Math.cos(angle);
+            const y = 14 + 11 * Math.sin(angle);
+            return <circle key={i} cx={x} cy={y} r={2.5} fill={logoColors[i]} />;
+          })}
+        </g>
       </svg>
 
       <button
@@ -283,33 +251,21 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
           z-index: 2;
         }
 
-        .login-intro-code {
-          position: absolute;
-          left: 0;
-          top: 0;
-          z-index: 1;
-          color: var(--code-color);
-          font-family: var(--font-mono);
-          font-size: var(--code-size);
-          font-weight: 700;
-          line-height: 1;
-          opacity: 0;
-          text-shadow:
-            0 0 10px color-mix(in srgb, var(--code-color), white 12%),
-            0 0 20px color-mix(in srgb, var(--code-color), transparent 34%);
-          transform: translate(var(--code-x), var(--code-y)) translate(-50%, -50%) scale(0.72);
-          animation: login-intro-code-pop 0.64s cubic-bezier(0.16, 0.86, 0.36, 1) var(--code-delay) forwards;
-        }
-
         .login-intro-wheel {
           position: absolute;
           left: var(--intro-logo-x);
           top: var(--intro-logo-y);
           z-index: 3;
           opacity: 0;
-          transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) rotate(-1440deg) scale(1.08);
+          transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) scale(1.08);
           filter: drop-shadow(0 0 34px hsl(var(--ring) / 0.38));
-          animation: login-intro-wheel-resolve 1.52s cubic-bezier(0.08, 0.86, 0.12, 1) 3.58s forwards;
+          animation: login-intro-wheel-move 1.52s cubic-bezier(0.08, 0.86, 0.12, 1) 3.58s forwards;
+        }
+
+        .login-intro-wheel-dots {
+          transform-box: view-box;
+          transform-origin: 14px 14px;
+          animation: login-intro-wheel-spin 1.52s cubic-bezier(0.08, 0.86, 0.12, 1) 3.58s forwards;
         }
 
         .login-intro-skip {
@@ -349,30 +305,12 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
           }
         }
 
-        @keyframes login-intro-code-pop {
-          0% {
-            opacity: 0;
-            transform: translate(var(--code-x), var(--code-y)) translate(-50%, -50%) translate(0, 0) scale(0.72);
-          }
-          18% {
-            opacity: 1;
-            transform: translate(var(--code-x), var(--code-y)) translate(-50%, -50%) translate(var(--code-drift-x), var(--code-drift-y)) scale(1.18);
-          }
-          58% {
-            opacity: 0.92;
-          }
-          100% {
-            opacity: 0;
-            transform: translate(var(--intro-gather-x), var(--intro-gather-y)) translate(-50%, -50%) scale(0.28);
-          }
-        }
-
         ${dots.map(dot => dotKeyframes(dot.id, dot.popAtMs)).join('\n')}
 
-        @keyframes login-intro-wheel-resolve {
+        @keyframes login-intro-wheel-move {
           0% {
             opacity: 0;
-            transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) rotate(-1440deg) scale(1.08);
+            transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) scale(1.08);
           }
           6% {
             opacity: 1;
@@ -382,7 +320,16 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
           }
           100% {
             opacity: 1;
-            transform: translate(-50%, -50%) rotate(0deg) scale(1);
+            transform: translate(-50%, -50%) translateY(0) scale(1);
+          }
+        }
+
+        @keyframes login-intro-wheel-spin {
+          0% {
+            transform: rotate(-1440deg);
+          }
+          100% {
+            transform: rotate(0deg);
           }
         }
 

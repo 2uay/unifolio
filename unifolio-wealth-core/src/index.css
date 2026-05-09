@@ -538,22 +538,5 @@ a:hover:not([class*="btn"]):not([class*="button"]) {
 .unifolio-wheel-logo__dots {
   transform-box: view-box;
   transform-origin: 14px 14px;
-  animation: unifolio-wheel-spin 3.6s linear infinite;
   will-change: transform;
-}
-
-.unifolio-wheel-logo:hover .unifolio-wheel-logo__dots {
-  animation-duration: 0.86s;
-}
-
-@keyframes unifolio-wheel-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .unifolio-wheel-logo__dots {
-    animation: none;
-  }
 }
