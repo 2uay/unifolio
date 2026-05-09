@@ -2,7 +2,10 @@ import React, { useEffect, useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useTheme } from '@/lib/ThemeContext';
 
-const INTRO_DURATION_MS = 7200;
+const INTRO_DURATION_MS = 5600;
+const REVEAL_AT_MS = 5100;
+const DOT_GATHER_START_MS = 2500;
+const DOT_GATHER_END_MS = 3540;
 const N_DOTS = 12;
 const LOGO_SIZE = 144;
 const DOT_RADIUS = (2.5 / 28) * LOGO_SIZE;
@@ -31,24 +34,43 @@ const SCATTER_DOTS = [
   { x: 82, y: 41 },
 ];
 
+const DOT_POP_ORDER_MS = [180, 520, 300, 1180, 760, 1460, 1040, 2140, 410, 1660, 1320, 2360];
+const MATRIX_GLYPHS = Array.from({ length: 54 }, (_, i) => ({
+  id: i,
+  value: String((i * 7 + 3) % 10),
+  x: (7 + ((i * 17) % 88)) % 96,
+  y: 8 + ((i * 29) % 78),
+  delay: 120 + ((i * 137) % 2260),
+  size: 10 + ((i * 5) % 18),
+  driftX: ((i * 19) % 34) - 17,
+  driftY: ((i * 23) % 30) - 15,
+}));
+
 function dotKeyframes(index, popAtMs) {
   const popStart = (popAtMs / INTRO_DURATION_MS) * 100;
-  const popPeak = ((popAtMs + 260) / INTRO_DURATION_MS) * 100;
+  const popPeak = ((popAtMs + 160) / INTRO_DURATION_MS) * 100;
+  const gatherStart = (DOT_GATHER_START_MS / INTRO_DURATION_MS) * 100;
+  const gatherEnd = (DOT_GATHER_END_MS / INTRO_DURATION_MS) * 100;
+  const wheelReveal = ((DOT_GATHER_END_MS + 90) / INTRO_DURATION_MS) * 100;
   return `
     @keyframes login-intro-dot-${index} {
       0%, ${popStart.toFixed(2)}% {
         opacity: 0;
-        transform: translate(var(--scatter-x), var(--scatter-y)) translate(-50%, -50%) scale(0.18);
+        transform: translate(var(--scatter-x), var(--scatter-y)) translate(-50%, -50%) scale(0.12);
       }
-      ${popPeak.toFixed(2)}%, 61% {
+      ${popPeak.toFixed(2)}% {
+        opacity: 1;
+        transform: translate(var(--scatter-x), var(--scatter-y)) translate(-50%, -50%) scale(1.18);
+      }
+      ${(popPeak + 5).toFixed(2)}%, ${gatherStart.toFixed(2)}% {
         opacity: 1;
         transform: translate(var(--scatter-x), var(--scatter-y)) translate(-50%, -50%) scale(1);
       }
-      78% {
+      ${gatherEnd.toFixed(2)}% {
         opacity: 1;
         transform: translate(var(--ring-x), var(--ring-y)) translate(-50%, -50%) scale(1);
       }
-      82%, 100% {
+      ${wheelReveal.toFixed(2)}%, 100% {
         opacity: 0;
         transform: translate(var(--ring-x), var(--ring-y)) translate(-50%, -50%) scale(1);
       }
@@ -56,7 +78,7 @@ function dotKeyframes(index, popAtMs) {
   `;
 }
 
-export default function LoginIntroAnimation({ onComplete }) {
+export default function LoginIntroAnimation({ onReveal, onComplete }) {
   const { chartColors } = useTheme();
   const logoColors = useMemo(() => (
     Array.from({ length: N_DOTS }, (_, i) => chartColors[i % chartColors.length] || `var(--logo-dot-${i + 1})`)
@@ -70,9 +92,13 @@ export default function LoginIntroAnimation({ onComplete }) {
       return undefined;
     }
 
-    const timer = window.setTimeout(() => onComplete?.(), INTRO_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [onComplete]);
+    const revealTimer = window.setTimeout(() => onReveal?.(), REVEAL_AT_MS);
+    const completeTimer = window.setTimeout(() => onComplete?.(), INTRO_DURATION_MS);
+    return () => {
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(completeTimer);
+    };
+  }, [onComplete, onReveal]);
 
   const dots = Array.from({ length: N_DOTS }, (_, i) => {
     const angle = (i / N_DOTS) * Math.PI * 2;
@@ -85,11 +111,16 @@ export default function LoginIntroAnimation({ onComplete }) {
       color: logoColors[i],
       scatterX: `${scatter.x}vw`,
       scatterY: `${scatter.y}vh`,
-      ringX: `calc(var(--intro-logo-x) + ${ringX.toFixed(2)}px)`,
-      ringY: `calc(var(--intro-logo-y) + ${ringY.toFixed(2)}px)`,
-      popAtMs: 400 + i * 330,
+      ringX: `calc(var(--intro-gather-x) + ${ringX.toFixed(2)}px)`,
+      ringY: `calc(var(--intro-gather-y) + ${ringY.toFixed(2)}px)`,
+      popAtMs: DOT_POP_ORDER_MS[i],
     };
   });
+
+  const matrixGlyphs = MATRIX_GLYPHS.map((glyph) => ({
+    ...glyph,
+    color: logoColors[glyph.id % logoColors.length],
+  }));
 
   return (
     <div
@@ -115,6 +146,24 @@ export default function LoginIntroAnimation({ onComplete }) {
       </div>
 
       <div aria-hidden="true">
+        {matrixGlyphs.map((glyph) => (
+          <span
+            key={glyph.id}
+            className="login-intro-code"
+            style={{
+              '--code-x': `${glyph.x}vw`,
+              '--code-y': `${glyph.y}vh`,
+              '--code-delay': `${glyph.delay}ms`,
+              '--code-size': `${glyph.size}px`,
+              '--code-drift-x': `${glyph.driftX}px`,
+              '--code-drift-y': `${glyph.driftY}px`,
+              '--code-color': glyph.color,
+            }}
+          >
+            {glyph.value}
+          </span>
+        ))}
+
         {dots.map((dot) => (
           <span
             key={dot.id}
@@ -159,7 +208,9 @@ export default function LoginIntroAnimation({ onComplete }) {
         .login-intro {
           --intro-logo-x: 50vw;
           --intro-logo-y: clamp(104px, 30vh, 250px);
-          animation: login-intro-fade-out 0.42s ease 6.86s forwards;
+          --intro-gather-x: 50vw;
+          --intro-gather-y: 50vh;
+          animation: login-intro-fade-out 0.42s ease 5.14s forwards;
         }
 
         .login-intro::after {
@@ -232,15 +283,33 @@ export default function LoginIntroAnimation({ onComplete }) {
           z-index: 2;
         }
 
+        .login-intro-code {
+          position: absolute;
+          left: 0;
+          top: 0;
+          z-index: 1;
+          color: var(--code-color);
+          font-family: var(--font-mono);
+          font-size: var(--code-size);
+          font-weight: 700;
+          line-height: 1;
+          opacity: 0;
+          text-shadow:
+            0 0 10px color-mix(in srgb, var(--code-color), white 12%),
+            0 0 20px color-mix(in srgb, var(--code-color), transparent 34%);
+          transform: translate(var(--code-x), var(--code-y)) translate(-50%, -50%) scale(0.72);
+          animation: login-intro-code-pop 0.64s cubic-bezier(0.16, 0.86, 0.36, 1) var(--code-delay) forwards;
+        }
+
         .login-intro-wheel {
           position: absolute;
           left: var(--intro-logo-x);
           top: var(--intro-logo-y);
           z-index: 3;
           opacity: 0;
-          transform: translate(-50%, -50%) rotate(-1080deg) scale(1);
+          transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) rotate(-1440deg) scale(1.08);
           filter: drop-shadow(0 0 34px hsl(var(--ring) / 0.38));
-          animation: login-intro-wheel-resolve 1.24s cubic-bezier(0.13, 0.88, 0.22, 1) 5.55s forwards;
+          animation: login-intro-wheel-resolve 1.52s cubic-bezier(0.08, 0.86, 0.12, 1) 3.58s forwards;
         }
 
         .login-intro-skip {
@@ -280,12 +349,30 @@ export default function LoginIntroAnimation({ onComplete }) {
           }
         }
 
+        @keyframes login-intro-code-pop {
+          0% {
+            opacity: 0;
+            transform: translate(var(--code-x), var(--code-y)) translate(-50%, -50%) translate(0, 0) scale(0.72);
+          }
+          18% {
+            opacity: 1;
+            transform: translate(var(--code-x), var(--code-y)) translate(-50%, -50%) translate(var(--code-drift-x), var(--code-drift-y)) scale(1.18);
+          }
+          58% {
+            opacity: 0.92;
+          }
+          100% {
+            opacity: 0;
+            transform: translate(var(--intro-gather-x), var(--intro-gather-y)) translate(-50%, -50%) scale(0.28);
+          }
+        }
+
         ${dots.map(dot => dotKeyframes(dot.id, dot.popAtMs)).join('\n')}
 
         @keyframes login-intro-wheel-resolve {
           0% {
             opacity: 0;
-            transform: translate(-50%, -50%) rotate(-1080deg) scale(1.08);
+            transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) rotate(-1440deg) scale(1.08);
           }
           6% {
             opacity: 1;

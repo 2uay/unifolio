@@ -1,53 +1,23 @@
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useTheme } from '@/lib/ThemeContext';
 
-const IDLE_SPEED  = 0.09;
-const HOVER_SPEED = 2.0;
 const N_DOTS = 12;
+const CX = 14;
+const CY = 14;
+const R = 11;
 
 export default function UnifolioWheelLogo({ className = '', size = 28 }) {
   const { chartColors } = useTheme();
-  const state = useRef({
-    angle: 0,
-    speed: IDLE_SPEED,
-    hovering: false,
-    frame: null,
-    frameCount: 0,
-    reducedMotion: false,
-  });
-
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    state.current.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const tick = () => {
-      const s = state.current;
-      s.speed += ((s.hovering ? HOVER_SPEED : IDLE_SPEED) - s.speed) * 0.05;
-      if (!s.reducedMotion) s.angle += s.speed;
-      s.frameCount++;
-      if (s.frameCount % 2 === 0) setTick(v => v + 1);
-      s.frame = requestAnimationFrame(tick);
-    };
-    state.current.frame = requestAnimationFrame(tick);
-    return () => { if (state.current.frame) cancelAnimationFrame(state.current.frame); };
-  }, []);
-
-  const { angle } = state.current;
-  const toRad = d => (d * Math.PI) / 180;
-  const CX = 14, CY = 14, R = 11;
-  const logoColors = useMemo(() => (
-    Array.from({ length: N_DOTS }, (_, i) => chartColors[i % chartColors.length] || `var(--logo-dot-${i + 1})`)
+  const dots = useMemo(() => (
+    Array.from({ length: N_DOTS }, (_, i) => {
+      const angle = (i / N_DOTS) * Math.PI * 2;
+      return {
+        x: CX + R * Math.cos(angle),
+        y: CY + R * Math.sin(angle),
+        color: chartColors[i % chartColors.length] || `var(--logo-dot-${i + 1})`,
+      };
+    })
   ), [chartColors]);
-
-  const dots = Array.from({ length: N_DOTS }, (_, i) => {
-    const deg = i * (360 / N_DOTS) + angle;
-    return {
-      x: CX + R * Math.cos(toRad(deg)),
-      y: CY + R * Math.sin(toRad(deg)),
-      color: logoColors[i],
-    };
-  });
 
   return (
     <svg
@@ -55,14 +25,14 @@ export default function UnifolioWheelLogo({ className = '', size = 28 }) {
       width={size}
       height={size}
       aria-label="Unifolio"
-      className={className}
+      className={`unifolio-wheel-logo ${className}`}
       style={{ flexShrink: 0, display: 'block', cursor: 'pointer' }}
-      onMouseEnter={() => { state.current.hovering = true; }}
-      onMouseLeave={() => { state.current.hovering = false; }}
     >
-      {dots.map((dot, i) => (
-        <circle key={i} cx={dot.x} cy={dot.y} r={2.5} fill={dot.color} />
-      ))}
+      <g className="unifolio-wheel-logo__dots">
+        {dots.map((dot, i) => (
+          <circle key={i} cx={dot.x} cy={dot.y} r={2.5} fill={dot.color} />
+        ))}
+      </g>
     </svg>
   );
 }

@@ -47,6 +47,7 @@ export default function Welcome() {
   const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice } = useAuth();
   const { resetToDefaultTheme } = useTheme();
   const [introComplete, setIntroComplete] = useState(() => shouldSkipLoginIntro());
+  const [introVisible, setIntroVisible] = useState(() => !shouldSkipLoginIntro());
   const [introRunId, setIntroRunId] = useState(0);
 
   const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
@@ -77,11 +78,22 @@ export default function Welcome() {
       // Intro replay is session-only polish; storage failures should not block login.
     }
     setIntroComplete(true);
+    setIntroVisible(false);
+  }
+
+  function revealIntroContent() {
+    try {
+      window.sessionStorage.setItem(LOGIN_INTRO_KEY, 'true');
+    } catch {
+      // Intro replay is session-only polish; storage failures should not block login.
+    }
+    setIntroComplete(true);
   }
 
   function replayIntro() {
     setIntroRunId(id => id + 1);
     setIntroComplete(false);
+    setIntroVisible(true);
   }
 
   const handleEnterDemo = () => {
@@ -133,7 +145,7 @@ export default function Welcome() {
     }
   };
 
-  const replayButton = introComplete && typeof document !== 'undefined'
+  const replayButton = introComplete && !introVisible && typeof document !== 'undefined'
     ? createPortal(
       <button
         type="button"
@@ -171,7 +183,7 @@ export default function Welcome() {
       style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
     >
       <ThemedWaveBackground variant="ribbon" className="z-0" />
-      {!introComplete && <LoginIntroAnimation key={introRunId} onComplete={completeIntro} />}
+      {introVisible && <LoginIntroAnimation key={introRunId} onReveal={revealIntroContent} onComplete={completeIntro} />}
 
       <div
         className={cn(
