@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useTheme } from '@/lib/ThemeContext';
+import LoginIntroScene3D from '@/components/shared/LoginIntroScene3D';
 
 const INTRO_DURATION_MS = 5600;
 const REVEAL_AT_MS = 5100;
@@ -111,6 +112,8 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
       className="login-intro fixed inset-0 z-50 overflow-hidden bg-black"
       onClick={onComplete}
     >
+      <LoginIntroScene3D colors={logoColors} />
+
       <div className="login-intro-rods" aria-hidden="true">
         {RIBBONS.map((ribbon) => (
           <span
@@ -181,13 +184,35 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
           animation: login-intro-fade-out 0.42s ease 5.14s forwards;
         }
 
+        .login-intro-3d {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          overflow: hidden;
+          pointer-events: none;
+        }
+
+        .login-intro-3d-canvas {
+          width: 100%;
+          height: 100%;
+          display: block;
+        }
+
         .login-intro::after {
           content: '';
           position: absolute;
           inset: 0;
+          z-index: 1;
           background:
-            radial-gradient(circle at var(--intro-logo-x) var(--intro-logo-y), hsl(var(--ring) / 0.22), transparent 22%),
-            radial-gradient(ellipse 90% 75% at 50% 50%, transparent 18%, rgb(0 0 0 / 0.72) 100%);
+            linear-gradient(to bottom, rgb(0 0 0 / 0.42), rgb(0 0 0 / 0.05) 35%, rgb(0 0 0 / 0.46) 100%),
+            radial-gradient(ellipse 94% 78% at 50% 52%, transparent 18%, rgb(0 0 0 / 0.62) 100%);
+          pointer-events: none;
+        }
+
+        .login-intro-rods {
+          position: absolute;
+          inset: 0;
+          z-index: 2;
           pointer-events: none;
         }
 
@@ -248,14 +273,14 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
             0 0 36px color-mix(in srgb, var(--dot-color), transparent 30%);
           opacity: 0;
           animation: var(--dot-keyframe) ${INTRO_DURATION_MS}ms ease-in-out forwards;
-          z-index: 2;
+          z-index: 3;
         }
 
         .login-intro-wheel {
           position: absolute;
           left: var(--intro-logo-x);
           top: var(--intro-logo-y);
-          z-index: 3;
+          z-index: 4;
           opacity: 0;
           transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) scale(1.08);
           filter: drop-shadow(0 0 34px hsl(var(--ring) / 0.38));
@@ -272,7 +297,7 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
           position: fixed;
           right: max(14px, env(safe-area-inset-right));
           bottom: max(14px, env(safe-area-inset-bottom));
-          z-index: 5;
+          z-index: 6;
           display: grid;
           place-items: center;
           width: 28px;
