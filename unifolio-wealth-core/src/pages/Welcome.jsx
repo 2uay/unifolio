@@ -333,9 +333,13 @@ export default function Welcome() {
           aria-label="Replay intro"
           title="Replay intro"
           onClick={replayIntro}
-          className="fixed bottom-[max(14px,env(safe-area-inset-bottom))] right-[max(14px,env(safe-area-inset-right))] z-20 grid h-8 w-8 place-items-center rounded-full border border-border/60 bg-card/70 text-muted-foreground shadow-lg shadow-background/30 backdrop-blur-md transition-colors hover:bg-card hover:text-foreground"
+          className="fixed z-20 grid h-8 w-8 place-items-center text-zinc-400 transition-colors hover:text-zinc-200"
+          style={{
+            right: 'max(14px, env(safe-area-inset-right))',
+            bottom: 'max(14px, env(safe-area-inset-bottom))',
+          }}
         >
-          <RotateCcw className="h-3.5 w-3.5" />
+          <RotateCcw className="h-4 w-4" />
         </button>
       )}
     </div>
