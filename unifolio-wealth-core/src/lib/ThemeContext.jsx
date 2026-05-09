@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { applyTheme, getChartColors, generateMonochromeTheme, themes } from './themes';
+import { applyTheme, applyThemePaletteVariables, getChartColors, generateMonochromeTheme } from './themes';
 import { supabase } from '@/lib/supabaseClient';
 
 const ThemeContext = createContext(null);
@@ -40,6 +40,8 @@ export function ThemeProvider({ children }) {
     Object.entries(monoTheme.colors).forEach(([key, value]) => {
       root.style.setProperty(key, value);
     });
+    applyThemePaletteVariables(monoTheme, 'custom-monochrome');
+    root.style.setProperty('--logo-hue-base', '0deg');
   };
 
   const applyById = (themeId, monoColor, { commit = true } = {}) => {

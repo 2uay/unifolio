@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useResearchWindows } from '@/lib/ResearchWindowContext';
-import { cn } from '@/lib/utils';
+import { useTheme } from '@/lib/ThemeContext';
 
 // Parse human-readable market cap string to a numeric value
 function parseMarketCap(str) {
@@ -17,12 +17,12 @@ function parseMarketCap(str) {
 // Map changePct to a background color
 function changePctToColor(pct) {
   const p = parseFloat(pct) || 0;
-  if (p >= 3)   return 'hsl(142, 71%, 36%)';
-  if (p >= 1)   return 'hsl(142, 60%, 28%)';
-  if (p >= 0)   return 'hsl(142, 40%, 20%)';
-  if (p > -1)   return 'hsl(0, 55%, 22%)';
-  if (p > -3)   return 'hsl(0, 65%, 30%)';
-  return         'hsl(0, 72%, 36%)';
+  if (p >= 3)   return 'hsl(var(--gain) / 0.56)';
+  if (p >= 1)   return 'hsl(var(--gain) / 0.42)';
+  if (p >= 0)   return 'hsl(var(--gain) / 0.26)';
+  if (p > -1)   return 'hsl(var(--loss) / 0.26)';
+  if (p > -3)   return 'hsl(var(--loss) / 0.42)';
+  return         'hsl(var(--loss) / 0.56)';
 }
 
 // Squarified treemap algorithm
@@ -125,18 +125,17 @@ function squarify(items, rect) {
 }
 
 // Single treemap cell
-function TreemapCell({ node, onOpen }) {
+function TreemapCell({ node, onOpen, chartColors }) {
   const area = node.w * node.h;
   const isLarge = area > 14000;
   const isMedium = area > 3500;
   const bgColor = changePctToColor(node.changePct);
   const pct = parseFloat(node.changePct) || 0;
   const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
-  const pctColor = pct >= 0 ? 'text-emerald-300' : 'text-red-300';
+  const pctColor = pct >= 0 ? 'hsl(var(--gain))' : 'hsl(var(--loss))';
 
   const firstLetter = (node.ticker || node.name || '?')[0].toUpperCase();
-  const letterColors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#10b981', '#06b6d4', '#f59e0b', '#ef4444'];
-  const letterColor = letterColors[(node.ticker?.charCodeAt(0) || 0) % letterColors.length];
+  const letterColor = chartColors[(node.ticker?.charCodeAt(0) || 0) % chartColors.length];
 
   return (
     <div
@@ -166,7 +165,7 @@ function TreemapCell({ node, onOpen }) {
             {firstLetter}
           </div>
           <span className="font-bold text-white text-base leading-none tracking-tight">{node.ticker}</span>
-          <span className={cn('font-semibold text-sm', pctColor)}>{pctStr}</span>
+          <span className="font-semibold text-sm" style={{ color: pctColor }}>{pctStr}</span>
           {node.name && node.w > 100 && (
             <span className="text-[9px] text-white/50 truncate w-full text-center">{node.name}</span>
           )}
@@ -174,7 +173,7 @@ function TreemapCell({ node, onOpen }) {
       ) : isMedium ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 p-1">
           <span className="font-bold text-white text-xs leading-none">{node.ticker}</span>
-          <span className={cn('text-[10px] font-semibold', pctColor)}>{pctStr}</span>
+          <span className="text-[10px] font-semibold" style={{ color: pctColor }}>{pctStr}</span>
         </div>
       ) : node.w > 32 && node.h > 20 ? (
         <div className="absolute inset-0 flex items-center justify-center p-0.5">
@@ -187,6 +186,7 @@ function TreemapCell({ node, onOpen }) {
 
 export default function WatchlistTreemap({ items, height = 520 }) {
   const { openWindow } = useResearchWindows();
+  const { chartColors } = useTheme();
   const containerRef = useRef(null);
   const [dims, setDims] = useState({ w: 800, h: height });
 
@@ -265,7 +265,7 @@ export default function WatchlistTreemap({ items, height = 520 }) {
 
       {/* Stock cells */}
       {allCells.map(({ node }) => (
-        <TreemapCell key={node.id || node.ticker} node={node} onOpen={handleOpen} />
+        <TreemapCell key={node.id || node.ticker} node={node} onOpen={handleOpen} chartColors={chartColors} />
       ))}
     </div>
   );

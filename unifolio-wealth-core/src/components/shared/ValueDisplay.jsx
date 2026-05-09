@@ -46,10 +46,11 @@ export function PnlValue({ value, className, showSign = true, isCurrency = true 
   return (
     <span className={cn(
       'font-mono text-sm tabular-nums',
-      isPositive ? 'text-emerald-400' : 'text-red-400',
       n === 0 && 'text-muted-foreground',
       className
-    )}>
+    )}
+    style={n === 0 ? undefined : { color: isPositive ? 'hsl(var(--gain))' : 'hsl(var(--loss))' }}
+    >
       {display}
     </span>
   );
@@ -74,7 +75,7 @@ export function MiniSparkline({ data, width = 80, height = 24, className }) {
       <polyline
         points={points}
         fill="none"
-        stroke={isUp ? '#34d399' : '#f87171'}
+        stroke={isUp ? 'hsl(var(--gain))' : 'hsl(var(--loss))'}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"

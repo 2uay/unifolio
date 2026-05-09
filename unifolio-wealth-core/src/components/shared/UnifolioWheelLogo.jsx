@@ -1,10 +1,12 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
+import { useTheme } from '@/lib/ThemeContext';
 
 const IDLE_SPEED  = 0.09;
 const HOVER_SPEED = 2.0;
 const N_DOTS = 12;
 
 export default function UnifolioWheelLogo({ className = '', size = 28 }) {
+  const { chartColors } = useTheme();
   const state = useRef({
     angle: 0,
     speed: IDLE_SPEED,
@@ -34,13 +36,16 @@ export default function UnifolioWheelLogo({ className = '', size = 28 }) {
   const { angle } = state.current;
   const toRad = d => (d * Math.PI) / 180;
   const CX = 14, CY = 14, R = 11;
+  const logoColors = useMemo(() => (
+    Array.from({ length: N_DOTS }, (_, i) => chartColors[i % chartColors.length] || `var(--logo-dot-${i + 1})`)
+  ), [chartColors]);
 
   const dots = Array.from({ length: N_DOTS }, (_, i) => {
     const deg = i * (360 / N_DOTS) + angle;
     return {
       x: CX + R * Math.cos(toRad(deg)),
       y: CY + R * Math.sin(toRad(deg)),
-      color: `hsl(${(i * 30 + Math.floor(angle * 0.8)) % 360}, 82%, 62%)`,
+      color: logoColors[i],
     };
   });
 
@@ -51,7 +56,7 @@ export default function UnifolioWheelLogo({ className = '', size = 28 }) {
       height={size}
       aria-label="Unifolio"
       className={className}
-      style={{ flexShrink: 0, display: 'block', cursor: 'pointer', filter: 'hue-rotate(var(--logo-hue-base, 0deg))' }}
+      style={{ flexShrink: 0, display: 'block', cursor: 'pointer' }}
       onMouseEnter={() => { state.current.hovering = true; }}
       onMouseLeave={() => { state.current.hovering = false; }}
     >

@@ -155,7 +155,7 @@ export default function Welcome() {
           padding: 0,
           border: 0,
           background: 'transparent',
-          color: '#d4d4d8',
+          color: 'hsl(var(--muted-foreground))',
           transform: 'none',
         }}
       >

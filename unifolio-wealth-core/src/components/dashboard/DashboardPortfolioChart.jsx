@@ -42,7 +42,7 @@ function useOutsideClick(ref, handler) {
   }, [ref, handler]);
 }
 
-function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
+function BenchmarksDropdown({ activeBenchmarks, onToggle, benchmarkColors }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useOutsideClick(ref, () => setOpen(false));
@@ -90,14 +90,14 @@ function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
               >
                 <span className="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0"
                   style={activeBenchmarks.includes(b.id)
-                    ? { backgroundColor: b.color, borderColor: b.color }
-                    : { borderColor: 'hsl(225 15% 20%)' }
+                    ? { backgroundColor: benchmarkColors[b.id], borderColor: benchmarkColors[b.id] }
+                    : { borderColor: 'hsl(var(--border))' }
                   }
                 >
                   {activeBenchmarks.includes(b.id) && <Check className="w-2.5 h-2.5 text-white" />}
                 </span>
                 <span
-                  style={{ color: activeBenchmarks.includes(b.id) ? b.color : undefined }}
+                  style={{ color: activeBenchmarks.includes(b.id) ? benchmarkColors[b.id] : undefined }}
                   className={activeBenchmarks.includes(b.id) ? '' : 'text-muted-foreground'}
                 >
                   {b.label}
@@ -226,7 +226,8 @@ export default function DashboardPortfolioChart() {
 
   const lineKeys = ['portfolio', ...activeBenchmarks];
   const portfolioColor = chartColors[0] || '#3b82f6';
-  const lineColors = { portfolio: portfolioColor, ...Object.fromEntries(BENCHMARKS.map(b => [b.id, b.color])) };
+  const benchmarkColors = Object.fromEntries(BENCHMARKS.map((b, i) => [b.id, chartColors[(i + 1) % chartColors.length] || b.color]));
+  const lineColors = { portfolio: portfolioColor, ...benchmarkColors };
   const xInterval = Math.max(0, Math.floor(displayData.length / 6));
 
   return (
@@ -267,7 +268,7 @@ export default function DashboardPortfolioChart() {
               className={cn('px-3 py-1.5 transition-colors', viewMode === 'pct' ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground hover:text-foreground')}
             >% Return</button>
           </div>
-          <BenchmarksDropdown activeBenchmarks={activeBenchmarks} onToggle={toggleBenchmark} />
+          <BenchmarksDropdown activeBenchmarks={activeBenchmarks} onToggle={toggleBenchmark} benchmarkColors={benchmarkColors} />
         </div>
       </div>
 
@@ -336,14 +337,14 @@ export default function DashboardPortfolioChart() {
               dataKey="date"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 10, fill: '#6b7280' }}
+              tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
               interval={xInterval}
               tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             />
             <YAxis
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 10, fill: '#6b7280' }}
+              tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
               width={64}
               tickFormatter={tickFormatter}
             />
@@ -355,7 +356,7 @@ export default function DashboardPortfolioChart() {
                 key={key}
                 type="monotone"
                 dataKey={key}
-                stroke={lineColors[key] || '#6b7280'}
+                stroke={lineColors[key] || 'hsl(var(--muted-foreground))'}
                 strokeWidth={key === 'portfolio' ? 2 : 1.5}
                 dot={false}
                 strokeDasharray={key === 'portfolio' ? undefined : '4 2'}
@@ -375,7 +376,7 @@ export default function DashboardPortfolioChart() {
           const b = BENCHMARKS.find(x => x.id === id);
           return b ? (
             <div key={id} className="flex items-center gap-1.5">
-              <div className="w-4 h-0.5 rounded" style={{ backgroundColor: b.color }} />
+              <div className="w-4 h-0.5 rounded" style={{ backgroundColor: benchmarkColors[id] }} />
               <span className="text-muted-foreground">{b.label}</span>
             </div>
           ) : null;

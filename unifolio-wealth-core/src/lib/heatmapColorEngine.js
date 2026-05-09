@@ -144,7 +144,7 @@ function concentrationColor(intensity, value, _theme, accentColor, variant = 'de
   const opacity = Math.pow(intensity, 0.75) * 0.18;
   let bgColor;
   if (variant === 'realized') {
-    bgColor = `rgba(147, 51, 234, ${opacity})`; // purple-600
+    bgColor = `hsl(var(--semantic-accent-alt) / ${opacity})`;
   } else {
     // accentColor is an HSL components string from the --primary CSS variable ("217 91% 60%")
     // or a legacy hex fallback — handle both
@@ -159,21 +159,18 @@ function concentrationColor(intensity, value, _theme, accentColor, variant = 'de
   };
 }
 
-// P&L/Return heatmap: green/red for active, cyan/amber for realized
-function pnlColor(intensity, value, theme, mode, variant = 'default') {
+// P&L/Return heatmap: theme gain/loss for active, alternate chart tones for realized
+function pnlColor(intensity, value, _theme, mode, variant = 'default') {
   const isGain = value >= 0;
   const opacity = Math.pow(Math.abs(intensity), 0.85) * 0.20; // Max 20% opacity
 
   let gainColor, lossColor;
   if (variant === 'realized') {
-    gainColor = 'rgba(6, 182, 212, OPACITY)';    // cyan-500
-    lossColor = 'rgba(245, 158, 11, OPACITY)';   // amber-500
-  } else if (theme === 'bloomberg') {
-    gainColor = 'rgba(76, 175, 80, OPACITY)';    // Bloomberg green
-    lossColor = 'rgba(229, 57, 53, OPACITY)';    // Bloomberg red
+    gainColor = 'hsl(var(--chart-6) / OPACITY)';
+    lossColor = 'hsl(var(--chart-7) / OPACITY)';
   } else {
-    gainColor = 'rgba(34, 197, 94, OPACITY)';    // Default green
-    lossColor = 'rgba(239, 68, 68, OPACITY)';    // Default red
+    gainColor = 'hsl(var(--gain) / OPACITY)';
+    lossColor = 'hsl(var(--loss) / OPACITY)';
   }
 
   const bgColor = (isGain ? gainColor : lossColor).replace('OPACITY', opacity);
@@ -191,12 +188,12 @@ function pnlColor(intensity, value, theme, mode, variant = 'default') {
   };
 }
 
-// Volatility heatmap: orange for active, pink for realized
-function volatilityColor(intensity, theme, variant = 'default') {
+// Volatility heatmap: theme warning/accent tones
+function volatilityColor(intensity, _theme, variant = 'default') {
   const opacity = Math.pow(intensity, 0.75) * 0.16; // Max 16% opacity
   const bgColor = variant === 'realized'
-    ? `rgba(236, 72, 153, ${opacity})`  // pink-500
-    : `rgba(249, 115, 22, ${opacity})`; // orange-500
+    ? `hsl(var(--semantic-accent-alt) / ${opacity})`
+    : `hsl(var(--semantic-warning) / ${opacity})`;
   const label = `Vol: ${(intensity * 100).toFixed(0)}%`;
 
   return {

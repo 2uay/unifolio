@@ -2,8 +2,10 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COMPARE_OPTIONS } from '@/lib/chartEngine';
+import { useTheme } from '@/lib/ThemeContext';
 
 export default function ComparePanel({ compareLines, onToggle, onClose }) {
+  const { chartColors } = useTheme();
   return (
     <div className="w-64 max-h-80 bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
       {/* Header */}
@@ -18,6 +20,7 @@ export default function ComparePanel({ compareLines, onToggle, onClose }) {
       <div className="flex-1 overflow-y-auto min-h-0">
         {COMPARE_OPTIONS.map(opt => {
           const isActive = compareLines.includes(opt.id);
+          const color = chartColors[(COMPARE_OPTIONS.findIndex(o => o.id === opt.id) + 2) % chartColors.length] || opt.color;
           return (
             <button
               key={opt.id}
@@ -28,7 +31,7 @@ export default function ComparePanel({ compareLines, onToggle, onClose }) {
               )}
             >
               <div className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: opt.color }} />
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
                 <div>
                   <div className="font-medium text-foreground">{opt.label}</div>
                   <div className="text-[10px] text-muted-foreground/70">{opt.description}</div>

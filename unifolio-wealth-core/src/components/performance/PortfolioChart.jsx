@@ -13,6 +13,7 @@ import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { CustomLineTooltip } from '@/lib/chartTooltip';
 import { BENCHMARKS, COMMON_BENCHMARKS, fetchBenchmarkSeries, alignBenchmarkSeriesToDates } from '@/lib/benchmarks';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import { useTheme } from '@/lib/ThemeContext';
 
 const PERIOD_MAP = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
 
@@ -141,7 +142,7 @@ function AccountsDropdown({ selectedAccounts, onToggle, accounts = [], instituti
 }
 
 // ---------- BenchmarksDropdown ----------
-function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
+function BenchmarksDropdown({ activeBenchmarks, onToggle, benchmarkColors }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useOutsideClick(ref, () => setOpen(false));
@@ -190,13 +191,13 @@ function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
               >
                 <span className="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0"
                   style={activeBenchmarks.includes(b.id)
-                    ? { backgroundColor: b.color, borderColor: b.color }
-                    : { borderColor: 'hsl(225 15% 20%)' }
+                    ? { backgroundColor: benchmarkColors[b.id], borderColor: benchmarkColors[b.id] }
+                    : { borderColor: 'hsl(var(--border))' }
                   }
                 >
                   {activeBenchmarks.includes(b.id) && <Check className="w-2.5 h-2.5 text-white" />}
                 </span>
-                <span style={{ color: activeBenchmarks.includes(b.id) ? b.color : undefined }}
+                <span style={{ color: activeBenchmarks.includes(b.id) ? benchmarkColors[b.id] : undefined }}
                   className={activeBenchmarks.includes(b.id) ? '' : 'text-muted-foreground'}
                 >
                   {b.label}
@@ -214,6 +215,7 @@ function BenchmarksDropdown({ activeBenchmarks, onToggle }) {
 export default function PortfolioChart() {
   const { displayCurrency, isSample } = useCurrency();
   const { privacyMode } = usePrivacy();
+  const { chartColors } = useTheme();
   const { portfolioSnapshots, accounts, institutions, calcAccountValue } = usePortfolioData();
   const safeAccounts = safeArray(accounts);
   const safeInstitutions = safeArray(institutions);
@@ -347,7 +349,8 @@ export default function PortfolioChart() {
   };
 
   const lineKeys = ['portfolio', ...activeBenchmarks.filter(id => validBenchmarkIds.has(id))];
-  const lineColors = { portfolio: 'hsl(var(--primary))', ...Object.fromEntries(BENCHMARKS.map(b => [b.id, b.color])) };
+  const benchmarkColors = Object.fromEntries(BENCHMARKS.map((b, i) => [b.id, chartColors[(i + 1) % chartColors.length] || b.color]));
+  const lineColors = { portfolio: chartColors[0] || 'hsl(var(--primary))', ...benchmarkColors };
   const xInterval = Math.floor(displayData.length / 6);
 
   return (
@@ -404,7 +407,7 @@ export default function PortfolioChart() {
           accounts={safeAccounts}
           institutions={safeInstitutions}
         />
-        <BenchmarksDropdown activeBenchmarks={activeBenchmarks} onToggle={toggleBenchmark} />
+        <BenchmarksDropdown activeBenchmarks={activeBenchmarks} onToggle={toggleBenchmark} benchmarkColors={benchmarkColors} />
       </div>
 
       {/* Chart */}
@@ -417,12 +420,12 @@ export default function PortfolioChart() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={displayData}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} interval={xInterval}
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} interval={xInterval}
                 tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} width={64} tickFormatter={tickFormatter} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} width={64} tickFormatter={tickFormatter} />
               <Tooltip content={<CustomLineTooltip privacyMode={privacyMode} formatter={tooltipFormatter} />} />
               {lineKeys.map(key => (
-                <Line key={key} type="monotone" dataKey={key} stroke={lineColors[key] || '#6b7280'}
+                <Line key={key} type="monotone" dataKey={key} stroke={lineColors[key] || 'hsl(var(--muted-foreground))'}
                   strokeWidth={key === 'portfolio' ? 2 : 1.5} dot={false}
                   strokeDasharray={key === 'portfolio' ? undefined : '4 2'} />
               ))}
@@ -441,7 +444,7 @@ export default function PortfolioChart() {
           const b = BENCHMARKS.find(x => x.id === id);
           return b ? (
             <div key={id} className="flex items-center gap-1.5">
-              <div className="w-4 h-0.5 rounded" style={{ backgroundColor: b.color }} />
+              <div className="w-4 h-0.5 rounded" style={{ backgroundColor: benchmarkColors[id] }} />
               <span className="text-muted-foreground">{b.label}</span>
             </div>
           ) : null;

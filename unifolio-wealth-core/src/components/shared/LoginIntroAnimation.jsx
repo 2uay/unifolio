@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { useTheme } from '@/lib/ThemeContext';
 
 const INTRO_DURATION_MS = 7200;
 const N_DOTS = 12;
@@ -56,6 +57,11 @@ function dotKeyframes(index, popAtMs) {
 }
 
 export default function LoginIntroAnimation({ onComplete }) {
+  const { chartColors } = useTheme();
+  const logoColors = useMemo(() => (
+    Array.from({ length: N_DOTS }, (_, i) => chartColors[i % chartColors.length] || `var(--logo-dot-${i + 1})`)
+  ), [chartColors]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -76,7 +82,7 @@ export default function LoginIntroAnimation({ onComplete }) {
 
     return {
       id: i,
-      color: `hsl(${i * 30}, 82%, 62%)`,
+      color: logoColors[i],
       scatterX: `${scatter.x}vw`,
       scatterY: `${scatter.y}vh`,
       ringX: `calc(var(--intro-logo-x) + ${ringX.toFixed(2)}px)`,
@@ -136,7 +142,7 @@ export default function LoginIntroAnimation({ onComplete }) {
           const angle = (i / N_DOTS) * Math.PI * 2;
           const x = 14 + 11 * Math.cos(angle);
           const y = 14 + 11 * Math.sin(angle);
-          return <circle key={i} cx={x} cy={y} r={2.5} fill={`hsl(${i * 30}, 82%, 62%)`} />;
+          return <circle key={i} cx={x} cy={y} r={2.5} fill={logoColors[i]} />;
         })}
       </svg>
 
@@ -161,7 +167,7 @@ export default function LoginIntroAnimation({ onComplete }) {
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(circle at var(--intro-logo-x) var(--intro-logo-y), hsl(var(--primary) / 0.2), transparent 22%),
+            radial-gradient(circle at var(--intro-logo-x) var(--intro-logo-y), hsl(var(--ring) / 0.22), transparent 22%),
             radial-gradient(ellipse 90% 75% at 50% 50%, transparent 18%, rgb(0 0 0 / 0.72) 100%);
           pointer-events: none;
         }
@@ -178,13 +184,13 @@ export default function LoginIntroAnimation({ onComplete }) {
           background: linear-gradient(
             to right,
             transparent 0%,
-            hsl(var(--primary) / calc(var(--rod-alpha) * 0.52)) 8%,
+            hsl(var(--ring) / calc(var(--rod-alpha) * 0.52)) 8%,
             hsl(var(--primary) / var(--rod-alpha)) 26%,
-            hsl(var(--primary) / var(--rod-alpha)) 74%,
-            hsl(var(--primary) / calc(var(--rod-alpha) * 0.52)) 92%,
+            hsl(var(--chart-3) / var(--rod-alpha)) 74%,
+            hsl(var(--ring) / calc(var(--rod-alpha) * 0.52)) 92%,
             transparent 100%
           );
-          box-shadow: 0 0 90px hsl(var(--primary) / calc(var(--rod-alpha) * 0.46));
+          box-shadow: 0 0 90px hsl(var(--ring) / calc(var(--rod-alpha) * 0.46));
           animation: login-intro-rod-shoot 0.82s cubic-bezier(0.17, 0.84, 0.38, 1) var(--rod-delay) forwards;
         }
 
@@ -233,7 +239,7 @@ export default function LoginIntroAnimation({ onComplete }) {
           z-index: 3;
           opacity: 0;
           transform: translate(-50%, -50%) rotate(-1080deg) scale(1);
-          filter: drop-shadow(0 0 34px hsl(var(--primary) / 0.38));
+          filter: drop-shadow(0 0 34px hsl(var(--ring) / 0.38));
           animation: login-intro-wheel-resolve 1.24s cubic-bezier(0.13, 0.88, 0.22, 1) 5.55s forwards;
         }
 
@@ -247,16 +253,16 @@ export default function LoginIntroAnimation({ onComplete }) {
           width: 28px;
           height: 28px;
           border-radius: 999px;
-          color: rgb(255 255 255 / 0.72);
-          background: rgb(255 255 255 / 0.06);
-          border: 1px solid rgb(255 255 255 / 0.12);
+          color: hsl(var(--foreground) / 0.72);
+          background: hsl(var(--background) / 0.08);
+          border: 1px solid hsl(var(--border) / 0.32);
           backdrop-filter: blur(8px);
           transition: color 140ms ease, background 140ms ease, transform 140ms ease;
         }
 
         .login-intro-skip:hover {
-          color: white;
-          background: rgb(255 255 255 / 0.12);
+          color: hsl(var(--ring));
+          background: hsl(var(--ring) / 0.1);
           transform: translateX(1px);
         }
 

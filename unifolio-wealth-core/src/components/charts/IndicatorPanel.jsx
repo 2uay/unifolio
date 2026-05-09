@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Search, X, Trash2, RotateCcw } from 'lucide-react';
+import { Search, X, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ALL_INDICATORS } from '@/lib/chartEngine';
+import { useTheme } from '@/lib/ThemeContext';
 
 const CATEGORIES = {
   trend: { label: 'Trend', icon: '📈' },
@@ -12,7 +13,9 @@ const CATEGORIES = {
 };
 
 export default function IndicatorPanel({ activeIndicators, onToggle, onClearAll, onClose }) {
+  const { chartColors } = useTheme();
   const [search, setSearch] = useState('');
+  const getIndicatorColor = (id) => chartColors[ALL_INDICATORS.findIndex(i => i.id === id) % chartColors.length] || 'hsl(var(--primary))';
 
   const grouped = useMemo(() => {
     const g = {};
@@ -70,19 +73,22 @@ export default function IndicatorPanel({ activeIndicators, onToggle, onClearAll,
               Active ({selectedInds.length})
             </div>
             <div className="px-3 py-2 space-y-1">
-              {selectedInds.map(ind => (
-                <button
-                  key={ind.id}
-                  onClick={() => onToggle(ind.id)}
-                  className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-md transition-colors hover:bg-secondary/50"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: ind.color }} />
-                    <span className="text-foreground truncate">{ind.label}</span>
-                  </div>
-                  <X className="w-3 h-3 text-muted-foreground flex-shrink-0 ml-1" />
-                </button>
-              ))}
+              {selectedInds.map(ind => {
+                const color = getIndicatorColor(ind.id);
+                return (
+                  <button
+                    key={ind.id}
+                    onClick={() => onToggle(ind.id)}
+                    className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-md transition-colors hover:bg-secondary/50"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                      <span className="text-foreground truncate">{ind.label}</span>
+                    </div>
+                    <X className="w-3 h-3 text-muted-foreground flex-shrink-0 ml-1" />
+                  </button>
+                );
+              })}
             </div>
             {Object.keys(filtered).length > 0 && <div className="border-t border-border/30" />}
           </>
@@ -98,6 +104,7 @@ export default function IndicatorPanel({ activeIndicators, onToggle, onClearAll,
             <div className="px-3 py-1.5 space-y-0.5">
               {inds.map(ind => {
                 const isActive = activeIndicators.includes(ind.id);
+                const color = getIndicatorColor(ind.id);
                 return (
                   <button
                     key={ind.id}
@@ -108,7 +115,7 @@ export default function IndicatorPanel({ activeIndicators, onToggle, onClearAll,
                     )}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: ind.color, opacity: isActive ? 1 : 0.5 }} />
+                      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color, opacity: isActive ? 1 : 0.5 }} />
                       <span className="truncate">{ind.label}</span>
                     </div>
                     {isActive && <span className="text-primary text-[9px] font-semibold ml-1 flex-shrink-0">✓</span>}

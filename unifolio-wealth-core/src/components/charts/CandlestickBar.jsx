@@ -12,7 +12,17 @@ import React from 'react';
  * Recharts passes `background = { x, y, width, height }` (the chart plot area)
  * and `x, y, width, height` for the individual bar slot.
  */
-export default function CandlestickBar({ x, y, width, background, payload, priceMin, priceMax }) {
+export default function CandlestickBar({
+  x,
+  y,
+  width,
+  background,
+  payload,
+  priceMin,
+  priceMax,
+  upColor = 'hsl(var(--gain))',
+  downColor = 'hsl(var(--loss))',
+}) {
   if (!payload || !background || width <= 0) return null;
 
   const { open, high, low, close } = payload;
@@ -31,7 +41,7 @@ export default function CandlestickBar({ x, y, width, background, payload, price
   const yClose = toPixel(close);
 
   const isUp      = close >= open;
-  const color     = isUp ? '#34d399' : '#f87171';
+  const color     = isUp ? upColor : downColor;
   const bodyTop    = Math.min(yOpen, yClose);
   const bodyHeight = Math.max(1, Math.abs(yClose - yOpen));
   const centerX    = x + width / 2;

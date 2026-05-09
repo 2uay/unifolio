@@ -106,9 +106,9 @@ export function CustomStockTooltip({ active, payload, label, privacyMode }) {
         <span style={{ color: 'hsl(var(--muted-foreground))' }}>O</span>
         <span style={{ color: 'hsl(var(--foreground))', fontFamily: 'monospace' }}>{privacyMode ? mask : ('$' + d.open?.toFixed(2))}</span>
         <span style={{ color: 'hsl(var(--muted-foreground))' }}>H</span>
-        <span style={{ color: '#34d399', fontFamily: 'monospace' }}>{privacyMode ? mask : ('$' + d.high?.toFixed(2))}</span>
+        <span style={{ color: 'hsl(var(--gain))', fontFamily: 'monospace' }}>{privacyMode ? mask : ('$' + d.high?.toFixed(2))}</span>
         <span style={{ color: 'hsl(var(--muted-foreground))' }}>L</span>
-        <span style={{ color: '#f87171', fontFamily: 'monospace' }}>{privacyMode ? mask : ('$' + d.low?.toFixed(2))}</span>
+        <span style={{ color: 'hsl(var(--loss))', fontFamily: 'monospace' }}>{privacyMode ? mask : ('$' + d.low?.toFixed(2))}</span>
         <span style={{ color: 'hsl(var(--muted-foreground))' }}>C</span>
         <span style={{ color: 'hsl(var(--foreground))', fontFamily: 'monospace', fontWeight: 700 }}>{privacyMode ? mask : ('$' + d.close?.toFixed(2))}</span>
       </div>

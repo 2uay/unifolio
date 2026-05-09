@@ -2273,6 +2273,7 @@ export function applyTheme(themeId) {
   Object.entries(theme.colors).forEach(([key, value]) => {
     root.style.setProperty(key, value);
   });
+  applyThemePaletteVariables(theme, themeId);
   root.style.setProperty('--logo-hue-base', `${theme.logoHue || 0}deg`);
 }
 
@@ -2290,7 +2291,38 @@ export function getAllThemes() {
 // Returns the chart color palette for the currently active theme
 export function getChartColors(themeId) {
   const theme = themes[themeId] || themes[DEFAULT_THEME];
-  return theme.chartColors;
+  return getThemeChartColors(themeId, theme);
+}
+
+export function getThemeChartColors(themeId, themeOverride = null) {
+  const theme = themeOverride || themes[themeId] || themes[DEFAULT_THEME];
+  if (isMonochromeTheme(themeId, theme)) return deriveMonochromePalette(theme);
+  return theme.chartColors || themes[DEFAULT_THEME].chartColors;
+}
+
+export function applyThemePaletteVariables(theme, themeId = DEFAULT_THEME) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const chartColors = getThemeChartColors(themeId, theme);
+
+  chartColors.forEach((color, index) => {
+    const cssColor = normalizeCssColor(color);
+    const hsl = colorToHslString(color);
+    root.style.setProperty(`--chart-color-${index + 1}`, cssColor);
+    root.style.setProperty(`--chart-${index + 1}`, hsl);
+  });
+
+  for (let index = 0; index < 12; index += 1) {
+    root.style.setProperty(`--logo-dot-${index + 1}`, normalizeCssColor(chartColors[index % chartColors.length]));
+  }
+
+  const colors = theme.colors || {};
+  root.style.setProperty('--semantic-success', colors['--gain'] || colors['--chart-1'] || '142 71% 45%');
+  root.style.setProperty('--semantic-danger', colors['--loss'] || colors['--destructive'] || '0 72% 51%');
+  root.style.setProperty('--semantic-warning', colors['--chart-4'] || colors['--primary'] || '47 96% 53%');
+  root.style.setProperty('--semantic-info', colors['--chart-3'] || colors['--primary'] || '217 91% 60%');
+  root.style.setProperty('--semantic-accent-alt', colors['--chart-5'] || colors['--ring'] || colors['--primary'] || '262 83% 58%');
+  root.style.setProperty('--semantic-neutral', colors['--muted-foreground'] || '215 15% 50%');
 }
 
 // Convert hex color to HSL
@@ -2320,6 +2352,54 @@ export function hexToHSL(hex) {
   };
 }
 
+function isMonochromeTheme(themeId, theme) {
+  const tags = theme?.tags || THEME_TAGS_MAP[themeId] || [];
+  return tags.includes('monochrome') || String(themeId).includes('monochrome');
+}
+
+function deriveMonochromePalette(theme) {
+  const colors = theme.colors || {};
+  const paletteKeys = [
+    '--primary',
+    '--ring',
+    '--chart-3',
+    '--chart-4',
+    '--chart-5',
+    '--foreground',
+    '--muted-foreground',
+    '--secondary-foreground',
+  ];
+  const palette = paletteKeys
+    .map((key) => colors[key])
+    .filter(Boolean)
+    .map((value) => `hsl(${value})`);
+
+  return palette.length > 0 ? palette : (theme.chartColors || themes[DEFAULT_THEME].chartColors);
+}
+
+function normalizeCssColor(color) {
+  if (!color) return '#3b82f6';
+  const value = String(color).trim();
+  if (value.startsWith('#') || value.startsWith('rgb') || value.startsWith('hsl')) return value;
+  if (/^\d+(\.\d+)?\s+\d+(\.\d+)?%\s+\d+(\.\d+)?%$/.test(value)) return `hsl(${value})`;
+  return value;
+}
+
+function colorToHslString(color) {
+  if (!color) return '217 91% 60%';
+  const value = String(color).trim();
+  if (value.startsWith('#')) {
+    const { h, s, l } = hexToHSL(value);
+    return hslToString(h, s, l);
+  }
+  const hslMatch = value.match(/hsla?\(\s*([0-9.]+)(?:deg)?[\s,]+([0-9.]+)%[\s,]+([0-9.]+)%/i);
+  if (hslMatch) {
+    return `${Math.round(Number(hslMatch[1]))} ${Math.round(Number(hslMatch[2]))}% ${Math.round(Number(hslMatch[3]))}%`;
+  }
+  if (/^\d+(\.\d+)?\s+\d+(\.\d+)?%\s+\d+(\.\d+)?%$/.test(value)) return value;
+  return '217 91% 60%';
+}
+
 // Convert HSL to HSL string format used in CSS
 export function hslToString(h, s, l) {
   return `${h} ${s}% ${l}%`;
@@ -2330,6 +2410,7 @@ export function generateMonochromeTheme(baseHex) {
   const hsl = hexToHSL(baseHex);
   const h = hsl.h;
   const s = Math.max(10, hsl.s - 40); // Reduce saturation for monochrome
+  const primaryS = Math.max(s + 30, 80);
   
   return {
     name: "Custom Monochrome",
@@ -2337,14 +2418,14 @@ export function generateMonochromeTheme(baseHex) {
     baseColor: baseHex,
     swatches: [baseHex, `hsl(${h}, ${s}%, 90%)`, `hsl(${h}, ${s}%, 40%)`, `hsl(0, 100%, 50%)`],
     chartColors: [
-      `hsl(142, 71%, 45%)`,
-      `hsl(0, 100%, 50%)`,
       baseHex,
+      `hsl(${h}, ${primaryS}%, 68%)`,
       `hsl(${h}, ${s}%, 70%)`,
       `hsl(${h}, ${s}%, 50%)`,
       `hsl(${h}, ${s}%, 35%)`,
       `hsl(${h}, ${s}%, 60%)`,
       `hsl(${h}, ${s}%, 45%)`,
+      `hsl(${h}, ${s}%, 82%)`,
     ],
     colors: {
       "--background": hslToString(h, s, 4),
@@ -2353,7 +2434,7 @@ export function generateMonochromeTheme(baseHex) {
       "--card-foreground": hslToString(h, Math.min(s + 20, 30), 93),
       "--popover": hslToString(h, s, 7),
       "--popover-foreground": hslToString(h, Math.min(s + 20, 30), 93),
-      "--primary": hslToString(h, Math.max(s + 30, 80), 60),
+      "--primary": hslToString(h, primaryS, 60),
       "--primary-foreground": "0 0% 100%",
       "--secondary": hslToString(h, s, 12),
       "--secondary-foreground": hslToString(h, Math.min(s + 15, 25), 81),
@@ -2365,14 +2446,14 @@ export function generateMonochromeTheme(baseHex) {
       "--destructive-foreground": "0 0% 100%",
       "--border": hslToString(h, s, 14),
       "--input": hslToString(h, s, 14),
-      "--ring": hslToString(h, Math.max(s + 30, 80), 60),
-      "--chart-1": "142 71% 45%",
-      "--chart-2": "0 100% 50%",
-      "--chart-3": hslToString(h, Math.max(s + 30, 80), 60),
+      "--ring": hslToString(h, primaryS, 60),
+      "--chart-1": hslToString(h, primaryS, 60),
+      "--chart-2": hslToString(h, s, 42),
+      "--chart-3": hslToString(h, primaryS, 60),
       "--chart-4": hslToString(h, s, 70),
       "--chart-5": hslToString(h, s, 55),
-      "--gain": "142 71% 45%",
-      "--loss": "0 100% 50%",
+      "--gain": hslToString(h, primaryS, 64),
+      "--loss": hslToString(h, Math.max(s + 18, 52), 38),
       "--sidebar-background": hslToString(h, s, 3),
       "--sidebar-foreground": hslToString(h, Math.min(s + 15, 25), 81),
     },

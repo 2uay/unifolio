@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   ComposedChart, Area, Line, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine
@@ -12,13 +12,14 @@ import {
 } from 'lucide-react';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useCurrency } from '@/lib/CurrencyContext';
+import { useTheme } from '@/lib/ThemeContext';
 import { CustomStockTooltip } from '@/lib/chartTooltip';
 import IndicatorPanel from '@/components/charts/IndicatorPanel.jsx';
 import ComparePanel from '@/components/charts/ComparePanel.jsx';
 import DrawingToolbar from '@/components/charts/DrawingToolbar.jsx';
 import {
   generateOHLC, applyIndicators, toHeikinAshi,
-  CHART_TYPES, TIME_RANGES, RANGE_DAYS, INTERVALS, ALL_INDICATORS,
+  CHART_TYPES, TIME_RANGES, RANGE_DAYS, ALL_INDICATORS,
   COMPARE_OPTIONS, EVENT_TYPES, DEFAULT_LAYOUT, saveChartLayout, loadChartLayout
 } from '@/lib/chartEngine';
 import { fetchStockCandles } from '@/lib/stockApi';
@@ -45,6 +46,7 @@ export default function FullscreenChart({
 }) {
   const { privacyMode } = usePrivacy();
   const { convert } = useCurrency();
+  const { chartColors } = useTheme();
   const saved = useMemo(() => loadChartLayout(), []);
 
   const [showIndicatorMenu, setShowIndicatorMenu] = useState(false);
@@ -96,7 +98,21 @@ export default function FullscreenChart({
   const pctChange = ((lastClose - firstClose) / firstClose) * 100;
   const absChange = lastClose - firstClose;
   const isUp = pctChange >= 0;
-  const strokeColor = isUp ? '#34d399' : '#f87171';
+  const gainColor = 'hsl(var(--gain))';
+  const lossColor = 'hsl(var(--loss))';
+  const mutedAxisColor = 'hsl(var(--muted-foreground))';
+  const strokeColor = isUp ? gainColor : lossColor;
+  const indicatorColors = {
+    sma20: chartColors[3] || 'hsl(var(--chart-4))',
+    sma50: chartColors[2] || 'hsl(var(--chart-3))',
+    sma200: chartColors[5] || 'hsl(var(--chart-6))',
+    ema20: chartColors[4] || 'hsl(var(--chart-5))',
+    ema50: chartColors[6] || 'hsl(var(--chart-7))',
+    wma: chartColors[7] || 'hsl(var(--chart-8))',
+    vwap: chartColors[1] || 'hsl(var(--chart-2))',
+    oscillator: chartColors[3] || 'hsl(var(--semantic-warning))',
+    signal: chartColors[7] || 'hsl(var(--chart-8))',
+  };
   const gradId = `fs-grad-${ticker?.replace(/[^a-zA-Z0-9]/g, '') || 'stock'}`;
   const xInterval = Math.floor(chartData.length / 8);
 
@@ -377,12 +393,13 @@ export default function FullscreenChart({
             <div className="px-3 pt-2 flex flex-wrap gap-1 flex-shrink-0">
               {activeIndicators.map(id => {
                 const ind = ALL_INDICATORS.find(i => i.id === id);
+                const color = indicatorColors[id] || chartColors[ALL_INDICATORS.findIndex(i => i.id === id) % chartColors.length] || 'hsl(var(--primary))';
                 return ind ? (
                   <button
                     key={id}
                     onClick={() => toggleIndicator(id)}
                     className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: ind.color + '22', color: ind.color, border: `1px solid ${ind.color}44` }}
+                    style={{ backgroundColor: `color-mix(in srgb, ${color}, transparent 86%)`, color, border: `1px solid color-mix(in srgb, ${color}, transparent 68%)` }}
                   >
                     {ind.label} ×
                   </button>
@@ -390,10 +407,11 @@ export default function FullscreenChart({
               })}
               {compareLines.map(id => {
                 const opt = COMPARE_OPTIONS.find(o => o.id === id);
+                const color = chartColors[(COMPARE_OPTIONS.findIndex(o => o.id === id) + 2) % chartColors.length] || 'hsl(var(--chart-3))';
                 return opt ? (
                   <button key={id} onClick={() => toggleCompare(id)}
                     className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: opt.color + '22', color: opt.color, border: `1px solid ${opt.color}44` }}
+                    style={{ backgroundColor: `color-mix(in srgb, ${color}, transparent 86%)`, color, border: `1px solid color-mix(in srgb, ${color}, transparent 68%)` }}
                   >vs {opt.label} ×</button>
                 ) : null;
               })}
@@ -411,13 +429,13 @@ export default function FullscreenChart({
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} interval={xInterval} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: mutedAxisColor }} interval={xInterval} />
                 <YAxis
                   yAxisId="price"
                   orientation="right"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 10, fill: '#6b7280' }}
+                  tick={{ fontSize: 10, fill: mutedAxisColor }}
                   width={60}
                   tickFormatter={v => {
                     if (privacyMode) return '••••';
@@ -439,39 +457,40 @@ export default function FullscreenChart({
                 )}
                 {isCandle && (
                   <Bar yAxisId="price" dataKey="close" isAnimationActive={false}
-                    shape={(p) => <CandlestickBar {...p} priceMin={priceMin} priceMax={priceMax} />}
+                    shape={(p) => <CandlestickBar {...p} priceMin={priceMin} priceMax={priceMax} upColor={gainColor} downColor={lossColor} />}
                   />
                 )}
 
                 {/* Comparison lines */}
                 {compareLines.map(id => {
                   const opt = COMPARE_OPTIONS.find(o => o.id === id);
+                  const color = chartColors[(COMPARE_OPTIONS.findIndex(o => o.id === id) + 2) % chartColors.length] || 'hsl(var(--chart-3))';
                   return opt ? (
-                    <Line key={id} yAxisId="price" type="monotone" dataKey={id} stroke={opt.color} strokeWidth={1.5} dot={false} />
+                    <Line key={id} yAxisId="price" type="monotone" dataKey={id} stroke={color} strokeWidth={1.5} dot={false} />
                   ) : null;
                 })}
 
                 {/* Overlay indicators */}
-                {activeIndicators.includes('sma20') && <Line yAxisId="price" type="monotone" dataKey="sma20" stroke="#f59e0b" strokeWidth={1.2} dot={false} strokeDasharray="4 2" />}
-                {activeIndicators.includes('sma50') && <Line yAxisId="price" type="monotone" dataKey="sma50" stroke="#60a5fa" strokeWidth={1.2} dot={false} strokeDasharray="4 2" />}
-                {activeIndicators.includes('sma200') && <Line yAxisId="price" type="monotone" dataKey="sma200" stroke="#f472b6" strokeWidth={1.2} dot={false} strokeDasharray="4 2" />}
-                {activeIndicators.includes('ema20') && <Line yAxisId="price" type="monotone" dataKey="ema20" stroke="#a78bfa" strokeWidth={1.2} dot={false} />}
-                {activeIndicators.includes('ema50') && <Line yAxisId="price" type="monotone" dataKey="ema50" stroke="#818cf8" strokeWidth={1.2} dot={false} />}
-                {activeIndicators.includes('wma') && <Line yAxisId="price" type="monotone" dataKey="wma" stroke="#fb923c" strokeWidth={1.2} dot={false} />}
-                {activeIndicators.includes('vwap') && <Line yAxisId="price" type="monotone" dataKey="vwap" stroke="#38bdf8" strokeWidth={1.5} dot={false} strokeDasharray="5 2" />}
+                {activeIndicators.includes('sma20') && <Line yAxisId="price" type="monotone" dataKey="sma20" stroke={indicatorColors.sma20} strokeWidth={1.2} dot={false} strokeDasharray="4 2" />}
+                {activeIndicators.includes('sma50') && <Line yAxisId="price" type="monotone" dataKey="sma50" stroke={indicatorColors.sma50} strokeWidth={1.2} dot={false} strokeDasharray="4 2" />}
+                {activeIndicators.includes('sma200') && <Line yAxisId="price" type="monotone" dataKey="sma200" stroke={indicatorColors.sma200} strokeWidth={1.2} dot={false} strokeDasharray="4 2" />}
+                {activeIndicators.includes('ema20') && <Line yAxisId="price" type="monotone" dataKey="ema20" stroke={indicatorColors.ema20} strokeWidth={1.2} dot={false} />}
+                {activeIndicators.includes('ema50') && <Line yAxisId="price" type="monotone" dataKey="ema50" stroke={indicatorColors.ema50} strokeWidth={1.2} dot={false} />}
+                {activeIndicators.includes('wma') && <Line yAxisId="price" type="monotone" dataKey="wma" stroke={indicatorColors.wma} strokeWidth={1.2} dot={false} />}
+                {activeIndicators.includes('vwap') && <Line yAxisId="price" type="monotone" dataKey="vwap" stroke={indicatorColors.vwap} strokeWidth={1.5} dot={false} strokeDasharray="5 2" />}
                 {activeIndicators.includes('bb') && <>
-                  <Line yAxisId="price" type="monotone" dataKey="bbUpper" stroke="#34d399" strokeWidth={1} dot={false} strokeDasharray="3 2" />
-                  <Line yAxisId="price" type="monotone" dataKey="bbMid" stroke="#34d39966" strokeWidth={1} dot={false} strokeDasharray="3 2" />
-                  <Line yAxisId="price" type="monotone" dataKey="bbLower" stroke="#34d399" strokeWidth={1} dot={false} strokeDasharray="3 2" />
+                  <Line yAxisId="price" type="monotone" dataKey="bbUpper" stroke={gainColor} strokeWidth={1} dot={false} strokeDasharray="3 2" />
+                  <Line yAxisId="price" type="monotone" dataKey="bbMid" stroke="hsl(var(--gain) / 0.42)" strokeWidth={1} dot={false} strokeDasharray="3 2" />
+                  <Line yAxisId="price" type="monotone" dataKey="bbLower" stroke={gainColor} strokeWidth={1} dot={false} strokeDasharray="3 2" />
                 </>}
                 {activeIndicators.includes('prevclose') && (
-                  <ReferenceLine yAxisId="price" y={firstClose} stroke="#94a3b8" strokeDasharray="4 2" strokeWidth={1} />
+                  <ReferenceLine yAxisId="price" y={firstClose} stroke={mutedAxisColor} strokeDasharray="4 2" strokeWidth={1} />
                 )}
                 {activeIndicators.includes('high52') && (
-                  <ReferenceLine yAxisId="price" y={Math.max(...chartData.map(d => d.high))} stroke="#34d399" strokeDasharray="3 2" strokeWidth={0.8} />
+                  <ReferenceLine yAxisId="price" y={Math.max(...chartData.map(d => d.high))} stroke={gainColor} strokeDasharray="3 2" strokeWidth={0.8} />
                 )}
                 {activeIndicators.includes('low52') && (
-                  <ReferenceLine yAxisId="price" y={Math.min(...chartData.map(d => d.low))} stroke="#f87171" strokeDasharray="3 2" strokeWidth={0.8} />
+                  <ReferenceLine yAxisId="price" y={Math.min(...chartData.map(d => d.low))} stroke={lossColor} strokeDasharray="3 2" strokeWidth={0.8} />
                 )}
               </ComposedChart>
             </ResponsiveContainer>
@@ -485,9 +504,9 @@ export default function FullscreenChart({
                  <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                       <XAxis dataKey="date" hide />
-                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#6b7280' }} width={60} tickFormatter={v => (v / 1e6).toFixed(1) + 'M'} />
-                      <Bar dataKey="volume" fill="#6b728033" />
-                      <text x={8} y={14} fill="#6b7280" fontSize={9} fontFamily="monospace">VOL</text>
+                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: mutedAxisColor }} width={60} tickFormatter={v => (v / 1e6).toFixed(1) + 'M'} />
+                      <Bar dataKey="volume" fill="hsl(var(--muted-foreground) / 0.2)" />
+                      <text x={8} y={14} fill={mutedAxisColor} fontSize={9} fontFamily="monospace">VOL</text>
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -497,12 +516,12 @@ export default function FullscreenChart({
                  <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.4} />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} interval={xInterval} />
-                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#6b7280' }} width={60} domain={[0, 100]} ticks={[30, 50, 70]} />
-                      <ReferenceLine y={70} stroke="#f87171" strokeDasharray="3 3" strokeWidth={0.8} />
-                      <ReferenceLine y={30} stroke="#34d399" strokeDasharray="3 3" strokeWidth={0.8} />
-                      <Line type="monotone" dataKey="rsi" stroke="#f97316" strokeWidth={1.5} dot={false} />
-                      <text x={8} y={14} fill="#6b7280" fontSize={9} fontFamily="monospace">RSI(14)</text>
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: mutedAxisColor }} interval={xInterval} />
+                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: mutedAxisColor }} width={60} domain={[0, 100]} ticks={[30, 50, 70]} />
+                      <ReferenceLine y={70} stroke={lossColor} strokeDasharray="3 3" strokeWidth={0.8} />
+                      <ReferenceLine y={30} stroke={gainColor} strokeDasharray="3 3" strokeWidth={0.8} />
+                      <Line type="monotone" dataKey="rsi" stroke={indicatorColors.oscillator} strokeWidth={1.5} dot={false} />
+                      <text x={8} y={14} fill={mutedAxisColor} fontSize={9} fontFamily="monospace">RSI(14)</text>
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -511,13 +530,13 @@ export default function FullscreenChart({
                <div style={{ height: `clamp(70px, 15vh, 90px)` }} className="border-t border-border/30">
                  <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} interval={xInterval} />
-                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#6b7280' }} width={60} />
-                      <ReferenceLine y={0} stroke="#6b7280" strokeWidth={0.5} />
-                      <Bar dataKey="macdHist" fill="#22d3ee33" />
-                      <Line type="monotone" dataKey="macd" stroke="#22d3ee" strokeWidth={1.5} dot={false} />
-                      <Line type="monotone" dataKey="macdSignal" stroke="#f97316" strokeWidth={1} dot={false} strokeDasharray="3 2" />
-                      <text x={8} y={14} fill="#6b7280" fontSize={9} fontFamily="monospace">MACD</text>
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: mutedAxisColor }} interval={xInterval} />
+                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: mutedAxisColor }} width={60} />
+                      <ReferenceLine y={0} stroke={mutedAxisColor} strokeWidth={0.5} />
+                      <Bar dataKey="macdHist" fill="hsl(var(--chart-6) / 0.2)" />
+                      <Line type="monotone" dataKey="macd" stroke={indicatorColors.vwap} strokeWidth={1.5} dot={false} />
+                      <Line type="monotone" dataKey="macdSignal" stroke={indicatorColors.signal} strokeWidth={1} dot={false} strokeDasharray="3 2" />
+                      <text x={8} y={14} fill={mutedAxisColor} fontSize={9} fontFamily="monospace">MACD</text>
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -526,13 +545,13 @@ export default function FullscreenChart({
                <div style={{ height: `clamp(70px, 15vh, 90px)` }} className="border-t border-border/30">
                  <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} interval={xInterval} />
-                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#6b7280' }} width={60} domain={[0, 100]} ticks={[20, 50, 80]} />
-                      <ReferenceLine y={80} stroke="#f87171" strokeDasharray="3 3" strokeWidth={0.8} />
-                      <ReferenceLine y={20} stroke="#34d399" strokeDasharray="3 3" strokeWidth={0.8} />
-                      <Line type="monotone" dataKey="stochK" stroke="#84cc16" strokeWidth={1.5} dot={false} />
-                      <Line type="monotone" dataKey="stochD" stroke="#f59e0b" strokeWidth={1} dot={false} strokeDasharray="3 2" />
-                      <text x={8} y={14} fill="#6b7280" fontSize={9} fontFamily="monospace">STOCH</text>
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: mutedAxisColor }} interval={xInterval} />
+                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: mutedAxisColor }} width={60} domain={[0, 100]} ticks={[20, 50, 80]} />
+                      <ReferenceLine y={80} stroke={lossColor} strokeDasharray="3 3" strokeWidth={0.8} />
+                      <ReferenceLine y={20} stroke={gainColor} strokeDasharray="3 3" strokeWidth={0.8} />
+                      <Line type="monotone" dataKey="stochK" stroke={indicatorColors.sma20} strokeWidth={1.5} dot={false} />
+                      <Line type="monotone" dataKey="stochD" stroke={indicatorColors.signal} strokeWidth={1} dot={false} strokeDasharray="3 2" />
+                      <text x={8} y={14} fill={mutedAxisColor} fontSize={9} fontFamily="monospace">STOCH</text>
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -541,10 +560,10 @@ export default function FullscreenChart({
                <div style={{ height: `clamp(70px, 15vh, 90px)` }} className="border-t border-border/30">
                  <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} interval={xInterval} />
-                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#6b7280' }} width={60} />
-                      <Line type="monotone" dataKey="atr" stroke="#fb7185" strokeWidth={1.5} dot={false} />
-                      <text x={8} y={14} fill="#6b7280" fontSize={9} fontFamily="monospace">ATR(14)</text>
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: mutedAxisColor }} interval={xInterval} />
+                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: mutedAxisColor }} width={60} />
+                      <Line type="monotone" dataKey="atr" stroke={indicatorColors.sma200} strokeWidth={1.5} dot={false} />
+                      <text x={8} y={14} fill={mutedAxisColor} fontSize={9} fontFamily="monospace">ATR(14)</text>
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -553,10 +572,10 @@ export default function FullscreenChart({
                <div style={{ height: `clamp(70px, 15vh, 90px)` }} className="border-t border-border/30">
                  <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} interval={xInterval} />
-                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#6b7280' }} width={60} tickFormatter={v => (v / 1e6).toFixed(0) + 'M'} />
-                      <Line type="monotone" dataKey="obv" stroke="#34d399" strokeWidth={1.5} dot={false} />
-                      <text x={8} y={14} fill="#6b7280" fontSize={9} fontFamily="monospace">OBV</text>
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: mutedAxisColor }} interval={xInterval} />
+                      <YAxis orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: mutedAxisColor }} width={60} tickFormatter={v => (v / 1e6).toFixed(0) + 'M'} />
+                      <Line type="monotone" dataKey="obv" stroke={gainColor} strokeWidth={1.5} dot={false} />
+                      <text x={8} y={14} fill={mutedAxisColor} fontSize={9} fontFamily="monospace">OBV</text>
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
