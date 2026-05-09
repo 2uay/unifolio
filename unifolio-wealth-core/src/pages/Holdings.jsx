@@ -1469,6 +1469,8 @@ export default function Holdings() {
           <p className="mt-1 text-xs text-muted-foreground">Drag the floating window to reposition, or click × to close it.</p>
         </div>
       )}
+
+      <PortfolioBreakdown />
     </div>
   );
 
