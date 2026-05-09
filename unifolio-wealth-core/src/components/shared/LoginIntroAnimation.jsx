@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useTheme } from '@/lib/ThemeContext';
-import LoginIntroScene3D from '@/components/shared/LoginIntroScene3D';
 
-const INTRO_DURATION_MS = 5600;
-const REVEAL_AT_MS = 5100;
-const DOT_GATHER_START_MS = 2500;
-const DOT_GATHER_END_MS = 3540;
+const INTRO_DURATION_MS = 3000;
+const REVEAL_AT_MS = 2700;
+const DOT_GATHER_START_MS = 1350;
+const DOT_GATHER_END_MS = 1950;
 const N_DOTS = 12;
 const LOGO_SIZE = 144;
 const DOT_RADIUS = (2.5 / 28) * LOGO_SIZE;
@@ -35,7 +34,7 @@ const SCATTER_DOTS = [
   { x: 82, y: 41 },
 ];
 
-const DOT_POP_ORDER_MS = [180, 520, 300, 1180, 760, 1460, 1040, 2140, 410, 1660, 1320, 2360];
+const DOT_POP_ORDER_MS = [90, 260, 150, 590, 380, 730, 520, 1070, 205, 830, 660, 1180];
 function dotKeyframes(index, popAtMs) {
   const popStart = (popAtMs / INTRO_DURATION_MS) * 100;
   const popPeak = ((popAtMs + 160) / INTRO_DURATION_MS) * 100;
@@ -109,11 +108,9 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
 
   return (
     <div
-      className="login-intro fixed inset-0 z-50 overflow-hidden bg-black"
+      className="login-intro fixed inset-0 z-50 overflow-hidden bg-transparent"
       onClick={onComplete}
     >
-      <LoginIntroScene3D colors={logoColors} />
-
       <div className="login-intro-rods" aria-hidden="true">
         {RIBBONS.map((ribbon) => (
           <span
@@ -181,32 +178,7 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
           --intro-logo-y: clamp(104px, 30vh, 250px);
           --intro-gather-x: 50vw;
           --intro-gather-y: 50vh;
-          animation: login-intro-fade-out 0.42s ease 5.14s forwards;
-        }
-
-        .login-intro-3d {
-          position: absolute;
-          inset: 0;
-          z-index: 0;
-          overflow: hidden;
-          pointer-events: none;
-        }
-
-        .login-intro-3d-canvas {
-          width: 100%;
-          height: 100%;
-          display: block;
-        }
-
-        .login-intro::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          z-index: 1;
-          background:
-            linear-gradient(to bottom, rgb(0 0 0 / 0.42), rgb(0 0 0 / 0.05) 35%, rgb(0 0 0 / 0.46) 100%),
-            radial-gradient(ellipse 94% 78% at 50% 52%, transparent 18%, rgb(0 0 0 / 0.62) 100%);
-          pointer-events: none;
+          animation: login-intro-fade-out 0.28s ease 2.72s forwards;
         }
 
         .login-intro-rods {
@@ -235,7 +207,7 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
             transparent 100%
           );
           box-shadow: 0 0 90px hsl(var(--ring) / calc(var(--rod-alpha) * 0.46));
-          animation: login-intro-rod-shoot 0.82s cubic-bezier(0.17, 0.84, 0.38, 1) var(--rod-delay) forwards;
+          animation: login-intro-rod-shoot 0.58s cubic-bezier(0.17, 0.84, 0.38, 1) var(--rod-delay) forwards;
         }
 
         .login-intro-rod::before,
@@ -284,13 +256,13 @@ export default function LoginIntroAnimation({ onReveal, onComplete }) {
           opacity: 0;
           transform: translate(-50%, -50%) translateY(calc(var(--intro-gather-y) - var(--intro-logo-y))) scale(1.08);
           filter: drop-shadow(0 0 34px hsl(var(--ring) / 0.38));
-          animation: login-intro-wheel-move 1.52s cubic-bezier(0.08, 0.86, 0.12, 1) 3.58s forwards;
+          animation: login-intro-wheel-move 0.68s cubic-bezier(0.08, 0.86, 0.12, 1) 2.02s forwards;
         }
 
         .login-intro-wheel-dots {
           transform-box: view-box;
           transform-origin: 14px 14px;
-          animation: login-intro-wheel-spin 1.52s cubic-bezier(0.08, 0.86, 0.12, 1) 3.58s forwards;
+          animation: login-intro-wheel-spin 0.68s cubic-bezier(0.08, 0.86, 0.12, 1) 2.02s forwards;
         }
 
         .login-intro-skip {
