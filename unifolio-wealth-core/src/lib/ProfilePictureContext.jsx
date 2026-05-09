@@ -31,19 +31,24 @@ function compressImageDataUrl(dataUrl) {
 }
 
 export function ProfilePictureProvider({ children }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, isLoadingAuth } = useAuth();
   const [profilePicture, setProfilePicture] = useState(null);
   const [isAnimated, setIsAnimated] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) {
+    // Wait until auth has fully resolved — avoids false-negative clears
+    // while Supabase is still reading the session from localStorage.
+    if (isLoadingAuth) return;
+
+    if (!isAuthenticated || !user?.id) {
       setProfilePicture(null);
       setIsAnimated(false);
       setLoading(false);
       return;
     }
 
+    let cancelled = false;
     const loadProfile = async () => {
       try {
         const { data } = await supabase
@@ -52,19 +57,23 @@ export function ProfilePictureProvider({ children }) {
           .eq('user_id', user.id)
           .single();
 
+        if (cancelled) return;
         if (data?.profile_picture_url) {
           setProfilePicture(data.profile_picture_url);
           setIsAnimated(data.profile_picture_type === 'animated_gif');
         }
-      } catch (err) {
-        // no profile yet — that's fine
+      } catch {
+        // no profile row yet — fine
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadProfile();
-  }, [isAuthenticated, user]);
+    return () => { cancelled = true; };
+  // user?.id (stable string) instead of user (object ref) prevents re-firing
+  // on every TOKEN_REFRESHED / USER_UPDATED auth event.
+  }, [isLoadingAuth, isAuthenticated, user?.id]);
 
   const updateProfilePicture = async (base64DataUrl, fileName = '', animated = false) => {
     if (!isAuthenticated || !user) throw new Error('Must be signed in to save profile picture');
