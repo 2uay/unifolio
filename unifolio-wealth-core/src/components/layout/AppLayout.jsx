@@ -1,13 +1,18 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useSidebar } from '@/lib/SidebarContext';
 import Sidebar from './Sidebar';
 import FloatingWindowManager from '@/components/research/FloatingWindowManager';
 import ThemedWaveBackground from '@/components/shared/ThemedWaveBackground';
 import { cn } from '@/lib/utils';
+import { useFloatingHoldings } from '@/lib/FloatingHoldingsContext';
+import Holdings from '@/pages/Holdings';
 
 export default function AppLayout() {
   const { desktopOpen } = useSidebar();
+  const { isOpen: floatingHoldingsOpen } = useFloatingHoldings();
+  const location = useLocation();
+  const isHoldingsRoute = location.pathname === '/holdings';
 
   return (
     <>
@@ -28,6 +33,11 @@ export default function AppLayout() {
         </div>
       </main>
       <FloatingWindowManager />
-    </>);
-
+      {floatingHoldingsOpen && !isHoldingsRoute && (
+        <div aria-hidden="true" style={{ position: 'fixed', left: -9999, top: 0, width: 1, height: 1, overflow: 'hidden', pointerEvents: 'none' }}>
+          <Holdings />
+        </div>
+      )}
+    </>
+  );
 }

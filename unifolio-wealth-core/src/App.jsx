@@ -15,6 +15,7 @@ import { AccentBarsProvider } from '@/lib/AccentBarsContext';
 import { TopbarLogoProvider } from '@/lib/TopbarLogoContext';
 import { StarredStocksProvider } from '@/lib/StarredStocksContext';
 import { ProfilePictureProvider } from '@/lib/ProfilePictureContext';
+import { FloatingHoldingsProvider } from '@/lib/FloatingHoldingsContext';
 import { PortfolioDataProvider } from '@/lib/PortfolioDataContext';
 import AppLayout from '@/components/layout/AppLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -92,8 +93,10 @@ function App() {
                           <PrivacyProvider>
                             <ResearchWindowProvider>
                               <ProfilePictureProvider>
-                                <CustomCursor />
-                                <AuthenticatedApp />
+                                <FloatingHoldingsProvider>
+                                  <CustomCursor />
+                                  <AuthenticatedApp />
+                                </FloatingHoldingsProvider>
                               </ProfilePictureProvider>
                             </ResearchWindowProvider>
                           </PrivacyProvider>

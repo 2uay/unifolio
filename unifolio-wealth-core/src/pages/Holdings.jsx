@@ -25,6 +25,7 @@ import { calculateHeatmapStyle, enrichHoldingsForHeatmap } from '@/lib/heatmapCo
 import ColumnCustomizeModal from '@/components/holdings/ColumnCustomizeModal';
 import { useLiveData } from '@/lib/LiveDataContext';
 import { useSecondaryColors } from '@/lib/SecondaryColorsContext';
+import { useFloatingHoldings } from '@/lib/FloatingHoldingsContext';
 import { useStarredStocks } from '@/lib/StarredStocksContext';
 import SimulatedLiveLabel from '@/components/shared/SimulatedLiveLabel';
 import TickerWithStar from '@/components/shared/TickerWithStar';
@@ -138,9 +139,9 @@ export default function Holdings() {
   const [stackCDRs, setStackCDRs] = useState(() => {
     return localStorage.getItem('unifolio_stack_cdrs') === 'true';
   });
-  const [extractedOpen, setExtractedOpen] = useState(false);
-  const [extractedPos, setExtractedPos] = useState({ x: 60, y: 60 });
-  const [extractedSize, setExtractedSize] = useState({ w: 920, h: 580 });
+  const { isOpen: extractedOpen, setIsOpen: setExtractedOpen,
+          pos: extractedPos, setPos: setExtractedPos,
+          size: extractedSize, setSize: setExtractedSize } = useFloatingHoldings();
   const dragStateRef = useRef(null);
   const rouletteRan = useRef(false);
 
@@ -1416,9 +1417,6 @@ export default function Holdings() {
           </button>
         </div>
       </div>
-
-      {/* Portfolio Breakdown */}
-      <PortfolioBreakdown />
 
       {/* Column Customize Modal */}
       {showColumnModal && (
