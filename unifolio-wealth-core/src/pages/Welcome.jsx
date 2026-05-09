@@ -7,6 +7,7 @@ import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ThemedWaveBackground from '@/components/shared/ThemedWaveBackground';
+import LoginBackgroundWheel from '@/components/shared/LoginBackgroundWheel';
 import { useAuth } from '@/lib/AuthContext';
 import { useTheme } from '@/lib/ThemeContext';
 import { cn } from '@/lib/utils';
@@ -100,7 +101,7 @@ export default function Welcome() {
     resetToDefaultTheme();
     clearAuthNotice?.();
     enterDemoMode();
-    navigate('/');
+    navigate('/holdings');
   };
 
   const handleSignIn = async (e) => {
@@ -117,7 +118,7 @@ export default function Welcome() {
       } catch {
         // Remember-me is a local convenience only.
       }
-      navigate('/');
+      navigate('/holdings');
     } catch (err) {
       setError(err.message || 'Sign in failed. Check your email and password.');
     } finally {
@@ -183,6 +184,7 @@ export default function Welcome() {
       style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
     >
       <ThemedWaveBackground variant="ribbon" className="z-0" />
+      <LoginBackgroundWheel />
       {introVisible && <LoginIntroAnimation key={introRunId} onReveal={revealIntroContent} onComplete={completeIntro} />}
 
       <div

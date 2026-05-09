@@ -1,0 +1,91 @@
+import React, { useEffect, useRef } from 'react';
+import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
+
+const SIZE = 12;
+const HALF = SIZE / 2;
+
+export default function CustomCursor() {
+  const cursorRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const cursor = cursorRef.current;
+    if (!cursor) return;
+
+    const state = {
+      px: -200, py: -200,
+      mx: -200, my: -200,
+      active: false,
+      raf: null,
+    };
+
+    const tick = () => {
+      state.px += (state.mx - state.px) * 0.22;
+      state.py += (state.my - state.py) * 0.22;
+      cursor.style.transform = `translate(${(state.px - HALF).toFixed(1)}px, ${(state.py - HALF).toFixed(1)}px)`;
+      state.raf = requestAnimationFrame(tick);
+    };
+    state.raf = requestAnimationFrame(tick);
+
+    const onMove = (e) => {
+      state.mx = e.clientX;
+      state.my = e.clientY;
+
+      if (!state.active) {
+        state.active = true;
+        document.documentElement.classList.add('custom-cursor-active');
+        cursor.style.opacity = '1';
+      }
+
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const isPointer = el && (
+        el.closest('button, a, [role="button"], input, select, textarea, label, [tabindex]') !== null ||
+        window.getComputedStyle(el).cursor === 'pointer'
+      );
+      cursor.dataset.pointer = isPointer ? '1' : '0';
+    };
+
+    let clickTimer = null;
+    const onDown = () => {
+      cursor.dataset.clicking = '1';
+      if (clickTimer) clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        cursor.dataset.clicking = '0';
+        clickTimer = null;
+      }, 160);
+    };
+
+    document.addEventListener('mousemove', onMove, { passive: true });
+    document.addEventListener('mousedown', onDown);
+
+    return () => {
+      if (state.raf) cancelAnimationFrame(state.raf);
+      if (clickTimer) clearTimeout(clickTimer);
+      document.documentElement.classList.remove('custom-cursor-active');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={cursorRef}
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        zIndex: 99999,
+        pointerEvents: 'none',
+        willChange: 'transform',
+        opacity: 0,
+        transform: 'translate(-200px, -200px)',
+      }}
+      className="unifolio-custom-cursor"
+    >
+      <UnifolioWheelLogo size={SIZE} className="unifolio-cursor-wheel" />
+    </div>
+  );
+}

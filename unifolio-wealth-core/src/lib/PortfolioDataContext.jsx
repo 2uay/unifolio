@@ -667,13 +667,42 @@ export function PortfolioDataProvider({ children }) {
     await refreshPortfolioData();
   }, [refreshPortfolioData, user?.id]);
 
+  const createTransaction = useCallback(async (txData) => {
+    const newTx = {
+      ...txData,
+      id: txData.id || `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      created_at: new Date().toISOString(),
+      user_id: user?.id || null,
+    };
+
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem(IMPORT_PORTFOLIO_KEY) || 'null');
+        if (stored?.transactions) {
+          stored.transactions = [...stored.transactions, newTx];
+          localStorage.setItem(IMPORT_PORTFOLIO_KEY, JSON.stringify(stored));
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+
+    if (user?.id) {
+      const { error } = await supabase.from('transactions').insert([newTx]);
+      if (error) throw error;
+    }
+
+    await refreshPortfolioData();
+  }, [refreshPortfolioData, user?.id]);
+
   const value = useMemo(() => ({
     ...bundle,
     ...helpers,
     isLoadingPortfolio,
     refreshPortfolioData,
     updateTransferTransaction,
-  }), [bundle, helpers, isLoadingPortfolio, refreshPortfolioData, updateTransferTransaction]);
+    createTransaction,
+  }), [bundle, helpers, isLoadingPortfolio, refreshPortfolioData, updateTransferTransaction, createTransaction]);
 
   return <PortfolioDataContext.Provider value={value}>{children}</PortfolioDataContext.Provider>;
 }

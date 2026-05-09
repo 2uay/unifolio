@@ -207,6 +207,28 @@ button:not(:disabled):hover,
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* CUSTOM CURSOR */
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+.custom-cursor-active * {
+  cursor: none !important;
+}
+
+.unifolio-custom-cursor .unifolio-cursor-wheel {
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.unifolio-custom-cursor[data-pointer="1"] .unifolio-cursor-wheel {
+  transform: scale(1.45);
+  filter: drop-shadow(0 0 5px hsl(var(--primary) / 0.75));
+}
+
+.unifolio-custom-cursor[data-clicking="1"] .unifolio-cursor-wheel {
+  transform: scale(0.8);
+  filter: brightness(1.4) drop-shadow(0 0 3px hsl(var(--ring) / 0.9));
+}
+
 .card-hover:hover {
   background-color: hsl(var(--accent) / 0.08);
   border-color: hsl(var(--ring) / 0.3);

@@ -60,6 +60,189 @@ function DotRingSVG({ w, h, originX, originY, isRainbow, offsetX = 0, colorVar =
   );
 }
 
+// ── Floating wheel logos (Feature 8) ──────────────────────────────────────
+const FLOATER_SEED = [
+  { x: 12, y: 22, size: 32, speed: 22, phase: 0.0, baseOp: 0.06, breathPeriod: 8200 },
+  { x: 88, y: 15, size: 52, speed: 14, phase: 1.2, baseOp: 0.05, breathPeriod: 11000 },
+  { x: 35, y: 72, size: 24, speed: 30, phase: 2.4, baseOp: 0.08, breathPeriod: 7100 },
+  { x: 76, y: 68, size: 44, speed: 18, phase: 0.7, baseOp: 0.05, breathPeriod: 9400 },
+  { x: 55, y: 38, size: 70, speed: 10, phase: 3.1, baseOp: 0.04, breathPeriod: 13000 },
+  { x: 18, y: 55, size: 38, speed: 26, phase: 1.8, baseOp: 0.07, breathPeriod: 8800 },
+  { x: 92, y: 48, size: 28, speed: 34, phase: 0.3, baseOp: 0.06, breathPeriod: 6200 },
+  { x: 42, y: 88, size: 60, speed: 12, phase: 2.0, baseOp: 0.04, breathPeriod: 12400 },
+  { x: 68, y: 28, size: 20, speed: 38, phase: 1.5, baseOp: 0.09, breathPeriod: 7800 },
+  { x: 25, y: 42, size: 48, speed: 16, phase: 3.5, baseOp: 0.05, breathPeriod: 10200 },
+];
+
+const N_W = 12;
+const CX_W = 14;
+const CY_W = 14;
+const R_W = 11;
+const WHEEL_DOTS = Array.from({ length: N_W }, (_, i) => {
+  const a = (i / N_W) * Math.PI * 2;
+  return { x: CX_W + R_W * Math.cos(a), y: CY_W + R_W * Math.sin(a) };
+});
+
+function FloatingWheels({ chartColors, cursorRef }) {
+  const floaterRefs = useRef([]);
+  const groupRefs = useRef([]);
+  const physicsRef = useRef(null);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    physicsRef.current = FLOATER_SEED.map((f, i) => ({
+      ...f,
+      px: (f.x / 100) * vw,
+      py: (f.y / 100) * vh,
+      vx: (Math.random() - 0.5) * 70,
+      vy: (Math.random() - 0.5) * 70,
+      rot: (i * 37) % 360,
+    }));
+
+    const cursorVel = { x: 0, y: 0 };
+    let lastCx = -999, lastCy = -999;
+    let raf = null;
+    let lastTime = null;
+
+    const MAX_SPEED = 750;
+    const DAMPING_60FPS = 0.975;
+    const DRIFT_ACCEL = 28;
+    const CURSOR_SPRING = 3800;
+    const CURSOR_XFER = 1.6;
+    const HIT_MULT = 1.8;
+
+    const tick = (now) => {
+      if (!lastTime) lastTime = now;
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+
+      const cx = cursorRef.current.x;
+      const cy = cursorRef.current.y;
+
+      if (lastCx > -990) {
+        cursorVel.x = (cx - lastCx) / dt;
+        cursorVel.y = (cy - lastCy) / dt;
+      }
+      lastCx = cx; lastCy = cy;
+
+      const cvw = window.innerWidth;
+      const cvh = window.innerHeight;
+      const damp = Math.pow(DAMPING_60FPS, dt * 60);
+
+      physicsRef.current.forEach((f, i) => {
+        const el = floaterRefs.current[i];
+        const g = groupRefs.current[i];
+        if (!el || !g) return;
+
+        // Autonomous drift (sinusoidal acceleration — snowglobe feel)
+        f.vx += Math.sin(now / 8000 + f.phase) * DRIFT_ACCEL * dt;
+        f.vy += Math.cos(now / 11000 + f.phase * 1.3) * DRIFT_ACCEL * dt;
+
+        // Cursor soft-body collision
+        const dx = f.px - cx;
+        const dy = f.py - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const hitR = f.size * HIT_MULT;
+
+        if (dist < hitR && cx > -990) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = (hitR - dist) / hitR;
+
+          // Spring repulsion (proportional to overlap depth)
+          f.vx += nx * CURSOR_SPRING * overlap * dt;
+          f.vy += ny * CURSOR_SPRING * overlap * dt;
+
+          // Billiard: transfer cursor velocity toward floater
+          const approach = -(cursorVel.x * nx + cursorVel.y * ny);
+          if (approach > 0) {
+            f.vx -= nx * approach * CURSOR_XFER;
+            f.vy -= ny * approach * CURSOR_XFER;
+          }
+        }
+
+        // Air resistance damping
+        f.vx *= damp;
+        f.vy *= damp;
+
+        // Speed cap
+        const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy);
+        if (speed > MAX_SPEED) { f.vx *= MAX_SPEED / speed; f.vy *= MAX_SPEED / speed; }
+
+        // Integrate
+        f.px += f.vx * dt;
+        f.py += f.vy * dt;
+
+        // Elastic boundary bounce
+        const m = f.size * 0.5;
+        if (f.px < m)       { f.px = m;       f.vx =  Math.abs(f.vx) * 0.72; }
+        if (f.px > cvw - m) { f.px = cvw - m; f.vx = -Math.abs(f.vx) * 0.72; }
+        if (f.py < m)       { f.py = m;       f.vy =  Math.abs(f.vy) * 0.72; }
+        if (f.py > cvh - m) { f.py = cvh - m; f.vy = -Math.abs(f.vy) * 0.72; }
+
+        // Rotation
+        f.rot = (f.rot + f.speed * dt) % 360;
+
+        // Breathing opacity
+        const breathe = Math.sin(now / f.breathPeriod + f.phase) * 0.02;
+        const opacity = Math.max(0, f.baseOp + breathe).toFixed(4);
+
+        el.style.transform = `translate(${(f.px - f.size / 2).toFixed(1)}px, ${(f.py - f.size / 2).toFixed(1)}px)`;
+        el.style.opacity = opacity;
+        g.style.transform = `rotate(${f.rot.toFixed(2)}deg)`;
+      });
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <>
+      {FLOATER_SEED.map((f, i) => (
+        <div
+          key={i}
+          ref={el => { floaterRefs.current[i] = el; }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: f.size,
+            height: f.size,
+            willChange: 'transform, opacity',
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 28 28" width={f.size} height={f.size}>
+            <g
+              ref={el => { groupRefs.current[i] = el; }}
+              style={{ transformOrigin: `${CX_W}px ${CY_W}px`, transformBox: 'view-box' }}
+            >
+              {WHEEL_DOTS.map((dot, di) => (
+                <circle
+                  key={di}
+                  cx={dot.x}
+                  cy={dot.y}
+                  r={2.5}
+                  fill={chartColors[(i * 3 + di) % chartColors.length] || 'hsl(var(--primary))'}
+                />
+              ))}
+            </g>
+          </svg>
+        </div>
+      ))}
+    </>
+  );
+}
+
 // ── Ribbon background (login page) ─────────────────────────────────────────
 function RibbonBackground({ className }) {
   const stageRef = useRef(null);
@@ -140,7 +323,6 @@ function RibbonBackground({ className }) {
               zIndex: r.zIndex,
               transform: `translateX(-50%) translateY(-50%) rotateZ(${r.rotZ}deg)`,
               borderRadius: '3px',
-              // Bright core, fades to transparent at both ends
               background: [
                 `linear-gradient(to right,`,
                 `  transparent 0%,`,
@@ -154,14 +336,12 @@ function RibbonBackground({ className }) {
               boxShadow: `0 0 80px hsl(var(--primary) / ${(r.alpha * 0.40).toFixed(2)})`,
             }}
           >
-            {/* Main gloss sweep */}
             <div style={{
               position: 'absolute',
               inset: 0,
               borderRadius: '3px',
               background: 'linear-gradient(to bottom, rgba(255,255,255,0.40) 0%, rgba(255,255,255,0.10) 38%, transparent 68%)',
             }} />
-            {/* Bright top-edge specular */}
             <div style={{
               position: 'absolute',
               top: 0,
@@ -176,7 +356,6 @@ function RibbonBackground({ className }) {
         ))}
       </div>
 
-      {/* Dark radial vignette — grounds the composition in the page bg color */}
       <div style={{
         position: 'absolute',
         inset: 0,
@@ -188,7 +367,6 @@ function RibbonBackground({ className }) {
         pointerEvents: 'none',
       }} />
 
-      {/* Bottom fade — softens into the card area */}
       <div style={{
         position: 'absolute',
         bottom: 0,
@@ -204,7 +382,7 @@ function RibbonBackground({ className }) {
 
 // ── Main export ────────────────────────────────────────────────────────────
 export default function ThemedWaveBackground({ className = '', intensity = 'default', variant = 'waves' }) {
-  const { selectedTheme } = useTheme();
+  const { selectedTheme, chartColors } = useTheme();
   const isRainbow = selectedTheme === 'rainbow';
   const strong = intensity === 'strong';
 
@@ -212,14 +390,16 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
     return <RibbonBackground className={className} />;
   }
 
-  // ── Wave / dot-ring mode (existing app background) ──────────────────────
+  // ── Wave / dot-ring mode ────────────────────────────────────────────────
   const ref = useRef(null);
   const [dims, setDims] = useState({
     w: typeof window !== 'undefined' ? window.innerWidth  : 1440,
     h: typeof window !== 'undefined' ? window.innerHeight : 900,
   });
   const animState = useRef({ targetX: 50, targetY: 85, currentX: 50, currentY: 85, frame: 0, frameCount: 0 });
+  const cursorPx = useRef({ x: -999, y: -999 });
   const [renderKey, setRenderKey] = useState(0);
+  const [ripples, setRipples] = useState([]);
 
   useEffect(() => {
     const el = ref.current;
@@ -239,22 +419,41 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
       s.targetY = (e.clientY / window.innerHeight) * 100;
       el.style.setProperty('--cursor-x', `${e.clientX}px`);
       el.style.setProperty('--cursor-y', `${e.clientY}px`);
+      cursorPx.current.x = e.clientX;
+      cursorPx.current.y = e.clientY;
     };
     window.addEventListener('pointermove', onMove, { passive: true });
+
+    const onDown = (e) => {
+      const id = Date.now() + Math.random();
+      setRipples(prev => [...prev, { id, x: e.clientX, y: e.clientY }]);
+      setTimeout(() => setRipples(prev => prev.filter(r => r.id !== id)), 750);
+    };
+    document.addEventListener('mousedown', onDown);
 
     if (reducedMotion) {
       el.style.setProperty('--wave-x', '50%');
       el.style.setProperty('--wave-y', '85%');
       el.style.setProperty('--wave-lift', '0px');
-      return () => { window.removeEventListener('pointermove', onMove); ro.disconnect(); };
+      return () => {
+        window.removeEventListener('pointermove', onMove);
+        document.removeEventListener('mousedown', onDown);
+        ro.disconnect();
+      };
     }
 
     const tick = () => {
       const s = animState.current;
       s.currentX += (s.targetX - s.currentX) * 0.09;
       s.currentY += (s.targetY - s.currentY) * 0.09;
-      el.style.setProperty('--wave-x', `${s.currentX.toFixed(2)}%`);
-      el.style.setProperty('--wave-y', `${s.currentY.toFixed(2)}%`);
+
+      // Autonomous sinusoidal drift (works even without cursor movement)
+      const now = performance.now();
+      const driftX = Math.sin(now / 9000) * 6;
+      const driftY = Math.cos(now / 11000) * 4;
+
+      el.style.setProperty('--wave-x', `${(s.currentX + driftX).toFixed(2)}%`);
+      el.style.setProperty('--wave-y', `${(s.currentY + driftY).toFixed(2)}%`);
       el.style.setProperty('--wave-lift', `${Math.max(0, 90 - s.currentY).toFixed(2)}px`);
       s.frameCount++;
       if (s.frameCount % 4 === 0) setRenderKey(k => k + 1);
@@ -264,6 +463,7 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
 
     return () => {
       window.removeEventListener('pointermove', onMove);
+      document.removeEventListener('mousedown', onDown);
       cancelAnimationFrame(animState.current.frame);
       ro.disconnect();
     };
@@ -307,15 +507,27 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
     >
       <div className="twb-field absolute inset-0" />
 
-      {/* Dot rings — dimmed in rainbow mode so gradient stays dominant */}
+      {/* Dot rings */}
       <DotRingSVG key={`a-${renderKey}`} w={w} h={h} originX={originX} originY={originY} isRainbow={isRainbow} offsetX={0}   colorVar="--primary" opacityMult={isRainbow ? 0.28 : 1} />
       <DotRingSVG key={`b-${renderKey}`} w={w} h={h} originX={originX} originY={originY} isRainbow={false}    offsetX={-20}  colorVar="--ring"    opacityMult={isRainbow ? 0.18 : 0.55} />
       <DotRingSVG key={`c-${renderKey}`} w={w} h={h} originX={originX} originY={originY} isRainbow={false}    offsetX={20}   colorVar="--accent"  opacityMult={isRainbow ? 0.18 : 0.55} />
 
       {!isRainbow && <div className="twb-surface absolute inset-x-0 bottom-0" />}
 
-      {/* B&W cursor bubble — full-coverage in rainbow mode */}
+      {/* B&W cursor bubble */}
       <div className="twb-bw absolute inset-0" />
+
+      {/* Floating wheel logos */}
+      <FloatingWheels chartColors={chartColors} cursorRef={cursorPx} />
+
+      {/* Click ripples */}
+      {ripples.map(r => (
+        <div
+          key={r.id}
+          className="twb-ripple-el"
+          style={{ left: r.x - 100, top: r.y - 100 }}
+        />
+      ))}
 
       <style>{`
         .twb-field {
@@ -376,6 +588,19 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
             -webkit-mask-image: radial-gradient(circle 180px at var(--cursor-x) var(--cursor-y), black 30%, transparent 100%);
           `}
         }
+        .twb-ripple-el {
+          position: fixed;
+          border-radius: 50%;
+          border: 1.5px solid hsl(var(--primary) / 0.5);
+          width: 200px;
+          height: 200px;
+          pointer-events: none;
+          animation: twb-ripple 0.75s ease-out 1 forwards;
+        }
+        @keyframes twb-ripple {
+          from { transform: scale(0.05); opacity: 0.5; }
+          to   { transform: scale(1);    opacity: 0; }
+        }
         @keyframes twb-rainbow-shift {
           0%   { background-position: 0% 0%; }
           100% { background-position: 100% 100%; }
@@ -392,6 +617,7 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
         @media (prefers-reduced-motion: reduce) {
           .twb-surface, .twb-field, .twb-bw { animation: none; }
           svg[aria-hidden] { animation: none; }
+          .twb-ripple-el { display: none; }
         }
       `}</style>
     </div>

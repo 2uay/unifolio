@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { applyTheme, applyThemePaletteVariables, getChartColors, generateMonochromeTheme } from './themes';
+import { applyTheme, applyThemePaletteVariables, getChartColors, generateMonochromeTheme, themes } from './themes';
 import { supabase } from '@/lib/supabaseClient';
 
 const ThemeContext = createContext(null);
@@ -33,6 +33,7 @@ export function ThemeProvider({ children }) {
   const [customMonochromeColor, setCustomMonochromeColor] = useState('#3b82f6');
   const committedThemeRef = useRef(DEFAULT_THEME);
   const committedMonoColorRef = useRef('#3b82f6');
+  const livingRafRef = useRef(null);
 
   const applyCustomMonochrome = (hexColor) => {
     const monoTheme = generateMonochromeTheme(hexColor);
@@ -111,6 +112,41 @@ export function ThemeProvider({ children }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Living theme animation: shift hues over time
+  useEffect(() => {
+    if (livingRafRef.current) {
+      cancelAnimationFrame(livingRafRef.current);
+      livingRafRef.current = null;
+    }
+    const theme = themes[selectedTheme];
+    if (!theme?.isLiving || !theme?.living) return;
+
+    const { primaryBaseHue, shiftSpeed, saturation, lightness, chartHueOffsets, chartSat, chartLight } = theme.living;
+    const root = document.documentElement;
+    let startTime = null;
+
+    const tick = (now) => {
+      if (!startTime) startTime = now;
+      const elapsed = (now - startTime) / 1000;
+      const hue = (primaryBaseHue + elapsed * shiftSpeed) % 360;
+      root.style.setProperty('--primary', `${hue.toFixed(1)} ${saturation}% ${lightness}%`);
+      root.style.setProperty('--ring', `${((hue + 20) % 360).toFixed(1)} ${saturation}% ${lightness}%`);
+      if (chartHueOffsets) {
+        chartHueOffsets.forEach((offset, i) => {
+          const ch = (hue + offset) % 360;
+          root.style.setProperty(`--chart-${i + 1}`, `${ch.toFixed(1)} ${chartSat}% ${chartLight}%`);
+        });
+      }
+      livingRafRef.current = requestAnimationFrame(tick);
+    };
+    livingRafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (livingRafRef.current) cancelAnimationFrame(livingRafRef.current);
+      livingRafRef.current = null;
+    };
+  }, [selectedTheme]);
 
   // changeTheme: apply immediately + persist to localStorage + save to Supabase
   const changeTheme = async (themeId, customColor = null) => {

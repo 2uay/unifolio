@@ -13,8 +13,10 @@ export default function UnifolioLogo({ className = '' }) {
     let raf = null;
     let glintTimer = null;
     let glintFrame = null;
-    const target = { x: 50, y: 48, energy: 0 };
-    const current = { x: 50, y: 48, energy: 0 };
+    const baseEnergy = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--logo-energy') || '1') - 1;
+    const idleEnergy = Math.max(0, Math.min(0.85, baseEnergy * 0.55));
+    const target = { x: 50, y: 48, energy: idleEnergy };
+    const current = { x: 50, y: 48, energy: idleEnergy };
 
     const applyFlood = ({ x, y, energy }) => {
       el.style.setProperty('--logo-energy', energy.toFixed(2));
@@ -69,7 +71,7 @@ export default function UnifolioLogo({ className = '' }) {
     const handleLeave = () => {
       target.x = 50;
       target.y = 48;
-      target.energy = 0;
+      target.energy = idleEnergy;
     };
 
     el.addEventListener('pointerenter', handleEnter);

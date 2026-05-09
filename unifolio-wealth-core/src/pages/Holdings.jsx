@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Filter, ChevronDown, ChevronUp, ArrowUpDown, Info, Columns3, Maximize2, Minimize2, PanelTopOpen, X, Download } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Filter, ChevronDown, ChevronUp, ArrowUpDown, Info, Columns3, X, Download, ExternalLink } from 'lucide-react';
 import { exportFilteredHoldingsCSV } from '@/lib/exportEngine';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ThemedSwitch from '@/components/ui/switch-themed';
@@ -18,6 +19,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { stackHoldings, stackCDRGroups } from '@/lib/stackingEngine';
 import PortfolioBreakdown from '@/components/holdings/PortfolioBreakdown';
 import HeatmapModeSelector from '@/components/holdings/HeatmapModeSelector';
+import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { HEATMAP_MODES } from '@/lib/heatmapModes.js';
 import { calculateHeatmapStyle, enrichHoldingsForHeatmap } from '@/lib/heatmapColorEngine.js';
 import ColumnCustomizeModal from '@/components/holdings/ColumnCustomizeModal';
@@ -137,8 +139,9 @@ export default function Holdings() {
     return localStorage.getItem('unifolio_stack_cdrs') === 'true';
   });
   const [extractedOpen, setExtractedOpen] = useState(false);
-  const [extractedFullscreen, setExtractedFullscreen] = useState(false);
-  const extractedPanelRef = useRef(null);
+  const [extractedPos, setExtractedPos] = useState({ x: 60, y: 60 });
+  const [extractedSize, setExtractedSize] = useState({ w: 920, h: 580 });
+  const dragStateRef = useRef(null);
   const rouletteRan = useRef(false);
 
   const { convert, displayCurrency, bothMode, secondaryCurrency, convertSecondary } = useCurrency();
@@ -183,14 +186,6 @@ export default function Holdings() {
   useEffect(() => {
     if (!showRealized) setExpandedRealizedKeys(new Set());
   }, [showRealized]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setExtractedFullscreen(document.fullscreenElement === extractedPanelRef.current);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
 
   // Heatmap roulette: cycle through all modes on first mount, land on Portfolio Weight
   useEffect(() => {
@@ -268,20 +263,26 @@ export default function Holdings() {
     localStorage.setItem('unifolio_stack_cdrs', String(val));
   };
 
-  const toggleExtractedFullscreen = async () => {
-    const panel = extractedPanelRef.current;
-    if (!panel) return;
-    try {
-      if (document.fullscreenElement === panel) {
-        await document.exitFullscreen();
-      } else if (panel.requestFullscreen) {
-        await panel.requestFullscreen();
-      } else {
-        setExtractedFullscreen(value => !value);
-      }
-    } catch {
-      setExtractedFullscreen(value => !value);
-    }
+  const handleDragStart = (e) => {
+    e.preventDefault();
+    const startX = e.clientX - extractedPos.x;
+    const startY = e.clientY - extractedPos.y;
+    const onMove = (ev) => setExtractedPos({ x: ev.clientX - startX, y: ev.clientY - startY });
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const handleResizeStart = (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = extractedSize.w;
+    const startH = extractedSize.h;
+    const onMove = (ev) => setExtractedSize({ w: Math.max(520, startW + ev.clientX - startX), h: Math.max(320, startH + ev.clientY - startY) });
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   };
 
   const accountValueMap = useMemo(() => {
@@ -802,7 +803,9 @@ export default function Holdings() {
       case 'account':
         return <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 text-foreground/70 font-medium whitespace-nowrap">{h._isStacked ? h._accountLabel : acctType}</span>;
       case 'institution':
-        return <span className="text-xs text-muted-foreground whitespace-nowrap">{h._isStacked ? h._institutionLabel : inst?.name}</span>;
+        return h._isStacked
+          ? <span className="text-xs text-muted-foreground whitespace-nowrap">{h._institutionLabel}</span>
+          : <InstitutionLogo institution={inst} name={inst?.name} size="xs" />;
       case 'accountType':
         return <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary border border-border/40 text-foreground/70 font-medium whitespace-nowrap">{h._isStacked ? h._accountLabel : acctType}</span>;
       case 'marketValue': {
@@ -882,40 +885,8 @@ export default function Holdings() {
     );
   }
 
-  const holdingsWorkspace = (
+  const holdingsTableSection = (
     <div className="space-y-4">
-      <PageHeader 
-        title="Holdings" 
-        description="All positions across accounts and institutions"
-        actions={(
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <SimulatedLiveLabel />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-[10px]"
-              onClick={() => exportFilteredHoldingsCSV(displayHoldings)}
-              title="Export current view as CSV"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 text-[10px]"
-              onClick={() => setExtractedOpen(true)}
-              disabled={extractedOpen}
-            >
-              <PanelTopOpen className="h-3.5 w-3.5" />
-              {extractedOpen ? 'Extracted' : 'Extract'}
-            </Button>
-          </div>
-        )}
-      />
-
       {/* Filters Row */}
        <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
          <Filter className="w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
@@ -963,17 +934,6 @@ export default function Holdings() {
           <span>Showing estimated holdings as of <strong>{dateFilter.label}</strong> based on purchase history. Connect full transaction history for greater accuracy.</span>
         </div>
       )}
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="rounded-lg border border-border/30 bg-card/50 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Deposited</p>
-          <p className="mt-1 font-mono text-sm font-semibold">{privacyMode ? PM : formatCurrency(convertedDeposited)}</p>
-        </div>
-        <div className="rounded-lg border border-border/30 bg-card/50 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Net Contributions</p>
-          <p className="mt-1 font-mono text-sm font-semibold">{privacyMode ? PM : formatCurrency(convertedNetContributions)}</p>
-        </div>
-      </div>
 
       {/* Realized + Stack toggles */}
       <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
@@ -1027,9 +987,19 @@ export default function Holdings() {
             {stackCDRs ? 'Stacked by ticker · CDR groups merged' : 'Stacked by ticker'}
           </span>
         )}
-        <span className="text-[10px] sm:text-xs text-muted-foreground ml-auto">
-          {displayHoldings.length} active{showRealized && (Object.keys(realizedByActive).length > 0 || realizedUnmatched.length > 0) ? ` · ${(Object.values(realizedByActive).flat() || []).length + realizedUnmatched.length} realized` : ''}
-        </span>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className="text-[10px] sm:text-xs text-muted-foreground">
+            {displayHoldings.length} active{showRealized && (Object.keys(realizedByActive).length > 0 || realizedUnmatched.length > 0) ? ` · ${(Object.values(realizedByActive).flat() || []).length + realizedUnmatched.length} realized` : ''}
+          </span>
+          <button
+            type="button"
+            title={extractedOpen ? 'Close floating table' : 'Pop out holdings table'}
+            onClick={() => setExtractedOpen(v => !v)}
+            className="p-0.5 rounded text-muted-foreground/60 hover:text-foreground transition-colors"
+          >
+            {extractedOpen ? <X className="w-3.5 h-3.5" /> : <ExternalLink className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
 
       {displayHoldings.length === 0 && filteredRealized.length === 0 ? (
@@ -1461,60 +1431,83 @@ export default function Holdings() {
     </div>
   );
 
-  return (
-    <>
-      {!extractedOpen ? (
-        holdingsWorkspace
-      ) : (
-        <div className="rounded-xl border border-primary/20 bg-card/70 p-6 text-center">
-          <p className="text-sm font-semibold text-foreground">Holdings view extracted</p>
-          <p className="mt-1 text-xs text-muted-foreground">Use the floating panel to work with filters, heatmap modes, sorting, and fullscreen.</p>
-          <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => setExtractedOpen(false)}>
-            Return to embedded view
-          </Button>
+  const holdingsWorkspace = (
+    <div className="space-y-4">
+      <PageHeader
+        title="Holdings"
+        description="All positions across accounts and institutions"
+        actions={(
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <SimulatedLiveLabel />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-[10px]"
+              onClick={() => exportFilteredHoldingsCSV(displayHoldings)}
+              title="Export current view as CSV"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
+          </div>
+        )}
+      />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rounded-lg border border-border/30 bg-card/50 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Deposited</p>
+          <p className="mt-1 font-mono text-sm font-semibold">{privacyMode ? PM : formatCurrency(convertedDeposited)}</p>
+        </div>
+        <div className="rounded-lg border border-border/30 bg-card/50 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Net Contributions</p>
+          <p className="mt-1 font-mono text-sm font-semibold">{privacyMode ? PM : formatCurrency(convertedNetContributions)}</p>
+        </div>
+      </div>
+
+      {!extractedOpen ? holdingsTableSection : (
+        <div className="rounded-xl border border-primary/20 bg-card/50 p-6 text-center">
+          <p className="text-sm font-semibold text-foreground">Holdings table is floating</p>
+          <p className="mt-1 text-xs text-muted-foreground">Drag the floating window to reposition, or click × to close it.</p>
         </div>
       )}
+    </div>
+  );
 
-      {extractedOpen && (
+  return (
+    <>
+      {holdingsWorkspace}
+      {extractedOpen && createPortal(
         <div
-          ref={extractedPanelRef}
-          className={cn(
-            'fixed inset-3 z-[60] flex flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl',
-            extractedFullscreen && 'inset-0 rounded-none'
-          )}
+          style={{ position: 'fixed', left: extractedPos.x, top: extractedPos.y, width: extractedSize.w, height: extractedSize.h, zIndex: 9999 }}
+          className="flex flex-col rounded-2xl border border-border bg-background shadow-2xl overflow-hidden"
         >
-          <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-card px-3 py-2">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Extracted Holdings</p>
-              <p className="text-[10px] text-muted-foreground">Shared state with the main holdings view</p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={toggleExtractedFullscreen}
-              >
-                {extractedFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-                {extractedFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setExtractedOpen(false)}
-                aria-label="Close extracted holdings view"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+          <div
+            className="flex items-center gap-2 border-b border-border/60 bg-card px-3 py-2 cursor-grab select-none"
+            style={{ touchAction: 'none' }}
+            onPointerDown={handleDragStart}
+          >
+            <p className="text-sm font-semibold text-foreground flex-1">Holdings</p>
+            <span className="text-[10px] text-muted-foreground mr-2">{displayHoldings.length} active</span>
+            <button
+              type="button"
+              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setExtractedOpen(false)}
+              aria-label="Close floating holdings"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-            {holdingsWorkspace}
+            {holdingsTableSection}
           </div>
-        </div>
+          <div
+            className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize"
+            style={{ touchAction: 'none' }}
+            onPointerDown={handleResizeStart}
+          />
+        </div>,
+        document.body
       )}
     </>
   );

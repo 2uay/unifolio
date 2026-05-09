@@ -10,6 +10,9 @@ import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import InstitutionLogo from '@/components/shared/InstitutionLogo';
+import SecurityHistoryPanel from '@/components/transactions/SecurityHistoryPanel';
+import TransactionAIAssistant from '@/components/transactions/TransactionAIAssistant';
 
 const typeConfig = {
   buy: { icon: ArrowDownLeft, color: 'text-emerald-400', bg: 'bg-emerald-400/10', label: 'Buy' },
@@ -38,6 +41,7 @@ export default function Transactions() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [showExport, setShowExport] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [expandedTicker, setExpandedTicker] = useState(null);
   const [editDraft, setEditDraft] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
   const { privacyMode } = usePrivacy();
@@ -97,6 +101,8 @@ export default function Transactions() {
       />
       {showExport && <TaxExportModal onClose={() => setShowExport(false)} />}
 
+      <TransactionAIAssistant />
+
       <div className="flex items-center gap-2">
         <Filter className="w-4 h-4 text-muted-foreground" />
         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -140,7 +146,8 @@ export default function Transactions() {
                 const isEditing = editingId === t.id;
                 const canEdit = editableTransferTypes.has(t.type);
                 return (
-                  <tr key={t.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
+                  <React.Fragment key={t.id}>
+                  <tr className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{t.date}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
@@ -175,7 +182,11 @@ export default function Transactions() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 font-mono font-semibold">{t.ticker || '—'}</td>
+                    <td
+                      className={cn('px-4 py-2.5 font-mono font-semibold', t.ticker && 'cursor-pointer hover:text-primary transition-colors')}
+                      onClick={() => t.ticker && setExpandedTicker(prev => prev === t.ticker ? null : t.ticker)}
+                      title={t.ticker ? `View history for ${t.ticker}` : undefined}
+                    >{t.ticker || '—'}</td>
                     <td className="px-4 py-2.5 text-right font-mono">{t.qty || t.quantity || '—'}</td>
                     <td className="px-4 py-2.5 text-right font-mono">{privacyMode ? PM : (t.price > 0 ? '$' + t.price.toFixed(2) : '—')}</td>
                     <td className="px-4 py-2.5 text-right font-mono font-medium">{privacyMode ? PM : formatCurrency(convert(t.total ?? t.total_amount ?? 0, t.currency || 'USD'))}</td>
@@ -183,7 +194,7 @@ export default function Transactions() {
                     <td className="px-4 py-2.5">
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">{acc?.account_type ?? acc?.type}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground">{inst?.name}</td>
+                    <td className="px-4 py-2.5"><InstitutionLogo institution={inst} name={inst?.name} size="xs" /></td>
                     <td className="px-4 py-2.5 text-right">
                       {canEdit && (isEditing ? (
                         <div className="flex justify-end gap-1">
@@ -195,6 +206,14 @@ export default function Transactions() {
                       ))}
                     </td>
                   </tr>
+                  {t.ticker && expandedTicker === t.ticker && (
+                    <tr>
+                      <td colSpan={100} className="p-0">
+                        <SecurityHistoryPanel ticker={t.ticker} />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

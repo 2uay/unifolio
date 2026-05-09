@@ -18,6 +18,7 @@ import { ProfilePictureProvider } from '@/lib/ProfilePictureContext';
 import { PortfolioDataProvider } from '@/lib/PortfolioDataContext';
 import AppLayout from '@/components/layout/AppLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import CustomCursor from '@/components/shared/CustomCursor';
 import Dashboard from '@/pages/Dashboard';
 import Holdings from '@/pages/Holdings';
 import Accounts from '@/pages/Accounts';
@@ -91,6 +92,7 @@ function App() {
                           <PrivacyProvider>
                             <ResearchWindowProvider>
                               <ProfilePictureProvider>
+                                <CustomCursor />
                                 <AuthenticatedApp />
                               </ProfilePictureProvider>
                             </ResearchWindowProvider>
