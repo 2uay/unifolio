@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { safeNumber, safeDivide } from '@/lib/safeNum';
 import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
 import { fetchValidatedPrices, fetchHistoricalPricesForTickers } from '@/lib/stockApi';
+import { getLocallyDeletedAccountIds, isLocalDeleteAllPending } from '@/lib/dataDeletion';
 
 const PortfolioDataContext = createContext(null);
 
@@ -362,14 +363,16 @@ function loadLocalImportedBundle() {
     const raw = localStorage.getItem(IMPORT_PORTFOLIO_KEY);
     if (!raw) return null;
     const stored = JSON.parse(raw);
-    const accounts = Array.isArray(stored.accounts) ? stored.accounts : [];
-    const holdingsRaw = Array.isArray(stored.holdings) ? stored.holdings : [];
+    const locallyDeleted = new Set(getLocallyDeletedAccountIds());
+    const keepAccount = row => !locallyDeleted.has(row.account_id ?? row.accountId ?? row.id);
+    const accounts = (Array.isArray(stored.accounts) ? stored.accounts : []).filter(keepAccount);
+    const holdingsRaw = (Array.isArray(stored.holdings) ? stored.holdings : []).filter(keepAccount);
     if (accounts.length === 0 && holdingsRaw.length === 0) return null;
 
     const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
     const holdings = holdingsRaw.map(h => withAliases(h, accountMap));
-    const transactions = (stored.transactions || []).map(normalizeTransaction);
-    const realizedPositions = (stored.realizedPositions || []).map(normalizeRealized);
+    const transactions = (stored.transactions || []).filter(keepAccount).map(normalizeTransaction);
+    const realizedPositions = (stored.realizedPositions || []).filter(keepAccount).map(normalizeRealized);
     const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 
     return {
@@ -413,6 +416,11 @@ export function PortfolioDataProvider({ children }) {
       return;
     }
 
+    if (isLocalDeleteAllPending(user.id)) {
+      setBundle(emptyBundle());
+      return;
+    }
+
     const localImportedBundle = loadLocalImportedBundle();
     setBundle(localImportedBundle || emptyBundle());
     setIsLoadingPortfolio(true);
@@ -433,8 +441,10 @@ export function PortfolioDataProvider({ children }) {
         .find(res => res.error);
       if (hardError) throw hardError.error;
 
-      const accounts = Array.isArray(accountsRes.data) ? accountsRes.data : [];
-      const holdingsRaw = Array.isArray(holdingsRes.data) ? holdingsRes.data : [];
+      const locallyDeleted = new Set(getLocallyDeletedAccountIds());
+      const keepAccount = row => !locallyDeleted.has(row.account_id ?? row.accountId ?? row.id);
+      const accounts = (Array.isArray(accountsRes.data) ? accountsRes.data : []).filter(keepAccount);
+      const holdingsRaw = (Array.isArray(holdingsRes.data) ? holdingsRes.data : []).filter(keepAccount);
       if (accounts.length === 0 && holdingsRaw.length === 0) {
         setBundle(localImportedBundle ? await enrichImportedBundle(localImportedBundle) : emptyBundle());
         return;
@@ -442,8 +452,8 @@ export function PortfolioDataProvider({ children }) {
 
       const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
       const holdings = await enrichHoldingsWithMarketData(holdingsRaw.map(h => withAliases(h, accountMap)));
-      const transactions = (transactionsRes.data || []).map(normalizeTransaction);
-      const realizedPositions = realizedRes.error ? [] : (realizedRes.data || []).map(normalizeRealized);
+      const transactions = (transactionsRes.data || []).filter(keepAccount).map(normalizeTransaction);
+      const realizedPositions = realizedRes.error ? [] : (realizedRes.data || []).filter(keepAccount).map(normalizeRealized);
       const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 
       setBundle({

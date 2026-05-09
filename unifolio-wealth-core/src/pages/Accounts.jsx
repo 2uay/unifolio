@@ -16,8 +16,9 @@ import { useLiveData } from '@/lib/LiveDataContext';
 import { safeNumber } from '@/lib/safeNum';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
-import { supabase } from '@/lib/supabaseClient';
-import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
+import InstitutionLogo from '@/components/shared/InstitutionLogo';
+import { useAuth } from '@/lib/AuthContext';
+import { deleteImportedAccountData } from '@/lib/dataDeletion';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -31,6 +32,7 @@ export default function Accounts() {
   const queryClient = useQueryClient();
   const { registerTicker, liveHoldings: liveMarketData } = useLiveData();
   const { accounts, holdings, getInstitution, calcAccountValue, isEmptyPortfolio, refreshPortfolioData } = usePortfolioData();
+  const { user } = useAuth();
   const safeAccounts = useMemo(() => Array.isArray(accounts) ? accounts.filter(Boolean) : [], [accounts]);
   const safeHoldings = useMemo(() => Array.isArray(holdings) ? holdings.filter(Boolean) : [], [holdings]);
 
@@ -90,26 +92,11 @@ export default function Accounts() {
     setDeletingAcc(true);
     try {
       const accId = pendingDeleteAcc.id;
-      await supabase.from('holdings').delete().eq('account_id', accId);
-      await supabase.from('transactions').delete().eq('account_id', accId);
-      await supabase.from('realized_positions').delete().eq('account_id', accId).then(() => {});
-      await supabase.from('import_batches').delete().eq('account_id', accId).then(() => {});
-      await supabase.from('accounts').delete().eq('id', accId);
-
-      try {
-        const raw = localStorage.getItem(IMPORT_PORTFOLIO_KEY);
-        if (raw) {
-          const bundle = JSON.parse(raw);
-          bundle.accounts     = (bundle.accounts     || []).filter(a => a.id !== accId);
-          bundle.holdings     = (bundle.holdings     || []).filter(h => (h.account_id ?? h.accountId) !== accId);
-          bundle.transactions = (bundle.transactions || []).filter(t => (t.account_id ?? t.accountId) !== accId);
-          localStorage.setItem(IMPORT_PORTFOLIO_KEY, JSON.stringify(bundle));
-        }
-      } catch { /* ignore */ }
-
+      await deleteImportedAccountData(accId, user?.id);
       await refreshPortfolioData?.();
     } catch (err) {
       console.error('[Accounts] delete failed:', err);
+      alert(err?.message || 'Account deletion failed. Please try again.');
     } finally {
       setDeletingAcc(false);
       setPendingDeleteAcc(null);
@@ -255,7 +242,7 @@ export default function Accounts() {
         return (
           <div key={instId} className="space-y-3">
             <div className="flex items-center gap-3">
-              <span className="text-xl">{inst?.logo}</span>
+              <InstitutionLogo institution={inst} id={instId} size="lg" />
               <div>
                 <h2 className="font-semibold">{inst?.name}</h2>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">

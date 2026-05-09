@@ -1,12 +1,13 @@
 // @ts-nocheck
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { applyTheme, getChartColors, generateMonochromeTheme, themes } from './themes';
 import { supabase } from '@/lib/supabaseClient';
 
 const ThemeContext = createContext(null);
 
-const DEFAULT_THEME = 'royalpurple';
+const DEFAULT_THEME = 'malachite';
 const LEGACY_DEFAULT_THEME = 'redblackwhiteaccent';
+const PREVIOUS_DEFAULT_THEME = 'royalpurple';
 const LS_KEY = 'unifolio_default_theme';
 const LS_MONO_KEY = 'unifolio_mono_color';
 
@@ -30,6 +31,8 @@ export function ThemeProvider({ children }) {
   const [chartColors, setChartColors] = useState(getChartColors(DEFAULT_THEME));
   const [isLoading, setIsLoading] = useState(true);
   const [customMonochromeColor, setCustomMonochromeColor] = useState('#3b82f6');
+  const committedThemeRef = useRef(DEFAULT_THEME);
+  const committedMonoColorRef = useRef('#3b82f6');
 
   const applyCustomMonochrome = (hexColor) => {
     const monoTheme = generateMonochromeTheme(hexColor);
@@ -39,16 +42,23 @@ export function ThemeProvider({ children }) {
     });
   };
 
-  const applyById = (themeId, monoColor) => {
+  const applyById = (themeId, monoColor, { commit = true } = {}) => {
     if (themeId === 'custom-monochrome' && monoColor) {
       applyCustomMonochrome(monoColor);
-      setSelectedTheme('custom-monochrome');
       setChartColors(generateMonochromeTheme(monoColor).chartColors);
-      setCustomMonochromeColor(monoColor);
+      if (commit) {
+        setSelectedTheme('custom-monochrome');
+        setCustomMonochromeColor(monoColor);
+        committedThemeRef.current = 'custom-monochrome';
+        committedMonoColorRef.current = monoColor;
+      }
     } else if (themeId && themeId !== 'custom-monochrome') {
-      setSelectedTheme(themeId);
       setChartColors(getChartColors(themeId));
       applyTheme(themeId);
+      if (commit) {
+        setSelectedTheme(themeId);
+        committedThemeRef.current = themeId;
+      }
     }
   };
 
@@ -57,7 +67,7 @@ export function ThemeProvider({ children }) {
     // Signed-in users get their saved theme after auth resolves; logged-out/demo
     // visitors should always see the royal purple Unifolio default.
     const storedTheme = localStorage.getItem(LS_KEY);
-    if (storedTheme === LEGACY_DEFAULT_THEME) {
+    if (storedTheme === LEGACY_DEFAULT_THEME || storedTheme === PREVIOUS_DEFAULT_THEME) {
       persistDefaultTheme();
     }
     applyById(DEFAULT_THEME);
@@ -81,18 +91,11 @@ export function ThemeProvider({ children }) {
           }
         } catch { /* silent — keep current theme */ }
       } else {
-        // Guest: pick a random theme once per browser session (sessionStorage clears on new tab)
+        // Guests/demo users always start on the public Unifolio default.
         const SESSION_KEY = 'unifolio_guest_theme';
-        const sessionTheme = sessionStorage.getItem(SESSION_KEY);
-        if (sessionTheme && themes[sessionTheme]) {
-          applyById(sessionTheme);
-        } else {
-          const ids = Object.keys(themes).filter(id => id !== 'custom-monochrome');
-          const pick = ids[Math.floor(Math.random() * ids.length)];
-          applyById(pick);
-          sessionStorage.setItem(SESSION_KEY, pick);
-          localStorage.setItem(LS_KEY, pick);
-        }
+        applyById(DEFAULT_THEME);
+        sessionStorage.setItem(SESSION_KEY, DEFAULT_THEME);
+        localStorage.setItem(LS_KEY, DEFAULT_THEME);
       }
       setIsLoading(false);
     });
@@ -128,10 +131,23 @@ export function ThemeProvider({ children }) {
     applyById(DEFAULT_THEME);
   };
 
+  const previewTheme = (themeId, customColor = null) => {
+    const color = themeId === 'custom-monochrome' ? (customColor || customMonochromeColor) : null;
+    applyById(themeId, color, { commit: false });
+  };
+
+  const clearThemePreview = () => {
+    const committedTheme = committedThemeRef.current || selectedTheme || DEFAULT_THEME;
+    const committedMonoColor = committedMonoColorRef.current || customMonochromeColor;
+    applyById(committedTheme, committedMonoColor, { commit: false });
+  };
+
   return (
     <ThemeContext.Provider value={{
       selectedTheme,
       changeTheme,
+      previewTheme,
+      clearThemePreview,
       resetToDefaultTheme,
       defaultTheme: DEFAULT_THEME,
       chartColors,

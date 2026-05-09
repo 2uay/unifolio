@@ -39,6 +39,7 @@ function parseCSVLine(line) {
 // ─── BROKER DETECTION ─────────────────────────────────────────
 
 const BROKER_SIGNATURES = {
+  wealthsimple_holdings: ['account_id', 'account_type', 'symbol', 'quantity'],
   wealthsimple_activity: ['transaction_date', 'activity_type', 'activity_sub_type', 'net_cash_amount'],
   wealthsimple: ['activity type', 'account currency', 'net amount'],
   ibkr: ['asset category', 'financial instrument', 'trade date', 'execution price'],
@@ -54,6 +55,8 @@ export function detectBroker(headers) {
   const normalized = headers.map(h => h.toLowerCase().trim());
 
   if (['transaction_date', 'account_id', 'account_type', 'activity_type', 'activity_sub_type', 'net_cash_amount'].every(h => normalized.includes(h))) return 'wealthsimple_activity';
+  if (['account_id', 'account_type', 'symbol', 'quantity'].every(h => normalized.includes(h))
+    && normalized.some(h => /market|value|price|book|cost/.test(h))) return 'wealthsimple_holdings';
   if (normalized.includes('tradeid') || normalized.includes('trade id') || normalized.includes('ibkr trade id')) return 'ibkr_flex';
   if (normalized.includes('asset category') && normalized.includes('symbol') && normalized.includes('trade price')) return 'ibkr';
   if (normalized.includes('average price') && normalized.includes('market value') && normalized.includes('account type') && !normalized.includes('date')) return 'unifolio_holdings';
@@ -156,6 +159,19 @@ export function autoMapColumns(headers, broker) {
       currency: find('account currency', 'currency'),
       account: find('account_id', 'account'),
       accountType: find('account_type'),
+    },
+    wealthsimple_holdings: {
+      account: find('account_id', 'account'),
+      accountType: find('account_type', 'account type'),
+      ticker: find('symbol', 'ticker'),
+      name: find('name', 'security name', 'description'),
+      assetClass: find('asset_class', 'asset class', 'security type'),
+      quantity: find('quantity', 'qty', 'shares'),
+      price: find('current_price', 'market price', 'price', 'unit_price'),
+      marketValue: find('market_value', 'market value', 'current_value', 'current value', 'value'),
+      currency: find('currency', 'account currency'),
+      costBasis: find('book_value', 'book value', 'cost basis', 'cost'),
+      avgPrice: find('average_price', 'average price', 'avg price', 'book price'),
     },
     wealthsimple_activity: {
       date: find('transaction_date'),
@@ -502,6 +518,12 @@ function isWealthsimpleActivityReport(headers) {
     .every(header => normalized.includes(header));
 }
 
+function isWealthsimpleHoldingsReport(headers) {
+  const normalized = headers.map(h => h.toLowerCase().trim());
+  return ['account_id', 'account_type', 'symbol', 'quantity'].every(header => normalized.includes(header))
+    && normalized.some(header => /market|value|price|book|cost/.test(header));
+}
+
 function rowsToObjects(rows, headers) {
   return rows.map(row => {
     const obj = {};
@@ -838,6 +860,75 @@ function parseWealthsimpleActivityReport(dataRows, headers, filename) {
   };
 }
 
+function parseWealthsimpleHoldingsReport(dataRows, headers, filename) {
+  const columnMap = autoMapColumns(headers, 'wealthsimple_holdings');
+  const { valid, errors } = parseHoldingsRows(dataRows, headers, columnMap);
+  const positions = valid.map(row => {
+    const accountId = row.account || 'wealthsimple-account';
+    return {
+      ...row,
+      id: `holding-${accountId}-${row.ticker}`,
+      account: accountId,
+      account_id: accountId,
+      accountId,
+      accountType: row.accountType || 'Brokerage',
+      institution: 'Wealthsimple',
+      asset_class: row.assetClass || 'Stock',
+      position: row.quantity,
+      current_price: row.price,
+      lastPrice: row.price,
+      average_price: row.avgPrice,
+      market_value: row.marketValue,
+      cost_basis: row.costBasis,
+      sourceSection: 'WEALTHSIMPLE_HOLDINGS',
+      valuation_status: 'holdings_snapshot',
+      price_source: 'broker_snapshot',
+    };
+  });
+  const accountIds = [...new Set(positions.map(row => row.account).filter(Boolean))];
+  const accounts = accountIds.map(id => {
+    const row = positions.find(position => position.account === id) || {};
+    return {
+      clientAccountId: id,
+      currency: row.currency || inferWealthsimpleAccountCurrency(id, []),
+      name: 'Wealthsimple',
+      accountType: row.accountType || 'Brokerage',
+      country: 'CA',
+    };
+  });
+  const account = accounts[0] || {
+    clientAccountId: 'wealthsimple-account',
+    currency: 'CAD',
+    name: 'Wealthsimple',
+    accountType: 'Brokerage',
+    country: 'CA',
+  };
+
+  return {
+    broker: 'wealthsimple_holdings',
+    headers,
+    rawRows: dataRows,
+    columnMap,
+    valid: positions,
+    transactions: [],
+    errors,
+    isHoldings: true,
+    isSectioned: true,
+    importBundle: {
+      report: { name: filename || 'Wealthsimple Holdings Report' },
+      account,
+      accounts,
+      positions,
+      openHoldings: positions,
+      realizedPositions: [],
+      transactions: [],
+      sectionSummary: [{ code: 'WS_HOLDINGS', name: 'Wealthsimple Holdings Report', rowCount: positions.length }],
+      securities: [],
+    },
+    headerRowIndex: 0,
+  };
+}
+
 function parseIBKRSectionedReport(allRows, filename) {
   const sections = {};
   const report = {
@@ -1109,6 +1200,149 @@ function parseIBKRSectionedReport(allRows, filename) {
   };
 }
 
+// ─── MULTI-FILE IMPORT COMPOSITION ───────────────────────────
+
+function isWealthsimpleParsed(parsed) {
+  return ['wealthsimple', 'wealthsimple_activity', 'wealthsimple_holdings'].includes(parsed?.broker);
+}
+
+function uniqueBy(rows, keyFn) {
+  const map = new Map();
+  rows.filter(Boolean).forEach(row => {
+    const key = keyFn(row);
+    if (!key) return;
+    map.set(key, { ...(map.get(key) || {}), ...row });
+  });
+  return [...map.values()];
+}
+
+function bundleRows(parsed, key) {
+  const bundle = parsed?.importBundle || {};
+  if (Array.isArray(bundle[key])) return bundle[key];
+  if (key === 'positions') return parsed?.isHoldings ? parsed?.valid || [] : [];
+  if (key === 'transactions') return !parsed?.isHoldings ? parsed?.valid || [] : [];
+  return [];
+}
+
+function composeWealthsimpleFiles(files) {
+  const holdingsFiles = files.filter(parsed => parsed.broker === 'wealthsimple_holdings' || (parsed.isHoldings && parsed.broker === 'wealthsimple'));
+  const activityFiles = files.filter(parsed => parsed.broker === 'wealthsimple_activity');
+  const sourceFiles = files.map(parsed => ({
+    filename: parsed.filename,
+    broker: parsed.broker,
+    rowCount: parsed.valid?.length || 0,
+    errorCount: parsed.errors?.length || 0,
+  }));
+
+  const accounts = uniqueBy(
+    files.flatMap(parsed => parsed.importBundle?.accounts || []),
+    account => account.clientAccountId || account.account_id || account.accountId || account.id,
+  );
+  const transactions = activityFiles.flatMap(parsed => bundleRows(parsed, 'transactions'));
+  const realizedPositions = activityFiles.flatMap(parsed => bundleRows(parsed, 'realizedPositions'));
+  const activityPositions = activityFiles.flatMap(parsed => bundleRows(parsed, 'positions'));
+  const snapshotPositions = holdingsFiles.flatMap(parsed => bundleRows(parsed, 'positions'));
+  const reconciliationWarnings = [];
+  const activityByKey = Object.fromEntries(activityPositions.map(row => [`${row.account || row.account_id || row.accountId}::${row.ticker}`, row]));
+
+  const positions = snapshotPositions.length
+    ? snapshotPositions.map(position => {
+      const key = `${position.account || position.account_id || position.accountId}::${position.ticker}`;
+      const activityPosition = activityByKey[key];
+      const snapshotQty = Number(position.quantity || 0);
+      const activityQty = Number(activityPosition?.quantity || 0);
+      if (activityPosition && Math.abs(snapshotQty - activityQty) > 0.0001) {
+        reconciliationWarnings.push({
+          account: position.account || position.account_id || position.accountId,
+          ticker: position.ticker,
+          message: `Holdings snapshot quantity ${snapshotQty} differs from activity reconstruction ${activityQty}; using holdings snapshot.`,
+        });
+      }
+      return {
+        ...activityPosition,
+        ...position,
+        purchase_history: activityPosition?.purchase_history || position.purchase_history || [],
+        purchaseHistory: activityPosition?.purchase_history || activityPosition?.purchaseHistory || position.purchase_history || position.purchaseHistory || [],
+        valuation_status: position.valuation_status || 'holdings_snapshot',
+        price_source: position.price_source || 'broker_snapshot',
+      };
+    })
+    : activityPositions;
+
+  const sectionSummary = [
+    ...files.flatMap(parsed => parsed.importBundle?.sectionSummary || []),
+    { code: 'MULTI_FILE', name: 'Composed Wealthsimple import bundle', rowCount: files.length },
+  ];
+  const first = files[0] || {};
+  const account = accounts[0] || first.importBundle?.account || {
+    clientAccountId: positions[0]?.account || transactions[0]?.account || 'wealthsimple-account',
+    currency: positions[0]?.currency || transactions[0]?.currency || 'CAD',
+    name: 'Wealthsimple',
+    accountType: positions[0]?.accountType || transactions[0]?.accountType || 'Brokerage',
+    country: 'CA',
+  };
+
+  return {
+    broker: 'wealthsimple',
+    filename: `Wealthsimple import bundle (${files.length} files)`,
+    headers: ['Account', 'Ticker', 'Quantity', 'Price', 'Market Value', 'Currency'],
+    rawRows: files.flatMap(parsed => parsed.rawRows || []),
+    columnMap: {},
+    valid: positions,
+    transactions,
+    errors: files.flatMap(parsed => parsed.errors || []),
+    isHoldings: true,
+    isSectioned: true,
+    sourceFiles,
+    reconciliationWarnings,
+    importBundle: {
+      report: {
+        name: `Wealthsimple import bundle (${files.length} files)`,
+        sourceFiles,
+      },
+      account,
+      accounts,
+      positions,
+      openHoldings: positions,
+      realizedPositions,
+      transactions,
+      sectionSummary,
+      securities: [],
+      sourceFiles,
+      reconciliationWarnings,
+    },
+    headerRowIndex: 0,
+  };
+}
+
+export function composeParsedImports(parsedFiles) {
+  const files = (parsedFiles || []).filter(Boolean);
+  if (files.length <= 1) {
+    return files.map(parsed => ({
+      ...parsed,
+      sourceFiles: [{ filename: parsed.filename, broker: parsed.broker, rowCount: parsed.valid?.length || 0, errorCount: parsed.errors?.length || 0 }],
+      importBundle: {
+        ...(parsed.importBundle || {}),
+        sourceFiles: [{ filename: parsed.filename, broker: parsed.broker, rowCount: parsed.valid?.length || 0, errorCount: parsed.errors?.length || 0 }],
+      },
+    }));
+  }
+
+  const wealthsimpleFiles = files.filter(isWealthsimpleParsed);
+  const otherFiles = files.filter(parsed => !isWealthsimpleParsed(parsed));
+  return [
+    ...(wealthsimpleFiles.length ? [composeWealthsimpleFiles(wealthsimpleFiles)] : []),
+    ...otherFiles.map(parsed => ({
+      ...parsed,
+      sourceFiles: [{ filename: parsed.filename, broker: parsed.broker, rowCount: parsed.valid?.length || 0, errorCount: parsed.errors?.length || 0 }],
+      importBundle: {
+        ...(parsed.importBundle || {}),
+        sourceFiles: [{ filename: parsed.filename, broker: parsed.broker, rowCount: parsed.valid?.length || 0, errorCount: parsed.errors?.length || 0 }],
+      },
+    })),
+  ];
+}
+
 // ─── FULL PARSE PIPELINE ──────────────────────────────────────
 
 export function parseFile(text, filename) {
@@ -1135,6 +1369,9 @@ export function parseFile(text, filename) {
   if (isWealthsimpleActivityReport(headers)) {
     return parseWealthsimpleActivityReport(dataRows, headers, filename);
   }
+  if (isWealthsimpleHoldingsReport(headers)) {
+    return parseWealthsimpleHoldingsReport(dataRows, headers, filename);
+  }
 
   const broker = detectBroker(headers);
   const columnMap = autoMapColumns(headers, broker);
@@ -1153,16 +1390,17 @@ export function parseFile(text, filename) {
 // ─── BROKER DISPLAY NAMES ─────────────────────────────────────
 
 export const BROKER_LABELS = {
-  wealthsimple: { name: 'Wealthsimple', logo: '🟢' },
-  wealthsimple_activity: { name: 'Wealthsimple Activity Export', logo: '🟢' },
-  ibkr: { name: 'Interactive Brokers', logo: '🔴' },
-  ibkr_flex: { name: 'Interactive Brokers (Flex Query)', logo: '🔴' },
-  ibkr_activity_flex: { name: 'Interactive Brokers Activity Flex Report', logo: '🔴' },
-  questrade: { name: 'Questrade', logo: '🟡' },
-  unifolio: { name: 'Unifolio Transaction Template', logo: '🟣' },
-  unifolio_holdings: { name: 'Unifolio Holdings Template', logo: '🟣' },
-  td: { name: 'TD Direct Investing', logo: '🟢' },
-  generic: { name: 'Generic CSV', logo: '📄' },
+  wealthsimple: { name: 'Wealthsimple', logo: 'wealthsimple' },
+  wealthsimple_holdings: { name: 'Wealthsimple Holdings Report', logo: 'wealthsimple' },
+  wealthsimple_activity: { name: 'Wealthsimple Activity Export', logo: 'wealthsimple' },
+  ibkr: { name: 'Interactive Brokers', logo: 'interactive-brokers' },
+  ibkr_flex: { name: 'Interactive Brokers (Flex Query)', logo: 'interactive-brokers' },
+  ibkr_activity_flex: { name: 'Interactive Brokers Activity Flex Report', logo: 'interactive-brokers' },
+  questrade: { name: 'Questrade', logo: 'questrade' },
+  unifolio: { name: 'Unifolio Transaction Template', logo: 'unifolio' },
+  unifolio_holdings: { name: 'Unifolio Holdings Template', logo: 'unifolio' },
+  td: { name: 'TD Direct Investing', logo: 'td' },
+  generic: { name: 'Generic CSV', logo: 'generic' },
 };
 
 // ─── UNIFOLIO FIELD LABELS ────────────────────────────────────

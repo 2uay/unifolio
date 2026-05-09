@@ -7,12 +7,13 @@ import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
-  parseFile, parseRows, parseHoldingsRows, BROKER_LABELS, FIELD_LABELS,
+  parseFile, parseRows, parseHoldingsRows, composeParsedImports, BROKER_LABELS, FIELD_LABELS,
 } from '@/lib/csvParser';
 import { bankExportInstructions, downloadInstructionAsset } from '@/lib/bankExportInstructions';
 import { saveParsedImport } from '@/lib/importPersistence';
 import { COLUMN_DEFINITIONS } from '@/lib/columnConfig';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import InstitutionLogo from '@/components/shared/InstitutionLogo';
 
 const IMPORT_HISTORY_KEY = 'unifolio_import_history';
 const TRANSFER_TYPES = new Set(['Position Transfer', 'Transfer In', 'Transfer Out', 'Deposit', 'Withdrawal']);
@@ -62,39 +63,41 @@ function UploadStep({ onParsed }) {
   const [parsing, setParsing] = useState(false);
   const inputRef = useRef(null);
 
-  const processFile = useCallback(async (file) => {
-    if (!file) return;
+  const processFiles = useCallback(async (fileList) => {
+    const files = [...(fileList || [])];
+    if (files.length === 0) return;
     setParsing(true);
     setError(null);
     try {
-      const ext = file.name.split('.').pop().toLowerCase();
-      if (!['csv', 'txt', 'tsv'].includes(ext)) {
-        setError('Please upload a CSV or TSV file. Excel (.xlsx) support coming soon.');
-        setParsing(false);
+      const invalid = files.filter(file => !['csv', 'txt', 'tsv'].includes(file.name.split('.').pop().toLowerCase()));
+      if (invalid.length) {
+        setError('Please upload only CSV, TSV, or TXT files. Excel (.xlsx) support coming soon.');
         return;
       }
-      const text = await file.text();
-      const result = parseFile(text, file.name);
-      if (result.error) {
-        setError(result.error);
-        setParsing(false);
+      const parsedFiles = await Promise.all(files.map(async (file) => {
+        const text = await file.text();
+        return { ...parseFile(text, file.name), filename: file.name, fileSize: file.size };
+      }));
+      const failed = parsedFiles.find(result => result.error);
+      if (failed) {
+        setError(`${failed.filename}: ${failed.error}`);
         return;
       }
-      onParsed({ ...result, filename: file.name, fileSize: file.size });
+      onParsed(composeParsedImports(parsedFiles), parsedFiles);
     } catch (err) {
-      setError('Failed to read file. Make sure it is a valid CSV.');
+      setError('Failed to read files. Make sure they are valid CSVs.');
+    } finally {
+      setParsing(false);
     }
-    setParsing(false);
   }, [onParsed]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault();
     setDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    processFile(file);
-  }, [processFile]);
+    processFiles(e.dataTransfer.files);
+  }, [processFiles]);
 
-  const onFileChange = (e) => processFile(e.target.files?.[0]);
+  const onFileChange = (e) => processFiles(e.target.files);
 
   return (
     <div className="space-y-4">
@@ -109,7 +112,7 @@ function UploadStep({ onParsed }) {
         )}
         onClick={() => inputRef.current?.click()}
       >
-        <input ref={inputRef} type="file" accept=".csv,.txt,.tsv" className="sr-only" onChange={onFileChange} />
+        <input ref={inputRef} type="file" multiple accept=".csv,.txt,.tsv" className="sr-only" onChange={onFileChange} />
         {parsing ? (
           <>
             <RefreshCw className="h-8 w-8 text-primary animate-spin mb-3" />
@@ -120,8 +123,8 @@ function UploadStep({ onParsed }) {
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary mb-4">
               <Upload className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium text-foreground mb-1">Drop your CSV file here</p>
-            <p className="text-xs text-muted-foreground">or click to browse — CSV, TSV, TXT accepted</p>
+            <p className="text-sm font-medium text-foreground mb-1">Drop one or more CSV files here</p>
+            <p className="text-xs text-muted-foreground">Upload holdings + activity files together — CSV, TSV, TXT accepted</p>
           </>
         )}
       </div>
@@ -146,7 +149,7 @@ function UploadStep({ onParsed }) {
             { broker: 'unifolio_holdings', label: 'Unifolio Holdings Template' },
           ].map(({ broker, label }) => (
             <div key={broker} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="text-sm">{BROKER_LABELS[broker]?.logo}</span>
+              <InstitutionLogo logo={BROKER_LABELS[broker]?.logo} broker={broker} name={BROKER_LABELS[broker]?.name || label} size="xs" />
               {label}
             </div>
           ))}
@@ -350,6 +353,8 @@ function MapPreviewStep({ parsed, onUpdateMap, onNext, onBack }) {
   const { broker, headers, columnMap, valid, errors, isHoldings, filename, isSectioned, importBundle } = parsed;
   const brokerInfo = BROKER_LABELS[broker] || BROKER_LABELS.generic;
   const [previewTab, setPreviewTab] = useState('holdings');
+  const sourceFiles = parsed.sourceFiles || importBundle?.sourceFiles || [];
+  const reconciliationWarnings = parsed.reconciliationWarnings || importBundle?.reconciliationWarnings || [];
 
   const openHoldings = importBundle?.openHoldings || importBundle?.positions || valid;
   const realizedPositions = importBundle?.realizedPositions || [];
@@ -397,9 +402,7 @@ function MapPreviewStep({ parsed, onUpdateMap, onNext, onBack }) {
     <div className="space-y-4">
       {/* Detected broker */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/40 bg-card/50 px-4 py-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-xl">
-          {brokerInfo.logo}
-        </div>
+        <InstitutionLogo logo={brokerInfo.logo} broker={broker} name={brokerInfo.name} size="md" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-foreground">{filename}</p>
           <p className="text-xs text-muted-foreground">Detected format: <span className="text-foreground font-medium">{brokerInfo.name}</span></p>
@@ -423,6 +426,33 @@ function MapPreviewStep({ parsed, onUpdateMap, onNext, onBack }) {
                   <p className="text-[10px] text-primary mt-1">{section.rowCount} rows</p>
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {sourceFiles.length > 1 && (
+        <div className="rounded-xl border border-border/40 bg-card/50 p-4">
+          <p className="text-xs font-semibold text-foreground mb-3">Parsed files in this group</p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {sourceFiles.map((file, index) => (
+              <div key={`${file.filename}-${index}`} className="rounded-lg border border-border/30 bg-secondary/30 px-3 py-2">
+                <p className="text-[11px] font-semibold text-foreground truncate" title={file.filename}>{file.filename}</p>
+                <p className="text-[10px] text-muted-foreground">{BROKER_LABELS[file.broker]?.name || file.broker}</p>
+                <p className="text-[10px] text-primary mt-1">{file.rowCount} rows · {file.errorCount || 0} issues</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {reconciliationWarnings.length > 0 && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+          <p className="text-xs font-semibold text-amber-300 mb-2">Reconciliation notes</p>
+          <div className="space-y-1">
+            {reconciliationWarnings.slice(0, 6).map((warning, index) => (
+              <p key={index} className="text-[11px] text-amber-200/80">{warning.message || String(warning)}</p>
+            ))}
+            {reconciliationWarnings.length > 6 && <p className="text-[11px] text-muted-foreground">+{reconciliationWarnings.length - 6} more</p>}
           </div>
         </div>
       )}
@@ -778,7 +808,7 @@ function ConfirmStep({ parsed, onDone, onBack }) {
       const result = await saveParsedImport(parsed);
       setImportResult(result);
       setImported(true);
-      setTimeout(onDone, 1800);
+      setTimeout(() => onDone(result), 1800);
     } catch (error) {
       setSaveError(error.message || 'Failed to save import.');
     } finally {
@@ -817,7 +847,7 @@ function ConfirmStep({ parsed, onDone, onBack }) {
     <div className="space-y-4">
       <div className="rounded-xl border border-border/40 bg-card/50 p-5">
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-xl">{brokerInfo.logo}</div>
+          <InstitutionLogo logo={brokerInfo.logo} broker={broker} name={brokerInfo.name} size="lg" />
           <div>
             <p className="text-sm font-semibold">{filename}</p>
             <p className="text-xs text-muted-foreground">{brokerInfo.name}</p>
@@ -937,7 +967,12 @@ function ImportHistory({ onNewImport }) {
       <div className="divide-y divide-border/20">
         {history.map(entry => (
           <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
-            <span className="text-lg">{BROKER_LABELS[entry.broker]?.logo || '📄'}</span>
+            <InstitutionLogo
+              logo={BROKER_LABELS[entry.broker]?.logo || 'generic'}
+              broker={entry.broker}
+              name={entry.brokerName || BROKER_LABELS[entry.broker]?.name}
+              size="sm"
+            />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-foreground truncate">{entry.filename}</p>
               <p className="text-[11px] text-muted-foreground">
@@ -964,11 +999,20 @@ function ImportHistory({ onNewImport }) {
 export default function ImportCenter() {
   const [step, setStep] = useState(null); // null = show history
   const [parsed, setParsed] = useState(null);
+  const [importQueue, setImportQueue] = useState([]);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [sessionResults, setSessionResults] = useState([]);
+  const [completedSession, setCompletedSession] = useState([]);
   const { accounts: existingAccounts = [], institutions = [] } = usePortfolioData();
   const hasTransfers = useMemo(() => buildTransferGroups(parsed).length > 0, [parsed]);
 
-  const handleParsed = (result) => {
-    setParsed(result);
+  const handleParsed = (bundles) => {
+    const queue = Array.isArray(bundles) ? bundles : [bundles].filter(Boolean);
+    setImportQueue(queue);
+    setQueueIndex(0);
+    setSessionResults([]);
+    setCompletedSession([]);
+    setParsed(queue[0]);
     setStep(2);
   };
 
@@ -990,6 +1034,32 @@ export default function ImportCenter() {
     else setStep(null);
   };
 
+  const handleGroupDone = (result) => {
+    const nextResults = [...sessionResults, result].filter(Boolean);
+    setSessionResults(nextResults);
+    const nextIndex = queueIndex + 1;
+    if (nextIndex < importQueue.length) {
+      setQueueIndex(nextIndex);
+      setParsed(importQueue[nextIndex]);
+      setStep(2);
+    } else {
+      setCompletedSession(nextResults);
+      setStep(null);
+      setParsed(null);
+      setImportQueue([]);
+      setQueueIndex(0);
+    }
+  };
+
+  const cancelImport = () => {
+    setStep(null);
+    setParsed(null);
+    setImportQueue([]);
+    setQueueIndex(0);
+    setSessionResults([]);
+    setCompletedSession([]);
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -997,7 +1067,7 @@ export default function ImportCenter() {
         description="Upload CSV exports from your broker to bring holdings and transactions into Unifolio."
         actions={(
           step !== null && (
-            <Button variant="outline" size="sm" onClick={() => { setStep(null); setParsed(null); }}>
+            <Button variant="outline" size="sm" onClick={cancelImport}>
               <X className="h-3.5 w-3.5 mr-1.5" />Cancel import
             </Button>
           )
@@ -1005,13 +1075,29 @@ export default function ImportCenter() {
       />
 
       {step !== null && (
-        <div className="flex items-center justify-between rounded-xl border border-border/30 bg-card/40 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/30 bg-card/40 px-4 py-3">
           <StepIndicator step={step} hasTransfers={hasTransfers} />
+          {importQueue.length > 1 && (
+            <span className="text-[11px] text-muted-foreground">
+              Group {queueIndex + 1} of {importQueue.length}
+            </span>
+          )}
         </div>
       )}
 
       {step === null && (
         <>
+          {completedSession.length > 0 && (
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+              <p className="text-sm font-semibold text-foreground">Import session complete</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {completedSession.length} group{completedSession.length === 1 ? '' : 's'} synced · {' '}
+                {completedSession.reduce((sum, row) => sum + (row?.holdingsSaved || 0), 0)} holdings · {' '}
+                {completedSession.reduce((sum, row) => sum + (row?.transactionsSaved || 0), 0)} transactions · {' '}
+                {completedSession.reduce((sum, row) => sum + (row?.realizedSaved || 0), 0)} realized positions
+              </p>
+            </div>
+          )}
           <Button size="sm" className="gap-1.5" onClick={() => setStep(1)}>
             <Upload className="h-3.5 w-3.5" />
             New Import
@@ -1051,10 +1137,10 @@ export default function ImportCenter() {
       )}
 
       {step === 5 && parsed && (
-        <ConfirmStep
+          <ConfirmStep
           parsed={parsed}
           onBack={handleBack}
-          onDone={() => { setStep(null); setParsed(null); }}
+          onDone={handleGroupDone}
         />
       )}
     </div>

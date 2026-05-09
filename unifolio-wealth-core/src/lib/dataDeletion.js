@@ -1,0 +1,213 @@
+import { supabase } from '@/lib/supabaseClient';
+
+const IMPORT_PORTFOLIO_KEY = 'unifolio_latest_imported_portfolio';
+const IMPORT_HISTORY_KEY = 'unifolio_import_history';
+const PENDING_ACCOUNT_DELETE_KEY = 'unifolio_pending_deleted_accounts';
+const PENDING_ALL_DELETE_KEY = 'unifolio_pending_delete_all_user';
+
+const DELETE_TIMEOUT_MS = 12000;
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+function rpcMissingMessage(name) {
+  return `Database delete function "${name}" is not installed yet. Run the latest supabase/schema.sql in the Supabase SQL Editor, then try again.`;
+}
+
+function normalizeRpcError(name, error) {
+  const message = error?.message || String(error || '');
+  if (/not found|could not find|schema cache|function/i.test(message)) {
+    return new Error(rpcMissingMessage(name));
+  }
+  return new Error(message || `${name} failed.`);
+}
+
+async function runDeleteRpc(name, args = {}) {
+  const result = await withTimeout(supabase.rpc(name, args), DELETE_TIMEOUT_MS, name);
+  if (result?.error) throw normalizeRpcError(name, result.error);
+  return result?.data || {};
+}
+
+async function runClientDelete(label, query) {
+  const result = await withTimeout(query, DELETE_TIMEOUT_MS, label);
+  if (result?.error) throw result.error;
+  return result;
+}
+
+async function cleanupAccountClientSide(accountId, userId) {
+  const scoped = (table) => {
+    let query = supabase.from(table).delete().eq('account_id', accountId);
+    if (userId) query = query.eq('user_id', userId);
+    return query;
+  };
+  await Promise.allSettled([
+    runClientDelete('Delete account holdings', scoped('holdings')),
+    runClientDelete('Delete account realized positions', scoped('realized_positions')),
+    runClientDelete('Delete account transactions', scoped('transactions')),
+    runClientDelete(
+      'Delete account import batches',
+      userId
+        ? supabase.from('import_batches').delete().eq('account_id', accountId).eq('user_id', userId)
+        : supabase.from('import_batches').delete().eq('account_id', accountId),
+    ),
+  ]);
+  await runClientDelete(
+    'Delete account',
+    userId
+      ? supabase.from('accounts').delete().eq('id', accountId).eq('user_id', userId)
+      : supabase.from('accounts').delete().eq('id', accountId),
+  );
+}
+
+async function cleanupAllClientSide(userId) {
+  if (!userId) return;
+  const byUser = (table) => supabase.from(table).delete().eq('user_id', userId);
+  await Promise.allSettled([
+    runClientDelete('Delete holdings', byUser('holdings')),
+    runClientDelete('Delete realized positions', byUser('realized_positions')),
+    runClientDelete('Delete transactions', byUser('transactions')),
+    runClientDelete('Delete import batches', byUser('import_batches')),
+    runClientDelete('Delete watchlist', byUser('watchlist')),
+  ]);
+  await Promise.allSettled([
+    runClientDelete('Delete accounts', byUser('accounts')),
+    runClientDelete('Delete institutions', byUser('institutions')),
+    runClientDelete('Delete profile preferences', supabase.from('user_profiles').delete().eq('user_id', userId)),
+  ]);
+}
+
+function readJson(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); } catch { return fallback; }
+}
+
+function writeJson(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
+
+export function getLocallyDeletedAccountIds() {
+  return readJson(PENDING_ACCOUNT_DELETE_KEY, []);
+}
+
+export function isLocalDeleteAllPending(userId) {
+  try {
+    const value = localStorage.getItem(PENDING_ALL_DELETE_KEY);
+    return Boolean(value && (!userId || value === userId));
+  } catch {
+    return false;
+  }
+}
+
+export function clearLocalDeleteTombstones() {
+  try {
+    localStorage.removeItem(PENDING_ACCOUNT_DELETE_KEY);
+    localStorage.removeItem(PENDING_ALL_DELETE_KEY);
+  } catch { /* ignore */ }
+}
+
+function markAccountDeletedLocally(accountId) {
+  const ids = new Set(getLocallyDeletedAccountIds());
+  ids.add(accountId);
+  writeJson(PENDING_ACCOUNT_DELETE_KEY, [...ids]);
+}
+
+function markAllDeletedLocally(userId) {
+  try { localStorage.setItem(PENDING_ALL_DELETE_KEY, userId || 'local'); } catch { /* ignore */ }
+}
+
+function readLocalPortfolio() {
+  try {
+    return JSON.parse(localStorage.getItem(IMPORT_PORTFOLIO_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalPortfolio(bundle) {
+  try {
+    if (!bundle) localStorage.removeItem(IMPORT_PORTFOLIO_KEY);
+    else localStorage.setItem(IMPORT_PORTFOLIO_KEY, JSON.stringify(bundle));
+  } catch {
+    // Local fallback cleanup is best-effort.
+  }
+}
+
+export function removeLocalAccountData(accountId) {
+  const bundle = readLocalPortfolio();
+  if (!bundle) return;
+  const keepAccount = row => (row.account_id ?? row.accountId ?? row.id) !== accountId;
+  bundle.accounts = (bundle.accounts || []).filter(row => row.id !== accountId);
+  bundle.holdings = (bundle.holdings || []).filter(keepAccount);
+  bundle.realizedPositions = (bundle.realizedPositions || []).filter(keepAccount);
+  bundle.transactions = (bundle.transactions || []).filter(keepAccount);
+  writeLocalPortfolio(bundle);
+}
+
+export function clearLocalPortfolioData() {
+  [
+    IMPORT_PORTFOLIO_KEY,
+    IMPORT_HISTORY_KEY,
+    'unifolio_latest_imported_portfolio',
+    'unifolio_import_history',
+    'unifolio_benchmark_series_v2',
+    'unifolio_chart_candles_v3',
+    'unifolio_stock_quotes_v4',
+    'unifolio_fx_rates_v1',
+    'unifolio_starred_stocks',
+    'unifolio_watchlist_view',
+  ].forEach(key => {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+  });
+}
+
+export async function deleteImportedAccountData(accountId, userId) {
+  if (!accountId) throw new Error('Missing account id.');
+  markAccountDeletedLocally(accountId);
+  removeLocalAccountData(accountId);
+  window.dispatchEvent(new CustomEvent('unifolio:portfolio-imported', { detail: { deletedAccountId: accountId } }));
+
+  void (async () => {
+    try {
+      await runDeleteRpc('delete_unifolio_account', { p_account_id: accountId });
+    } catch (rpcError) {
+      console.warn('[DataDeletion] Account RPC delete unavailable; trying client cleanup:', rpcError?.message || rpcError);
+      try {
+        await cleanupAccountClientSide(accountId, userId);
+      } catch (clientError) {
+        console.warn('[DataDeletion] Background account cleanup still pending:', clientError?.message || clientError);
+      }
+    }
+  })();
+}
+
+export async function deleteAllUserPortfolioData(userId) {
+  if (!userId) {
+    markAllDeletedLocally(userId);
+    clearLocalPortfolioData();
+    window.dispatchEvent(new CustomEvent('unifolio:portfolio-imported', { detail: { deletedAll: true } }));
+    return;
+  }
+
+  markAllDeletedLocally(userId);
+  clearLocalPortfolioData();
+  window.dispatchEvent(new CustomEvent('unifolio:portfolio-imported', { detail: { deletedAll: true } }));
+
+  void (async () => {
+    try {
+      await runDeleteRpc('delete_unifolio_user_data');
+    } catch (rpcError) {
+      console.warn('[DataDeletion] Full RPC delete unavailable; trying client cleanup:', rpcError?.message || rpcError);
+      try {
+        await cleanupAllClientSide(userId);
+      } catch (clientError) {
+        console.warn('[DataDeletion] Background full cleanup still pending:', clientError?.message || clientError);
+      }
+    }
+  })();
+}

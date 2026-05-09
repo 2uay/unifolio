@@ -15,6 +15,8 @@ export const supabase = isConfigured
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
         signUp: async () => ({ data: null, error: { message: 'Supabase not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.local' } }),
         signInWithPassword: async () => ({ data: null, error: { message: 'Supabase not configured.' } }),
+        exchangeCodeForSession: async () => ({ data: null, error: { message: 'Supabase not configured.' } }),
+        verifyOtp: async () => ({ data: null, error: { message: 'Supabase not configured.' } }),
         signOut: async () => {},
       },
       from: () => ({

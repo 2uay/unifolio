@@ -7,6 +7,9 @@ import {
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/AuthContext';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import { deleteAllUserPortfolioData } from '@/lib/dataDeletion';
 
 const ReadOnlyBadge = () => (
   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
@@ -62,14 +65,13 @@ function ExpandableSection({ icon: Icon, title, defaultOpen, children }) {
   );
 }
 
-function DeleteConfirmModal({ onClose, onConfirm }) {
+function DeleteConfirmModal({ onClose, onConfirm, deleting, error }) {
   const [step, setStep] = useState(1);
   const [confirmed, setConfirmed] = useState(false);
 
   const handleConfirm = () => {
-    if (!confirmed) return;
+    if (!confirmed || deleting) return;
     onConfirm();
-    onClose();
   };
 
   return (
@@ -91,8 +93,8 @@ function DeleteConfirmModal({ onClose, onConfirm }) {
               This will permanently delete all of your holdings, transactions, accounts, watchlists, and settings stored in Unifolio. Your brokerage accounts themselves are not affected — only the data within Unifolio.
             </p>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-              <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => setStep(2)}>Continue</Button>
+              <Button variant="outline" size="sm" onClick={onClose} disabled={deleting}>Cancel</Button>
+              <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => setStep(2)} disabled={deleting}>Continue</Button>
             </div>
           </>
         )}
@@ -112,14 +114,15 @@ function DeleteConfirmModal({ onClose, onConfirm }) {
               <span className="text-xs">I understand this will permanently delete all my Unifolio data.</span>
             </label>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+              {error && <p className="mr-auto text-[11px] text-red-300">{error}</p>}
+              <Button variant="outline" size="sm" onClick={onClose} disabled={deleting}>Cancel</Button>
               <Button
                 size="sm"
                 className={cn('text-white', confirmed ? 'bg-red-600 hover:bg-red-700' : 'bg-red-600/40 cursor-not-allowed')}
-                disabled={!confirmed}
+                disabled={!confirmed || deleting}
                 onClick={handleConfirm}
               >
-                Delete All Data
+                {deleting ? 'Deleting…' : 'Delete All Data'}
               </Button>
             </div>
           </>
@@ -131,6 +134,10 @@ function DeleteConfirmModal({ onClose, onConfirm }) {
 
 export default function PrivacyAndData() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const { user } = useAuth();
+  const { refreshPortfolioData } = usePortfolioData();
 
   const handleExportJSON = () => {
     const data = {
@@ -148,10 +155,20 @@ export default function PrivacyAndData() {
     URL.revokeObjectURL(url);
   };
 
-  const handleDeleteAll = () => {
-    // In full implementation this would clear Supabase rows + localStorage
-    localStorage.clear();
-    window.location.reload();
+  const handleDeleteAll = async () => {
+    if (deletingAll) return;
+    setDeletingAll(true);
+    setDeleteError(null);
+    try {
+      await deleteAllUserPortfolioData(user?.id);
+      await refreshPortfolioData?.();
+      setShowDeleteModal(false);
+    } catch (error) {
+      console.error('[PrivacyAndData] delete all failed:', error);
+      setDeleteError(error?.message || 'Delete failed. Please try again.');
+    } finally {
+      setDeletingAll(false);
+    }
   };
 
   return (
@@ -369,8 +386,14 @@ export default function PrivacyAndData() {
 
       {showDeleteModal && (
         <DeleteConfirmModal
-          onClose={() => setShowDeleteModal(false)}
+          onClose={() => {
+            if (deletingAll) return;
+            setShowDeleteModal(false);
+            setDeleteError(null);
+          }}
           onConfirm={handleDeleteAll}
+          deleting={deletingAll}
+          error={deleteError}
         />
       )}
     </div>

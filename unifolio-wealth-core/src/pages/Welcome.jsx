@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, BarChart3, PieChart, Zap } from 'lucide-react';
+import LoginIntroAnimation from '@/components/shared/LoginIntroAnimation';
 import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,11 +11,41 @@ import { useTheme } from '@/lib/ThemeContext';
 import { cn } from '@/lib/utils';
 
 const REMEMBERED_EMAIL_KEY = 'unifolio_remembered_email';
+const LOGIN_INTRO_KEY = 'unifolio_login_intro_seen';
+
+function hasAuthCallbackParams() {
+  if (typeof window === 'undefined') return false;
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const has = (key) => search.has(key) || hash.has(key);
+
+  return [
+    'auth',
+    'auth_action',
+    'error',
+    'error_description',
+    'code',
+    'token_hash',
+    'access_token',
+  ].some(has);
+}
+
+function shouldSkipLoginIntro() {
+  if (typeof window === 'undefined') return true;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion || hasAuthCallbackParams()) return true;
+  try {
+    return window.sessionStorage.getItem(LOGIN_INTRO_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 export default function Welcome() {
   const navigate = useNavigate();
-  const { signIn, signUp, enterDemoMode } = useAuth();
+  const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice } = useAuth();
   const { resetToDefaultTheme } = useTheme();
+  const [introComplete, setIntroComplete] = useState(() => shouldSkipLoginIntro());
 
   const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState(() => {
@@ -29,8 +60,26 @@ export default function Welcome() {
     try { return Boolean(localStorage.getItem(REMEMBERED_EMAIL_KEY)); } catch { return false; }
   });
 
+  useEffect(() => {
+    if (!authNotice) return;
+    completeIntro();
+    setTab('signin');
+    setSignupSuccess(false);
+    setError('');
+  }, [authNotice]);
+
+  function completeIntro() {
+    try {
+      window.sessionStorage.setItem(LOGIN_INTRO_KEY, 'true');
+    } catch {
+      // Intro replay is session-only polish; storage failures should not block login.
+    }
+    setIntroComplete(true);
+  }
+
   const handleEnterDemo = () => {
     resetToDefaultTheme();
+    clearAuthNotice?.();
     enterDemoMode();
     navigate('/');
   };
@@ -39,6 +88,7 @@ export default function Welcome() {
     e?.preventDefault?.();
     if (loading) return;
     setError('');
+    clearAuthNotice?.();
     setLoading(true);
     try {
       await signIn(email, password);
@@ -60,6 +110,7 @@ export default function Welcome() {
     e?.preventDefault?.();
     if (loading) return;
     setError('');
+    clearAuthNotice?.();
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
@@ -81,8 +132,15 @@ export default function Welcome() {
       style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
     >
       <ThemedWaveBackground variant="ribbon" className="z-0" />
+      {!introComplete && <LoginIntroAnimation onComplete={completeIntro} />}
 
-      <div className="relative w-full max-w-md z-10">
+      <div
+        className={cn(
+          'relative w-full max-w-md z-10 transition-all duration-500 ease-out',
+          introComplete ? 'opacity-100 translate-y-0' : 'pointer-events-none opacity-0 translate-y-3'
+        )}
+        aria-hidden={!introComplete}
+      >
         {/* Logo */}
         <div className="flex items-center justify-center mb-6 sm:mb-8">
           <UnifolioWheelLogo size={144} />
@@ -93,7 +151,7 @@ export default function Welcome() {
           {/* Tabs */}
           <div className="flex rounded-lg bg-muted/40 p-0.5 gap-0.5">
             <button
-              onClick={() => { setTab('signin'); setError(''); setSignupSuccess(false); }}
+              onClick={() => { setTab('signin'); setError(''); setSignupSuccess(false); clearAuthNotice?.(); }}
               className={cn(
                 'flex-1 py-2 text-sm font-medium rounded-md transition-all duration-200',
                 tab === 'signin' ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' : 'text-muted-foreground hover:text-foreground'
@@ -102,7 +160,7 @@ export default function Welcome() {
               Sign In
             </button>
             <button
-              onClick={() => { setTab('signup'); setError(''); setSignupSuccess(false); }}
+              onClick={() => { setTab('signup'); setError(''); setSignupSuccess(false); clearAuthNotice?.(); }}
               className={cn(
                 'flex-1 py-2 text-sm font-medium rounded-md transition-all duration-200',
                 tab === 'signup' ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' : 'text-muted-foreground hover:text-foreground'
@@ -111,6 +169,19 @@ export default function Welcome() {
               Create Account
             </button>
           </div>
+
+          {authNotice && (
+            <div
+              className={cn(
+                'rounded-lg border px-3 py-2 text-xs leading-relaxed',
+                authNotice.type === 'error'
+                  ? 'border-red-400/30 bg-red-500/10 text-red-300'
+                  : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+              )}
+            >
+              {authNotice.message}
+            </div>
+          )}
 
           {/* Sign in form */}
           {tab === 'signin' && (
@@ -203,7 +274,7 @@ export default function Welcome() {
               <div className="text-2xl">📬</div>
               <p className="text-foreground font-medium">Check your email</p>
               <p className="text-muted-foreground text-sm">We sent a confirmation link to <span className="text-foreground">{email}</span>. Click it to activate your account, then sign in.</p>
-              <button onClick={() => { setTab('signin'); setSignupSuccess(false); }} className="text-primary text-sm hover:underline mt-2">
+              <button onClick={() => { setTab('signin'); setSignupSuccess(false); clearAuthNotice?.(); }} className="text-primary text-sm hover:underline mt-2">
                 Back to sign in
               </button>
             </div>

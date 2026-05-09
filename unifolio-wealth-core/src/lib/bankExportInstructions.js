@@ -23,7 +23,7 @@ export const bankExportInstructions = [
     id: 'wealthsimple',
     name: 'Wealthsimple',
     country: 'CA',
-    logo: '🟢',
+    logo: 'wealthsimple',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [
       { label: 'Request a custom statement', url: 'https://help.wealthsimple.com/hc/en-ca/articles/35654428540571-Request-a-custom-statement', external: true },
@@ -42,7 +42,7 @@ export const bankExportInstructions = [
     id: 'ibkr',
     name: 'Interactive Brokers',
     country: 'US/CA',
-    logo: '🔴',
+    logo: 'interactive-brokers',
     exportTypes: ['activity_csv', 'flex_query'],
     links: [
       { label: 'Flex Queries guide', url: 'https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm', external: true },
@@ -64,7 +64,7 @@ export const bankExportInstructions = [
     id: 'questrade',
     name: 'Questrade',
     country: 'CA',
-    logo: '🟡',
+    logo: 'questrade',
     exportTypes: ['activity_csv'],
     links: [
       { label: 'Track account activity', url: 'https://www.questrade.com/learning/questrade-basics/track-your-account-activity', external: true },
@@ -82,7 +82,7 @@ export const bankExportInstructions = [
     id: 'td',
     name: 'TD Direct Investing',
     country: 'CA',
-    logo: '🟢',
+    logo: 'td',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [{ label: 'TD Direct Investing login', url: 'https://webbroker.td.com/', external: true }],
     steps: [
@@ -97,7 +97,7 @@ export const bankExportInstructions = [
     id: 'rbc',
     name: 'RBC Direct Investing',
     country: 'CA',
-    logo: '🔵',
+    logo: 'rbc',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [{ label: 'RBC Direct Investing login', url: 'https://www.rbcdirectinvesting.com/', external: true }],
     steps: [
@@ -112,7 +112,7 @@ export const bankExportInstructions = [
     id: 'bmo',
     name: 'BMO InvestorLine',
     country: 'CA',
-    logo: '🔵',
+    logo: 'bmo',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [{ label: 'BMO InvestorLine login', url: 'https://www.bmoinvestorline.com/', external: true }],
     steps: [
@@ -127,7 +127,7 @@ export const bankExportInstructions = [
     id: 'scotia',
     name: 'Scotia iTRADE',
     country: 'CA',
-    logo: '🔴',
+    logo: 'scotia',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [{ label: 'Scotia iTRADE login', url: 'https://www.scotiaitrade.com/', external: true }],
     steps: [
@@ -142,7 +142,7 @@ export const bankExportInstructions = [
     id: 'cibc',
     name: "CIBC Investor's Edge",
     country: 'CA',
-    logo: '🔴',
+    logo: 'cibc',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [{ label: "CIBC Investor's Edge login", url: 'https://www.investorsedge.cibc.com/', external: true }],
     steps: [
@@ -157,7 +157,7 @@ export const bankExportInstructions = [
     id: 'nbdb',
     name: 'National Bank Direct',
     country: 'CA',
-    logo: '🔴',
+    logo: 'national-bank',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [{ label: 'National Bank Direct Brokerage login', url: 'https://nbdb.ca/', external: true }],
     steps: [
@@ -172,7 +172,7 @@ export const bankExportInstructions = [
     id: 'schwab',
     name: 'Charles Schwab',
     country: 'US',
-    logo: '🇺🇸',
+    logo: 'schwab',
     exportTypes: ['holdings_csv', 'activity_csv'],
     links: [
       { label: 'Schwab positions export guide', url: 'https://help.streetsmart.schwab.com/edge/1.44/Content/Positions.htm', external: true },
@@ -189,7 +189,7 @@ export const bankExportInstructions = [
     id: 'chase',
     name: 'Chase Bank',
     country: 'US',
-    logo: '🇺🇸',
+    logo: 'chase',
     exportTypes: ['activity_csv'],
     links: [{ label: 'Chase account login', url: 'https://secure.chase.com/', external: true }],
     steps: [

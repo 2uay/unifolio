@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { bankExportInstructions, downloadInstructionAsset } from '@/lib/bankExportInstructions';
 import { cn } from '@/lib/utils';
+import InstitutionLogo from '@/components/shared/InstitutionLogo';
 
 export default function Instructions() {
   const [query, setQuery] = useState('');
@@ -52,7 +53,7 @@ export default function Instructions() {
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                 )}
               >
-                <span className="text-sm">{bank.logo}</span>
+                <InstitutionLogo logo={bank.logo} name={bank.name} id={bank.id} size="xs" />
                 <span className="min-w-0 flex-1 truncate font-medium">{bank.name}</span>
                 <span className="text-[9px] uppercase opacity-60">{bank.country}</span>
               </button>
@@ -65,7 +66,7 @@ export default function Instructions() {
             <div className="flex flex-col gap-3 border-b border-border/50 pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">{activeBank.logo}</span>
+                  <InstitutionLogo logo={activeBank.logo} name={activeBank.name} id={activeBank.id} size="lg" />
                   <h2 className="text-lg font-semibold text-foreground">{activeBank.name}</h2>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">

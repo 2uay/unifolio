@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Check, ChevronDown, Palette, RotateCcw, Sparkles, Search, X } from 'lucide-react';
+import { Check, ChevronDown, RotateCcw, Sparkles, Search, X } from 'lucide-react';
 import { getAllThemes, DEFAULT_THEME } from '@/lib/themes';
 import { useTheme } from '@/lib/ThemeContext';
 import { Button } from '@/components/ui/button';
@@ -10,13 +10,14 @@ import { supabase } from '@/lib/supabaseClient';
 const DEFAULT_THEME_KEY = 'unifolio_default_theme';
 
 export default function ThemeSelector() {
-  const { selectedTheme, changeTheme } = useTheme();
+  const { selectedTheme, changeTheme, previewTheme, clearThemePreview } = useTheme();
   const [open, setOpen] = useState(false);
   const [showMonochrome, setShowMonochrome] = useState(false);
   const [defaultTheme, setDefaultTheme] = useState(() => localStorage.getItem(DEFAULT_THEME_KEY) || DEFAULT_THEME);
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef(null);
   const ref = useRef(null);
+  const wasOpenRef = useRef(false);
   const allThemes = getAllThemes();
   const current = selectedTheme === 'custom-monochrome'
     ? { id: 'custom-monochrome', name: 'Custom Monochrome', description: 'Custom color-based theme', swatches: ['#3b82f6'] }
@@ -30,8 +31,13 @@ export default function ThemeSelector() {
 
   // Focus search input when dropdown opens
   useEffect(() => {
-    if (open) setTimeout(() => searchRef.current?.focus(), 50);
-    else setSearchQuery('');
+    if (open) {
+      wasOpenRef.current = true;
+      setTimeout(() => searchRef.current?.focus(), 50);
+    } else {
+      setSearchQuery('');
+      if (wasOpenRef.current) clearThemePreview();
+    }
   }, [open]);
 
   const q = searchQuery.trim().toLowerCase();
@@ -132,7 +138,7 @@ export default function ThemeSelector() {
               </div>
             </div>
 
-            <div className="max-h-80 overflow-y-auto">
+            <div className="max-h-80 overflow-y-auto" onMouseLeave={clearThemePreview}>
               {/* Custom Monochrome Button — hide when searching */}
               {!searchQuery && (
                 <button
@@ -162,6 +168,8 @@ export default function ThemeSelector() {
                 return (
                   <button
                     key={theme.id}
+                    onMouseEnter={() => previewTheme(theme.id)}
+                    onFocus={() => previewTheme(theme.id)}
                     onClick={() => { changeTheme(theme.id); setOpen(false); }}
                     className={cn(
                       'w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100',

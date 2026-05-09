@@ -15,6 +15,7 @@ import { useLiveData } from '@/lib/LiveDataContext';
 import { useAccentBars } from '@/lib/AccentBarsContext';
 import { useTopbarLogo } from '@/lib/TopbarLogoContext';
 import Avatar from '@/components/shared/Avatar';
+import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { cn } from '@/lib/utils';
 import { exportFullBackupJSON, exportHoldingsCSV, exportTransactionsCSV } from '@/lib/exportEngine';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
@@ -261,9 +262,12 @@ export default function Settings() {
             const isExcluded = excludedAccounts.includes(acc.id);
             return (
               <div key={acc.id} className="flex items-center justify-between py-2">
-                <div>
+                <div className="flex items-center gap-2">
+                  <InstitutionLogo institution={inst} size="sm" />
+                  <div>
                   <p className="text-sm font-medium">{(acc.account_type ?? acc.type)} — {inst?.name}</p>
                   <p className="text-xs text-muted-foreground">{acc.base_currency ?? acc.currency}</p>
+                  </div>
                 </div>
                 <ThemedSwitch checked={!isExcluded} onCheckedChange={() => toggleAccount(acc.id)} />
               </div>

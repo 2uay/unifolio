@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { clearLocalDeleteTombstones } from '@/lib/dataDeletion';
 
 const IMPORT_HISTORY_KEY = 'unifolio_import_history';
 export const IMPORT_PORTFOLIO_KEY = 'unifolio_latest_imported_portfolio';
@@ -8,7 +9,7 @@ const BROKER_METADATA = {
     institutionKey: 'interactive-brokers',
     name: 'Interactive Brokers',
     country: 'US',
-    logo: '🔴',
+    logo: 'interactive-brokers',
     color: '#e53935',
     notes: 'CSV/Flex import',
   },
@@ -16,7 +17,7 @@ const BROKER_METADATA = {
     institutionKey: 'interactive-brokers',
     name: 'Interactive Brokers',
     country: 'US',
-    logo: '🔴',
+    logo: 'interactive-brokers',
     color: '#e53935',
     notes: 'CSV/Flex import',
   },
@@ -24,7 +25,7 @@ const BROKER_METADATA = {
     institutionKey: 'interactive-brokers',
     name: 'Interactive Brokers',
     country: 'US',
-    logo: '🔴',
+    logo: 'interactive-brokers',
     color: '#e53935',
     notes: 'CSV/Flex import',
   },
@@ -32,7 +33,7 @@ const BROKER_METADATA = {
     institutionKey: 'wealthsimple',
     name: 'Wealthsimple',
     country: 'CA',
-    logo: '🟢',
+    logo: 'wealthsimple',
     color: '#00a36c',
     notes: 'CSV activity/holdings import',
   },
@@ -40,7 +41,7 @@ const BROKER_METADATA = {
     institutionKey: 'wealthsimple',
     name: 'Wealthsimple',
     country: 'CA',
-    logo: '🟢',
+    logo: 'wealthsimple',
     color: '#00a36c',
     notes: 'CSV activity import',
   },
@@ -62,7 +63,7 @@ function brokerMetadata(broker) {
     institutionKey: broker || 'imported-broker',
     name: broker || 'Imported Broker',
     country: 'US',
-    logo: '📄',
+    logo: 'generic',
     color: '#7c3aed',
     notes: 'CSV import',
   };
@@ -207,6 +208,7 @@ async function deleteImportedRowsForAccounts(userId, accountIds) {
 }
 
 export async function saveParsedImport(parsed) {
+  clearLocalDeleteTombstones();
   const bundle = parsed.importBundle || {};
   const account = bundle.account || {};
   const bundleAccounts = Array.isArray(bundle.accounts) ? bundle.accounts : [];
@@ -310,6 +312,8 @@ export async function saveParsedImport(parsed) {
       conversionRateCount: (bundle.conversionRates || []).length,
       securities: bundle.securities || [],
       accountResolutions: resolutions,
+      sourceFiles: bundle.sourceFiles || parsed.sourceFiles || [],
+      reconciliationWarnings: bundle.reconciliationWarnings || parsed.reconciliationWarnings || [],
     },
     imported_at: now,
     created_at: now,

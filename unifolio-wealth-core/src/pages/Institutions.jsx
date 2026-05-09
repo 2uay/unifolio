@@ -6,6 +6,7 @@ import PageHeader from '@/components/shared/PageHeader';
 import { cn } from '@/lib/utils';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { supabase } from '@/lib/supabaseClient';
 import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
 import {
@@ -98,7 +99,7 @@ export default function Institutions() {
               <div key={inst.id} className={cn('rounded-xl border p-5', cfg.bg)}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">{inst.logo}</span>
+                    <InstitutionLogo institution={inst} size="lg" />
                     <div>
                       <h3 className="font-semibold">{inst.name}</h3>
                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -157,7 +158,7 @@ export default function Institutions() {
             return (
               <div key={inst.id} className="rounded-xl border border-border bg-card p-5 opacity-70 hover:opacity-100 transition-opacity">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{inst.logo}</span>
+                  <InstitutionLogo institution={inst} size="lg" />
                   <div>
                     <h3 className="font-semibold">{inst.name}</h3>
                     <div className="flex items-center gap-1.5 mt-0.5">
