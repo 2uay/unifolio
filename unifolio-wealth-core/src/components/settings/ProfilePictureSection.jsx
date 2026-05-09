@@ -17,7 +17,7 @@ export default function ProfilePictureSection() {
   const handleSave = async (base64Image, fileName, isAnimated) => {
     if (isDemoMode && !user) {
       setShowDemoPrompt(true);
-      return;
+      throw new Error('Sign in to save your profile picture');
     }
 
     try {
@@ -25,6 +25,7 @@ export default function ProfilePictureSection() {
       toast.success(`${isAnimated ? 'Animated ' : ''}profile picture updated successfully`);
     } catch (err) {
       toast.error(err.message || 'Failed to save profile picture');
+      throw err;
     }
   };
 
