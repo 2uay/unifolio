@@ -5,10 +5,10 @@ const N_DOTS = 12;
 const CX = 14;
 const CY = 14;
 const R = 11;
-const IDLE_DEG_PER_SECOND = 34;
-const HOVER_DEG_PER_SECOND = 390;
-const ACCELERATION_EASE = 0.035;
-const DECELERATION_EASE = 0.022;
+const IDLE_DEG_PER_SECOND = 30;
+const HOVER_DEG_PER_SECOND = 300;
+const ACCELERATION_RESPONSE_SECONDS = 0.34;
+const DECELERATION_RESPONSE_SECONDS = 0.46;
 
 export default function UnifolioWheelLogo({ className = '', size = 28 }) {
   const { chartColors } = useTheme();
@@ -42,7 +42,7 @@ export default function UnifolioWheelLogo({ className = '', size = 28 }) {
     const handleMotionPreference = () => {
       state.reducedMotion = media.matches;
       if (state.reducedMotion && dotsRef.current) {
-        dotsRef.current.style.transform = `rotate(${state.angle}deg)`;
+        dotsRef.current.setAttribute('transform', `rotate(${state.angle} ${CX} ${CY})`);
       }
     };
 
@@ -54,10 +54,13 @@ export default function UnifolioWheelLogo({ className = '', size = 28 }) {
       state.lastTime = time;
 
       if (!state.reducedMotion) {
-        const ease = state.targetSpeed > state.speed ? ACCELERATION_EASE : DECELERATION_EASE;
+        const response = state.targetSpeed > state.speed
+          ? ACCELERATION_RESPONSE_SECONDS
+          : DECELERATION_RESPONSE_SECONDS;
+        const ease = 1 - Math.exp(-deltaSeconds / response);
         state.speed += (state.targetSpeed - state.speed) * ease;
         state.angle = (state.angle + state.speed * deltaSeconds) % 360;
-        if (dotsRef.current) dotsRef.current.style.transform = `rotate(${state.angle}deg)`;
+        if (dotsRef.current) dotsRef.current.setAttribute('transform', `rotate(${state.angle} ${CX} ${CY})`);
       }
 
       state.frame = window.requestAnimationFrame(tick);
@@ -84,7 +87,7 @@ export default function UnifolioWheelLogo({ className = '', size = 28 }) {
       onPointerEnter={() => { stateRef.current.targetSpeed = HOVER_DEG_PER_SECOND; }}
       onPointerLeave={() => { stateRef.current.targetSpeed = IDLE_DEG_PER_SECOND; }}
     >
-      <g ref={dotsRef} className="unifolio-wheel-logo__dots">
+      <g ref={dotsRef} className="unifolio-wheel-logo__dots" transform={`rotate(0 ${CX} ${CY})`}>
         {dots.map((dot, i) => (
           <circle key={i} cx={dot.x} cy={dot.y} r={2.5} fill={dot.color} />
         ))}
