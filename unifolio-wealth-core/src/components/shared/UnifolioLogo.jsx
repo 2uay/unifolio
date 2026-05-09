@@ -1,195 +1,314 @@
-import React, { useRef, useEffect } from 'react';
-
-// Diagonal rainbow paint stripes — same pattern for both "uni" and "folio" hover
-const PAINT_GRADIENT = `repeating-linear-gradient(
-  109deg,
-  hsl(0,   92%, 57%)  0px,
-  hsl(0,   92%, 57%)  9px,
-  hsl(28,  95%, 56%)  9px,
-  hsl(28,  95%, 56%) 20px,
-  hsl(54,  95%, 53%) 20px,
-  hsl(54,  95%, 53%) 28px,
-  hsl(115, 88%, 48%) 28px,
-  hsl(115, 88%, 48%) 41px,
-  hsl(172, 90%, 47%) 41px,
-  hsl(172, 90%, 47%) 49px,
-  hsl(212, 92%, 60%) 49px,
-  hsl(212, 92%, 60%) 62px,
-  hsl(263, 88%, 63%) 62px,
-  hsl(263, 88%, 63%) 70px,
-  hsl(302, 88%, 57%) 70px,
-  hsl(302, 88%, 57%) 82px
-)`;
+import React, { useEffect, useRef } from 'react';
 
 export default function UnifolioLogo({ className = '' }) {
   const logoRef = useRef(null);
 
   useEffect(() => {
     const el = logoRef.current;
-    if (!el) return;
+    if (!el || typeof window === 'undefined') return undefined;
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    // Hue tilt on horizontal cursor movement
-    const move = (e) => {
-      const r = el.getBoundingClientRect();
-      const deg = (((e.clientX - r.left) / r.width - 0.5) * 40).toFixed(0);
-      el.style.setProperty('--logo-hue', `${deg}deg`);
-    };
-    const logoLeave = () => el.style.setProperty('--logo-hue', '0deg');
-    el.addEventListener('mousemove', move);
-    el.addEventListener('mouseleave', logoLeave);
-
-    if (reduced) {
-      return () => {
-        el.removeEventListener('mousemove', move);
-        el.removeEventListener('mouseleave', logoLeave);
-      };
-    }
-
-    // Radial bloom on "folio" hover — starts at cursor entry point
-    const folioEl = el.querySelector('.unifolio-folio');
-    const blobEl = el.querySelector('.unifolio-blob');
-    if (!folioEl || !blobEl) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) return undefined;
 
     let raf = null;
-    let revealSize = 0;
-    let velocity = 0;
+    let glintTimer = null;
+    let glintFrame = null;
+    const target = { x: 50, y: 48, energy: 0 };
+    const current = { x: 50, y: 48, energy: 0 };
 
-    // Spring physics: low stiffness + damping gives the same fluid feel as the wheel
-    const STIFFNESS = 0.028;
-    const DAMPING   = 0.72;
-
-    const animateTo = (target) => {
-      if (raf) cancelAnimationFrame(raf);
-      const step = () => {
-        velocity = velocity * DAMPING + STIFFNESS * (target - revealSize);
-        revealSize += velocity;
-        blobEl.style.setProperty('--folio-reveal', `${Math.max(0, revealSize).toFixed(2)}%`);
-        if (Math.abs(velocity) > 0.05 || Math.abs(target - revealSize) > 0.1) {
-          raf = requestAnimationFrame(step);
-        } else {
-          revealSize = target;
-          velocity = 0;
-          blobEl.style.setProperty('--folio-reveal', `${target}%`);
-        }
-      };
-      raf = requestAnimationFrame(step);
+    const applyFlood = ({ x, y, energy }) => {
+      el.style.setProperty('--logo-energy', energy.toFixed(2));
+      el.style.setProperty('--logo-x', `${x.toFixed(1)}%`);
+      el.style.setProperty('--logo-y', `${y.toFixed(1)}%`);
+      el.style.setProperty('--logo-ripple-x', `${(x * 0.7).toFixed(1)}%`);
+      el.style.setProperty('--logo-lift', `${(energy * 12).toFixed(1)}%`);
+      el.style.setProperty('--logo-glow', (0.08 + energy * 0.18).toFixed(3));
+      el.style.setProperty('--logo-spark', (0.22 + energy * 0.24).toFixed(3));
+      el.style.setProperty('--logo-ring', (0.52 + energy * 0.3).toFixed(3));
+      el.style.setProperty('--logo-highlight', (0.18 + energy * 0.3).toFixed(3));
+      el.style.setProperty('--logo-ripple', (0.12 + energy * 0.2).toFixed(3));
+      el.style.setProperty('--logo-slosh-speed', `${(5.8 - energy * 2.2).toFixed(2)}s`);
+      el.style.setProperty('--logo-saturate', (1 + energy * 0.42).toFixed(3));
+      el.style.setProperty('--logo-contrast', (1 + energy * 0.18).toFixed(3));
     };
 
-    const folioEnter = (e) => {
-      const r = folioEl.getBoundingClientRect();
-      blobEl.style.setProperty('--folio-ox', `${((e.clientX - r.left) / r.width * 100).toFixed(1)}%`);
-      blobEl.style.setProperty('--folio-oy', `${((e.clientY - r.top) / r.height * 100).toFixed(1)}%`);
-      revealSize = 0;
-      velocity = 0;
-      blobEl.style.setProperty('--folio-reveal', '0%');
-      animateTo(220);
+    const settle = () => {
+      current.x += (target.x - current.x) * 0.16;
+      current.y += (target.y - current.y) * 0.16;
+      current.energy += (target.energy - current.energy) * 0.12;
+      applyFlood(current);
+      raf = window.requestAnimationFrame(settle);
+    };
+    raf = window.requestAnimationFrame(settle);
+
+    const handleMove = (event) => {
+      const rect = el.getBoundingClientRect();
+      const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+      const centerDistance = Math.abs(x - 0.5) + Math.abs(y - 0.5);
+      target.x = x * 100;
+      target.y = y * 100;
+      target.energy = Math.min(1, 0.56 + centerDistance * 0.72);
     };
 
-    const folioLeave = () => animateTo(0);
+    const handleEnter = () => {
+      target.energy = 0.64;
+      el.classList.remove('unifolio-logo-hover-glint');
+      if (glintTimer) window.clearTimeout(glintTimer);
+      if (glintFrame) window.cancelAnimationFrame(glintFrame);
+      glintFrame = window.requestAnimationFrame(() => {
+        el.classList.add('unifolio-logo-hover-glint');
+        glintTimer = window.setTimeout(() => {
+          el.classList.remove('unifolio-logo-hover-glint');
+          glintTimer = null;
+        }, 900);
+        glintFrame = null;
+      });
+    };
 
-    folioEl.addEventListener('mouseenter', folioEnter);
-    folioEl.addEventListener('mouseleave', folioLeave);
+    const handleLeave = () => {
+      target.x = 50;
+      target.y = 48;
+      target.energy = 0;
+    };
+
+    el.addEventListener('pointerenter', handleEnter);
+    el.addEventListener('pointermove', handleMove);
+    el.addEventListener('pointerleave', handleLeave);
 
     return () => {
-      el.removeEventListener('mousemove', move);
-      el.removeEventListener('mouseleave', logoLeave);
-      folioEl.removeEventListener('mouseenter', folioEnter);
-      folioEl.removeEventListener('mouseleave', folioLeave);
-      if (raf) cancelAnimationFrame(raf);
+      if (raf) window.cancelAnimationFrame(raf);
+      if (glintTimer) window.clearTimeout(glintTimer);
+      if (glintFrame) window.cancelAnimationFrame(glintFrame);
+      el.removeEventListener('pointerenter', handleEnter);
+      el.removeEventListener('pointermove', handleMove);
+      el.removeEventListener('pointerleave', handleLeave);
     };
   }, []);
 
   return (
     <>
-      <span ref={logoRef} className={`unifolio-logo ${className}`}>
-        <span className="unifolio-base">
-          <span className="unifolio-uni" aria-label="uni">uni</span>
-          <span className="unifolio-folio">
-            folio
-            <span className="unifolio-blob" aria-hidden="true">folio</span>
+      <span
+        ref={logoRef}
+        className={`unifolio-logo ${className}`}
+        aria-label="Unifolio"
+        role="img"
+      >
+        <span className="unifolio-liquid-shell" aria-hidden="true">
+          <span className="unifolio-liquid-word" data-text="unifolio">
+            unifolio
           </span>
         </span>
       </span>
 
       <style>{`
         .unifolio-logo {
+          --logo-x: 50%;
+          --logo-y: 48%;
+          --logo-energy: 0;
+          --logo-lift: 0%;
+          --logo-glow: 0.08;
+          --logo-spark: 0.22;
+          --logo-ring: 0.52;
+          --logo-highlight: 0.18;
+          --logo-ripple: 0.12;
+          --logo-ripple-x: 35%;
+          --logo-slosh-speed: 5.8s;
+          --logo-saturate: 1;
+          --logo-contrast: 1;
           position: relative;
-          display: inline-block;
-          filter: hue-rotate(calc(var(--logo-hue-base, 0deg) + var(--logo-hue, 0deg)));
-          transition: filter 0.08s linear;
+          display: inline-grid;
+          place-items: center;
+          line-height: 1;
+          cursor: inherit;
         }
 
-        .unifolio-base { display: inline-block; }
-
-        /* ── "uni" — always-on rainbow cutout ─────────────────────── */
-        .unifolio-uni {
+        .unifolio-liquid-shell {
+          position: relative;
           display: inline-block;
-          background: ${PAINT_GRADIENT};
-          background-size: 280% 280%;
-          background-position: 0% 0%;
+          line-height: 1;
+          filter:
+            saturate(var(--logo-saturate))
+            contrast(var(--logo-contrast))
+            drop-shadow(0 0 0.5px hsl(var(--foreground) / 0.34))
+            drop-shadow(0 8px 18px hsl(var(--primary) / var(--logo-glow)));
+        }
+
+        .unifolio-liquid-word {
+          position: relative;
+          z-index: 1;
+          display: inline-block;
+          white-space: nowrap;
+          color: transparent;
+          -webkit-text-fill-color: transparent;
+          background:
+            radial-gradient(circle at var(--logo-x) var(--logo-y),
+              hsl(var(--foreground) / var(--logo-spark)) 0 5%,
+              transparent 18%),
+            radial-gradient(110% 80% at calc(var(--logo-x) + 18%) calc(72% - var(--logo-lift)),
+              hsl(var(--ring) / var(--logo-ring)) 0 12%,
+              transparent 33%),
+            linear-gradient(100deg,
+              hsl(var(--primary) / 0.96),
+              hsl(var(--chart-1) / 0.82) 34%,
+              hsl(var(--ring) / 0.96) 68%,
+              hsl(var(--primary) / 0.92)),
+            repeating-radial-gradient(ellipse at calc(var(--logo-x) + 8%) calc(80% - var(--logo-lift)),
+              hsl(var(--foreground) / 0.34) 0 1px,
+              transparent 2px 9px);
+          background-size: 160% 160%, 150% 130%, 230% 230%, 170% 120%;
+          background-position:
+            var(--logo-x) var(--logo-y),
+            50% calc(86% - var(--logo-lift)),
+            0% 54%,
+            var(--logo-ripple-x) calc(98% - var(--logo-lift));
           -webkit-background-clip: text;
           background-clip: text;
-          -webkit-text-fill-color: transparent;
-          color: transparent;
-          animation: uni-paint-drift 7s ease-in-out infinite;
+          animation: unifolio-liquid-slosh var(--logo-slosh-speed) ease-in-out infinite;
         }
 
-        /* ── "folio" — plain at rest, radial rainbow bloom on hover ── */
-        .unifolio-folio {
-          position: relative;
-          display: inline-block;
-        }
-
-        .unifolio-blob {
+        .unifolio-liquid-word::before,
+        .unifolio-liquid-word::after {
+          content: attr(data-text);
           position: absolute;
           inset: 0;
-          white-space: nowrap;
           pointer-events: none;
-          background: ${PAINT_GRADIENT};
-          background-size: 280% 280%;
-          background-position: 40% 40%;
-          -webkit-background-clip: text;
-          background-clip: text;
-          -webkit-text-fill-color: transparent;
-          color: transparent;
-          animation: uni-paint-drift 7s ease-in-out infinite;
-          /* Radial mask driven by JS — expands from cursor entry point */
-          -webkit-mask-image: radial-gradient(
-            circle at var(--folio-ox, 50%) var(--folio-oy, 50%),
-            black 0%,
-            black var(--folio-reveal, 0%),
-            transparent var(--folio-reveal, 0%)
-          );
-          mask-image: radial-gradient(
-            circle at var(--folio-ox, 50%) var(--folio-oy, 50%),
-            black 0%,
-            black var(--folio-reveal, 0%),
-            transparent var(--folio-reveal, 0%)
-          );
+          white-space: nowrap;
         }
 
-        @keyframes uni-paint-drift {
-          0%   { background-position:   0%   0%; }
-          18%  { background-position:  75%  30%; }
-          41%  { background-position:  25%  85%; }
-          67%  { background-position:  90%  55%; }
-          83%  { background-position:  40%  10%; }
-          100% { background-position:   0%   0%; }
+        .unifolio-liquid-word::before {
+          z-index: -1;
+          color: hsl(var(--foreground) / 0.16);
+          -webkit-text-fill-color: hsl(var(--foreground) / 0.16);
+          text-shadow:
+            0 0 0.045em hsl(var(--foreground) / 0.42),
+            0 0.06em 0.18em hsl(var(--background) / 0.8);
+        }
+
+        .unifolio-liquid-word::after {
+          z-index: 2;
+          color: transparent;
+          -webkit-text-fill-color: transparent;
+          background:
+            linear-gradient(108deg,
+              transparent 0 39%,
+              hsl(var(--foreground) / 0.18) 44%,
+              hsl(var(--foreground) / 0.94) 49%,
+              hsl(var(--primary-foreground) / 0.86) 51%,
+              hsl(var(--foreground) / 0.28) 56%,
+              transparent 63% 100%),
+            radial-gradient(circle at 50% 52%,
+              hsl(var(--foreground) / 0.54),
+              transparent 32%);
+          background-size: 240% 100%, 55% 120%;
+          background-position: -190% 0, -145% 50%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          mix-blend-mode: screen;
+          opacity: 0;
+          animation: unifolio-logo-glint 10s ease-in-out infinite;
+        }
+
+        .unifolio-logo-hover-glint .unifolio-liquid-word::after {
+          animation: unifolio-logo-glint-hover 0.86s ease-out 1;
+        }
+
+        @keyframes unifolio-liquid-slosh {
+          0%, 100% {
+            background-position:
+              var(--logo-x) var(--logo-y),
+              42% calc(84% - var(--logo-lift)),
+              0% 52%,
+              0% calc(99% - var(--logo-lift));
+          }
+          28% {
+            background-position:
+              calc(var(--logo-x) + 8%) calc(var(--logo-y) + 4%),
+              70% calc(76% - var(--logo-lift)),
+              62% 46%,
+              46% calc(88% - var(--logo-lift));
+          }
+          58% {
+            background-position:
+              calc(var(--logo-x) - 11%) calc(var(--logo-y) - 3%),
+              22% calc(80% - var(--logo-lift)),
+              100% 60%,
+              100% calc(94% - var(--logo-lift));
+          }
+        }
+
+        @keyframes unifolio-logo-glint {
+          0%, 88% {
+            opacity: 0;
+            background-position: -190% 0, -145% 50%;
+          }
+          89% {
+            opacity: 0;
+            background-position: -120% 0, -75% 50%;
+          }
+          91% {
+            opacity: 0.96;
+          }
+          94% {
+            opacity: 0.98;
+            background-position: 118% 0, 120% 50%;
+          }
+          96% {
+            opacity: 0;
+            background-position: 190% 0, 165% 50%;
+          }
+          100% {
+            opacity: 0;
+            background-position: 190% 0, 165% 50%;
+          }
+        }
+
+        @keyframes unifolio-logo-glint-hover {
+          0% {
+            opacity: 0;
+            background-position: -190% 0, -145% 50%;
+          }
+          12% {
+            opacity: 0;
+            background-position: -120% 0, -75% 50%;
+          }
+          34% {
+            opacity: 0.96;
+          }
+          68% {
+            opacity: 0.98;
+            background-position: 118% 0, 120% 50%;
+          }
+          100% {
+            opacity: 0;
+            background-position: 190% 0, 165% 50%;
+          }
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .unifolio-uni { animation: none; background-position: 30% 30%; }
-          .unifolio-blob {
-            animation: none;
-            background-position: 30% 30%;
-            -webkit-mask-image: none;
-            mask-image: none;
-            opacity: 0;
-            transition: opacity 0.1s ease;
+          .unifolio-liquid-shell {
+            filter:
+              drop-shadow(0 0 0.5px hsl(var(--foreground) / 0.34))
+              drop-shadow(0 8px 18px hsl(var(--primary) / 0.08));
           }
-          .unifolio-folio:hover .unifolio-blob { opacity: 1; }
+
+          .unifolio-liquid-word {
+            animation: none;
+          }
+
+          .unifolio-liquid-word::after {
+            animation: none;
+            opacity: 0.16;
+            background-position: 50% 0, 50% 50%;
+          }
+
+          .unifolio-liquid-word {
+            background-position:
+              50% 48%,
+              50% 82%,
+              44% 54%,
+              50% 96%;
+          }
         }
       `}</style>
     </>

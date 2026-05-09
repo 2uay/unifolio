@@ -21,7 +21,6 @@ import HeatmapModeSelector from '@/components/holdings/HeatmapModeSelector';
 import { HEATMAP_MODES } from '@/lib/heatmapModes.js';
 import { calculateHeatmapStyle, enrichHoldingsForHeatmap } from '@/lib/heatmapColorEngine.js';
 import ColumnCustomizeModal from '@/components/holdings/ColumnCustomizeModal';
-import { useLiveHoldings } from '@/hooks/useLiveHoldings';
 import { useLiveData } from '@/lib/LiveDataContext';
 import { useSecondaryColors } from '@/lib/SecondaryColorsContext';
 import { useStarredStocks } from '@/lib/StarredStocksContext';
@@ -118,7 +117,7 @@ export default function Holdings() {
   const [expandedChildId, setExpandedChildId] = useState(null);
   const [showRealized, setShowRealized] = useState(false);
   const [closedOpen, setClosedOpen] = useState(true);
-  const [expandedRealizedTicker, setExpandedRealizedTicker] = useState(null);
+  const [expandedRealizedKeys, setExpandedRealizedKeys] = useState(() => new Set());
   const [dateFilter, setDateFilter] = useState({ preset: 'current', start: null, end: null, label: 'Current' });
   const [visibleColumns, setVisibleColumns] = useState(getSavedColumnOrder());
   const [heatmapEnabled, setHeatmapEnabled] = useState(() => {
@@ -162,6 +161,20 @@ export default function Holdings() {
   } = usePortfolioData();
   const PM = '••••••'; // privacy mask shorthand
   const totals = calcPortfolioTotals();
+
+  const isRealizedExpanded = (key) => expandedRealizedKeys.has(key);
+  const toggleRealizedExpanded = (key) => {
+    setExpandedRealizedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!showRealized) setExpandedRealizedKeys(new Set());
+  }, [showRealized]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -500,6 +513,80 @@ export default function Holdings() {
     }));
   }, [filteredRealized, totalAbsoluteRealizedPnl]);
 
+  const heatmapTotals = useMemo(() => {
+    const holdingRows = displayHoldings || [];
+    const realizedRows = showRealized ? filteredRealized : [];
+    const activeRealizedRows = showRealized ? [] : holdingRows;
+
+    const base = {
+      marketValue: 0,
+      marketValueSecondary: 0,
+      costBasis: 0,
+      costBasisSecondary: 0,
+      dailyPnl: 0,
+      dailyPnlSecondary: 0,
+      unrealized: 0,
+      unrealizedSecondary: 0,
+      realized: 0,
+      realizedSecondary: 0,
+      realizedCostBasis: 0,
+      priorMarketValue: 0,
+      quantity: 0,
+      positionCount: holdingRows.length,
+      realizedCount: realizedRows.length,
+    };
+
+    holdingRows.forEach(h => {
+      const currency = h.currency || displayCurrency || 'USD';
+      const marketValue = safeNumber(h.market_value ?? h.marketValue);
+      const costBasis = safeNumber(h.cost_basis ?? h.costBasis);
+      const dailyPnl = safeNumber(h.daily_pnl_amount ?? h.dailyPnl);
+      const unrealized = safeNumber(h.unrealized_gain_loss_amount ?? h.unrealizedAmt);
+      const quantity = safeNumber(h.quantity ?? h.position);
+
+      base.marketValue += convert(marketValue, currency);
+      base.costBasis += convert(costBasis, currency);
+      base.dailyPnl += convert(dailyPnl, currency);
+      base.unrealized += convert(unrealized, currency);
+      base.priorMarketValue += convert(marketValue - dailyPnl, currency);
+      base.quantity += quantity;
+
+      if (bothMode) {
+        base.marketValueSecondary += convertSecondary(marketValue, currency);
+        base.costBasisSecondary += convertSecondary(costBasis, currency);
+        base.dailyPnlSecondary += convertSecondary(dailyPnl, currency);
+        base.unrealizedSecondary += convertSecondary(unrealized, currency);
+      }
+    });
+
+    activeRealizedRows.forEach(h => {
+      const currency = h.currency || displayCurrency || 'USD';
+      const realized = safeNumber(h.realized_gain_loss_amount ?? h.realizedGain);
+      const costBasis = safeNumber(h.cost_basis ?? h.costBasis);
+      if (realized !== 0) base.realizedCount += 1;
+      base.realized += convert(realized, currency);
+      base.realizedCostBasis += convert(costBasis, currency);
+      if (bothMode) base.realizedSecondary += convertSecondary(realized, currency);
+    });
+
+    realizedRows.forEach(r => {
+      const currency = r.currency || displayCurrency || 'USD';
+      const realized = safeNumber(r.realized_gain_loss_amount ?? r.realizedGain);
+      const costBasis = safeNumber(r.total_cost_basis ?? r.cost_basis ?? r.costBasis);
+      base.realized += convert(realized, currency);
+      base.realizedCostBasis += convert(costBasis, currency);
+      if (bothMode) base.realizedSecondary += convertSecondary(realized, currency);
+    });
+
+    return {
+      ...base,
+      dailyPnlPct: safeDivide(base.dailyPnl, base.priorMarketValue) * 100,
+      unrealizedPct: safeDivide(base.unrealized, base.costBasis) * 100,
+      realizedPct: safeDivide(base.realized, base.realizedCostBasis) * 100,
+      portfolioPct: safeDivide(base.marketValue, convertedPortfolioTotal) * 100,
+    };
+  }, [displayHoldings, showRealized, filteredRealized, convert, convertSecondary, displayCurrency, bothMode, convertedPortfolioTotal]);
+
   const handleSort = (field) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('asc'); }
@@ -511,6 +598,95 @@ export default function Holdings() {
       <span className="font-mono tabular-nums text-[9px] text-muted-foreground/60">{secondary} <span className="opacity-60">{secCurrency}</span></span>
     </span>
   );
+
+  const TotalsPnl = ({ value, isCurrency = true }) => (
+    <span className="flex justify-end">
+      <PnlValue value={value} isCurrency={isCurrency} className="text-[11px] sm:text-sm" />
+    </span>
+  );
+
+  const TotalsMoney = ({ value, secondary, pnl = false, className = '' }) => {
+    if (privacyMode) {
+      return (
+        <span className={cn('flex justify-end font-mono tabular-nums tracking-widest text-muted-foreground/50', className)}>
+          {PM}
+        </span>
+      );
+    }
+    if (pnl) {
+      return (
+        <span className="flex flex-col items-end leading-tight">
+          <PnlValue value={value} className={cn('text-[11px] sm:text-sm', className)} />
+          {bothMode && (
+            <span className="flex items-center gap-1">
+              <PnlValue value={secondary} className="text-[9px] opacity-60" />
+              <span className="text-[9px] text-muted-foreground/40">{secondaryCurrency}</span>
+            </span>
+          )}
+        </span>
+      );
+    }
+    return (
+      <span className="flex flex-col items-end leading-tight">
+        <span className={cn('font-mono tabular-nums text-foreground', className)}>{formatCurrency(value)}</span>
+        {bothMode && (
+          <span className="font-mono tabular-nums text-[9px] text-muted-foreground/60">
+            {formatCurrency(secondary)} <span className="opacity-60">{secondaryCurrency}</span>
+          </span>
+        )}
+      </span>
+    );
+  };
+
+  const renderTotalsCell = (colId) => {
+    switch (colId) {
+      case 'ticker':
+        return <span className="font-semibold text-primary">Totals</span>;
+      case 'company':
+        return (
+          <span className="text-muted-foreground whitespace-nowrap">
+            {heatmapTotals.positionCount} pos
+            {heatmapTotals.realizedCount > 0 ? ` ${heatmapTotals.realizedCount} rlzd` : ''}
+          </span>
+        );
+      case 'quantity':
+        return <span className="font-mono tabular-nums text-foreground">{heatmapTotals.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>;
+      case 'marketValue':
+      case 'nativeMarketValue':
+        return <TotalsMoney value={heatmapTotals.marketValue} secondary={heatmapTotals.marketValueSecondary} />;
+      case 'costBasis':
+        return <TotalsMoney value={heatmapTotals.costBasis} secondary={heatmapTotals.costBasisSecondary} />;
+      case 'dailyPnl':
+        return <TotalsMoney value={heatmapTotals.dailyPnl} secondary={heatmapTotals.dailyPnlSecondary} pnl />;
+      case 'dailyPnlPct':
+        return <TotalsPnl value={heatmapTotals.dailyPnlPct} isCurrency={false} />;
+      case 'unrealizedGain':
+        return <TotalsMoney value={heatmapTotals.unrealized} secondary={heatmapTotals.unrealizedSecondary} pnl />;
+      case 'unrealizedGainPct':
+        return <TotalsPnl value={heatmapTotals.unrealizedPct} isCurrency={false} />;
+      case 'realizedGain':
+        return <TotalsMoney value={heatmapTotals.realized} secondary={heatmapTotals.realizedSecondary} pnl />;
+      case 'realizedGainContrib':
+        return <TotalsPnl value={heatmapTotals.realizedCount > 0 ? 100 : 0} isCurrency={false} />;
+      case 'pctPortfolio':
+        return <span className="font-mono tabular-nums text-foreground">{privacyMode ? '••••' : `${heatmapTotals.portfolioPct.toFixed(2)}%`}</span>;
+      case 'price':
+      case 'avgPrice':
+      case 'pctAccount':
+      case 'pctAssetClass':
+      case 'trend':
+      case 'account':
+      case 'institution':
+      case 'accountType':
+      case 'currency':
+      case 'assetClass':
+      case 'sector':
+      case 'country':
+      case 'exchange':
+      default:
+        return <span aria-hidden="true" />;
+    }
+  };
 
   const getValuationTitle = (holding) => {
     const source = holding.price_source || 'unknown';
@@ -980,7 +1156,8 @@ export default function Holdings() {
                     const rInst = getInstitutionForAccount(r.account_id);
                     const rNativeCurrency = r.currency || 'USD';
                     const rAccType = rAcc?.account_type ?? rAcc?.type;
-                    const isNestedRealizedExpanded = expandedRealizedTicker === `${h.id}:${r.ticker}`;
+                    const nestedRealizedKey = `active:${h.id}:${r.ticker}`;
+                    const isNestedRealizedExpanded = isRealizedExpanded(nestedRealizedKey);
 
                     // Apply heatmap with the 'realized' alternate colorway, normalized against realized peers
                     const realizHeatmapStyle = heatmapEnabled
@@ -999,7 +1176,7 @@ export default function Holdings() {
                         key={r.id}
                         style={realizHeatmapStyle.bgStyle}
                         className="border-b border-border/30 opacity-75 hover:opacity-95 transition-opacity bg-secondary/5 cursor-pointer"
-                        onClick={() => setExpandedRealizedTicker(isNestedRealizedExpanded ? null : `${h.id}:${r.ticker}`)}
+                        onClick={() => toggleRealizedExpanded(nestedRealizedKey)}
                         title={`${r._instanceCount} realized instance${r._instanceCount === 1 ? '' : 's'} · ${r._dateLabel}`}
                       >
                         {visibleColumns.map(colId => (
@@ -1091,7 +1268,8 @@ export default function Holdings() {
                       const inst = getInstitutionForAccount(r.account_id);
                       const nativeCurrency = r.currency || 'USD';
                       const acctType = acc?.account_type ?? acc?.type;
-                      const isTickerExpanded = expandedRealizedTicker === r.ticker;
+                      const closedRealizedKey = `closed:${r.id}`;
+                      const isTickerExpanded = isRealizedExpanded(closedRealizedKey);
 
                       // Apply heatmap with the 'realized' alternate colorway, normalized against realized peers
                       const realizHeatmapStyle = heatmapEnabled
@@ -1110,7 +1288,7 @@ export default function Holdings() {
                           key={r.id}
                           style={realizHeatmapStyle.bgStyle}
                           className="border-b border-border/30 opacity-80 hover:opacity-100 transition-opacity bg-secondary/5 cursor-pointer"
-                          onClick={() => setExpandedRealizedTicker(isTickerExpanded ? null : r.ticker)}
+                          onClick={() => toggleRealizedExpanded(closedRealizedKey)}
                           title={`${r._instanceCount} realized instance${r._instanceCount === 1 ? '' : 's'} · ${r._dateLabel}`}
                         >
                           {visibleColumns.map(colId => (
@@ -1189,6 +1367,27 @@ export default function Holdings() {
                   </tr>
                 )}
               </tbody>
+              {(displayHoldings.length > 0 || filteredRealized.length > 0) && (
+                <tfoot className="sticky bottom-0 z-20">
+                  <tr className="border-t border-primary/25 shadow-[0_-8px_18px_hsl(var(--background)/0.45)]">
+                    {visibleColumns.map(colId => {
+                      const isNumeric = ['price', 'quantity', 'pctPortfolio', 'pctAccount', 'pctAssetClass', 'avgPrice', 'realizedGain', 'realizedGainContrib', 'unrealizedGainPct', 'unrealizedGain', 'dailyPnl', 'dailyPnlPct', 'marketValue', 'nativeMarketValue', 'costBasis'].includes(colId);
+                      return (
+                        <td
+                          key={`totals-${colId}`}
+                          className={cn(
+                            compressTable ? 'px-1.5 py-1.5' : 'px-2 sm:px-3 py-2',
+                            'sticky bottom-0 bg-card/95 backdrop-blur-md text-[11px] sm:text-sm font-medium',
+                            isNumeric ? 'text-right' : 'text-left'
+                          )}
+                        >
+                          {renderTotalsCell(colId)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
