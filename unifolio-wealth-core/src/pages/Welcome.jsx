@@ -335,8 +335,8 @@ export default function Welcome() {
           onClick={replayIntro}
           className="fixed z-20 grid h-8 w-8 place-items-center text-zinc-400 transition-colors hover:text-zinc-200"
           style={{
-            right: 'max(14px, env(safe-area-inset-right))',
-            bottom: 'max(14px, env(safe-area-inset-bottom))',
+            right: 0,
+            bottom: 0,
           }}
         >
           <RotateCcw className="h-4 w-4" />
