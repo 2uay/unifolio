@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, BarChart3, PieChart, Zap } from 'lucide-react';
+import { Shield, BarChart3, PieChart, RotateCcw, Zap } from 'lucide-react';
 import LoginIntroAnimation from '@/components/shared/LoginIntroAnimation';
 import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,7 @@ export default function Welcome() {
   const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice } = useAuth();
   const { resetToDefaultTheme } = useTheme();
   const [introComplete, setIntroComplete] = useState(() => shouldSkipLoginIntro());
+  const [introRunId, setIntroRunId] = useState(0);
 
   const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState(() => {
@@ -75,6 +76,11 @@ export default function Welcome() {
       // Intro replay is session-only polish; storage failures should not block login.
     }
     setIntroComplete(true);
+  }
+
+  function replayIntro() {
+    setIntroRunId(id => id + 1);
+    setIntroComplete(false);
   }
 
   const handleEnterDemo = () => {
@@ -132,7 +138,7 @@ export default function Welcome() {
       style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
     >
       <ThemedWaveBackground variant="ribbon" className="z-0" />
-      {!introComplete && <LoginIntroAnimation onComplete={completeIntro} />}
+      {!introComplete && <LoginIntroAnimation key={introRunId} onComplete={completeIntro} />}
 
       <div
         className={cn(
@@ -320,6 +326,18 @@ export default function Welcome() {
           ))}
         </div>
       </div>
+
+      {introComplete && (
+        <button
+          type="button"
+          aria-label="Replay intro"
+          title="Replay intro"
+          onClick={replayIntro}
+          className="fixed bottom-[max(14px,env(safe-area-inset-bottom))] right-[max(14px,env(safe-area-inset-right))] z-20 grid h-8 w-8 place-items-center rounded-full border border-border/60 bg-card/70 text-muted-foreground shadow-lg shadow-background/30 backdrop-blur-md transition-colors hover:bg-card hover:text-foreground"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }

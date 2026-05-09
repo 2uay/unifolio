@@ -86,7 +86,10 @@ export default function LoginIntroAnimation({ onComplete }) {
   });
 
   return (
-    <div className="login-intro fixed inset-0 z-50 overflow-hidden bg-black">
+    <div
+      className="login-intro fixed inset-0 z-50 overflow-hidden bg-black"
+      onClick={onComplete}
+    >
       <div className="login-intro-rods" aria-hidden="true">
         {RIBBONS.map((ribbon) => (
           <span
