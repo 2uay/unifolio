@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Shield, BarChart3, PieChart, RotateCcw, Zap } from 'lucide-react';
 import LoginIntroAnimation from '@/components/shared/LoginIntroAnimation';
@@ -131,6 +132,38 @@ export default function Welcome() {
       setLoading(false);
     }
   };
+
+  const replayButton = introComplete && typeof document !== 'undefined'
+    ? createPortal(
+      <button
+        type="button"
+        aria-label="Replay intro"
+        title="Replay intro"
+        onClick={replayIntro}
+        style={{
+          position: 'fixed',
+          right: 0,
+          bottom: 0,
+          left: 'auto',
+          top: 'auto',
+          zIndex: 2147483647,
+          display: 'grid',
+          placeItems: 'center',
+          width: 32,
+          height: 32,
+          margin: 0,
+          padding: 0,
+          border: 0,
+          background: 'transparent',
+          color: '#d4d4d8',
+          transform: 'none',
+        }}
+      >
+        <RotateCcw className="h-4 w-4" />
+      </button>,
+      document.body
+    )
+    : null;
 
   return (
     <div
@@ -327,21 +360,7 @@ export default function Welcome() {
         </div>
       </div>
 
-      {introComplete && (
-        <button
-          type="button"
-          aria-label="Replay intro"
-          title="Replay intro"
-          onClick={replayIntro}
-          className="fixed z-20 grid h-8 w-8 place-items-center text-zinc-400 transition-colors hover:text-zinc-200"
-          style={{
-            right: 0,
-            bottom: 0,
-          }}
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-      )}
+      {replayButton}
     </div>
   );
 }
