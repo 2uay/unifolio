@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, Building2, TrendingUp,
-  ArrowLeftRight, Eye, Lightbulb, Zap, Link2, Settings, X,
-  CreditCard, LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt,
+  ArrowLeftRight, Lightbulb, Zap, Link2, Settings, X,
+  CreditCard, LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -25,7 +25,6 @@ const navItems = [
   { path: '/debts', label: 'Debts & Balances', icon: CreditCard },
   { path: '/performance', label: 'Performance', icon: TrendingUp },
   { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
-  { path: '/watchlist', label: 'Watchlist', icon: Eye },
   { path: '/insights', label: 'Insights', icon: Lightbulb },
   { path: '/institutions', label: 'Institutions', icon: Link2 },
   { path: '/import', label: 'Import Center', icon: Upload },
@@ -33,6 +32,7 @@ const navItems = [
 ];
 
 const utilityNavItems = [
+  { path: '/plans', label: 'Plans & Pricing', icon: Gem, href: 'https://unifolio.pro' },
   { path: '/instructions', label: 'Instructions', icon: BookOpen },
   { path: '/privacy', label: 'Privacy & Data', icon: Shield },
 ];
@@ -95,13 +95,15 @@ function ProfilePopover({ user, onClose, onSignOut, onNavigate, position = 'abov
       {/* Actions */}
       <div className="p-1.5 space-y-0.5">
         <button
-          onClick={() => { onNavigate('/settings'); onClose(); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => { onNavigate('/profile'); onClose(); }}
           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors text-left"
         >
           <UserCircle className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           My Profile
         </button>
         <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={() => { onNavigate('/settings'); onClose(); }}
           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-foreground hover:bg-secondary transition-colors text-left"
         >
@@ -112,6 +114,7 @@ function ProfilePopover({ user, onClose, onSignOut, onNavigate, position = 'abov
 
       <div className="border-t border-border/50 p-1.5">
         <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={() => { onSignOut(); onClose(); }}
           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
         >
@@ -297,15 +300,33 @@ export default function Sidebar() {
             <div className="p-3 border-t border-border/30 flex-shrink-0 space-y-2">
               {utilityNavItems.map(item => {
                 const isActive = location.pathname === item.path;
-                return (
+                const isPlans = item.path === '/plans';
+                const cls = cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : isPlans
+                      ? 'text-primary/80 hover:text-primary hover:bg-primary/8 border border-primary/20 hover:border-primary/35'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                );
+                return item.href ? (
+                  <a
+                    key={item.path}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMobileOpen(false)}
+                    className={cls}
+                  >
+                    <item.icon className="w-4 h-4 flex-shrink-0" />
+                    {item.label}
+                  </a>
+                ) : (
                   <Link
                     key={item.path}
                     to={item.path}
                     onClick={() => setMobileOpen(false)}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
-                      isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                    )}
+                    className={cls}
                   >
                     <item.icon className="w-4 h-4 flex-shrink-0" />
                     {item.label}
@@ -344,7 +365,7 @@ export default function Sidebar() {
                 /* Logged in: user card with profile + sign out */
                 <div className="rounded-lg border border-border/50 overflow-hidden">
                   <button
-                    onClick={() => { navigate('/settings'); setMobileOpen(false); }}
+                    onClick={() => { navigate('/profile'); setMobileOpen(false); }}
                     className="flex items-center gap-3 px-3 py-2.5 w-full hover:bg-secondary transition-colors text-left"
                   >
                     <Avatar user={user} size="xs" showRing={false} />
@@ -432,16 +453,34 @@ export default function Sidebar() {
           <div className="p-3 border-t border-border/30 flex-shrink-0 flex flex-col gap-2">
             {utilityNavItems.map(item => {
               const isActive = location.pathname === item.path;
-              return (
+              const isPlans = item.path === '/plans';
+              const cls = cn(
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                collapsed && 'justify-center px-2',
+                isActive
+                  ? 'bg-primary/10 text-primary'
+                  : isPlans
+                    ? 'text-primary/80 hover:text-primary hover:bg-primary/8 border border-primary/20 hover:border-primary/35'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              );
+              return item.href ? (
+                <a
+                  key={item.path}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={collapsed ? item.label : undefined}
+                  className={cls}
+                >
+                  <item.icon className="w-4 h-4 flex-shrink-0" />
+                  {!collapsed && <span>{item.label}</span>}
+                </a>
+              ) : (
                 <Link
                   key={item.path}
                   to={item.path}
                   title={collapsed ? item.label : undefined}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200',
-                    collapsed && 'justify-center px-2',
-                    isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                  )}
+                  className={cls}
                 >
                   <item.icon className="w-4 h-4 flex-shrink-0" />
                   {!collapsed && <span>{item.label}</span>}
@@ -481,6 +520,22 @@ export default function Sidebar() {
                   onSignOut={handleSignOut}
                   onNavigate={navigate}
                 />
+              )}
+
+              {!user && (
+                <Link
+                  to="/settings"
+                  title={collapsed ? 'Settings' : undefined}
+                  className={cn(
+                    'flex items-center justify-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm font-medium transition-colors mb-1',
+                    location.pathname === '/settings'
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  )}
+                >
+                  <Settings className="w-4 h-4 flex-shrink-0" />
+                  {!collapsed && <span>Settings</span>}
+                </Link>
               )}
 
               {user ? (

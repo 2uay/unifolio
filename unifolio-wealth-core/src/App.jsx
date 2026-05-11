@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { SidebarProvider } from '@/lib/SidebarContext';
@@ -26,7 +27,6 @@ import Accounts from '@/pages/Accounts';
 import DebtsAndBalances from '@/pages/DebtsAndBalances';
 import Performance from '@/pages/Performance';
 import Transactions from '@/pages/Transactions';
-import Watchlist from '@/pages/Watchlist';
 import Insights from '@/pages/Insights';
 import Institutions from '@/pages/Institutions';
 import Instructions from '@/pages/Instructions';
@@ -34,10 +34,30 @@ import PrivacyAndData from '@/pages/PrivacyAndData';
 import ImportCenter from '@/pages/ImportCenter';
 import TaxReport from '@/pages/TaxReport';
 import Settings from '@/pages/Settings';
+import Profile from '@/pages/Profile';
+import ProLanding from '@/pages/ProLanding';
+import ResetPassword from '@/pages/ResetPassword';
 import Welcome from '@/pages/Welcome';
 
+const PRO_DOMAIN = 'unifolio.pro';
+const FREE_DOMAIN = 'unifolio.ca';
+
+function isDomainPro() {
+  const h = window.location.hostname;
+  return h === PRO_DOMAIN || h === `www.${PRO_DOMAIN}`;
+}
+
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isAuthenticated, isDemoMode } = useAuth();
+  const { isLoadingAuth, isAuthenticated, isDemoMode, isPro, isPlanLoaded } = useAuth();
+  const [skipProLanding, setSkipProLanding] = useState(false);
+  const location = useLocation();
+
+  // Password reset link — must be reachable without auth
+  if (location.pathname === '/reset-password') {
+    return <ResetPassword />;
+  }
+
+  const isProDomain = isDomainPro();
 
   if (isLoadingAuth) {
     return (
@@ -45,6 +65,25 @@ const AuthenticatedApp = () => {
         <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
       </div>
     );
+  }
+
+  // Domain enforcement: once plan is loaded, redirect to the correct domain
+  if (isAuthenticated && isPlanLoaded && !isDemoMode) {
+    if (isPro && !isProDomain) {
+      // Pro user on free domain → send to Pro domain
+      window.location.replace(`https://${PRO_DOMAIN}${location.pathname}`);
+      return null;
+    }
+    if (!isPro && isProDomain) {
+      // Free user on Pro domain → send to free domain
+      window.location.replace(`https://${FREE_DOMAIN}${location.pathname}`);
+      return null;
+    }
+  }
+
+  // unifolio.pro unauthenticated → show Pro landing page
+  if (isProDomain && !isAuthenticated && !isDemoMode && !skipProLanding) {
+    return <ProLanding onSkipToLogin={() => setSkipProLanding(true)} />;
   }
 
   // Not authenticated and not in demo mode → show Welcome page
@@ -61,7 +100,6 @@ const AuthenticatedApp = () => {
         <Route path="/debts" element={<DebtsAndBalances />} />
         <Route path="/performance" element={<Performance />} />
         <Route path="/transactions" element={<Transactions />} />
-        <Route path="/watchlist" element={<Watchlist />} />
         <Route path="/insights" element={<Insights />} />
         <Route path="/institutions" element={<Institutions />} />
         <Route path="/instructions" element={<Instructions />} />
@@ -69,6 +107,7 @@ const AuthenticatedApp = () => {
         <Route path="/import" element={<ImportCenter />} />
         <Route path="/tax" element={<TaxReport />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/profile" element={<Profile />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

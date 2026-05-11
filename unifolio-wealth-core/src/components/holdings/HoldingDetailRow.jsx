@@ -1,15 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
 import { safeNumber } from '@/lib/safeNum';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
-import { useResearchWindows } from '@/lib/ResearchWindowContext';
 import { useCurrency } from '@/lib/CurrencyContext';
-import StockChart from '@/components/charts/StockChart';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import { calcTrueExposure } from '@/lib/etfOverlapEngine';
+import { normalizeTicker } from '@/lib/etfHoldings';
 
-export default function HoldingDetailRow({ holding }) {
+export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal }) {
   const { privacyMode } = usePrivacy();
-  const { openWindow } = useResearchWindows();
   const { convert } = useCurrency();
   const { getAccount, getInstitutionForAccount } = usePortfolioData();
   const nativeCurrency = holding.currency || 'USD';
@@ -19,21 +18,21 @@ export default function HoldingDetailRow({ holding }) {
   const unrealizedAmt = safeNumber(holding.unrealized_gain_loss_amount ?? holding.unrealizedAmt);
   const marketValue   = safeNumber(holding.market_value ?? holding.marketValue);
   const currentPrice  = safeNumber(holding.current_price ?? holding.lastPrice ?? 0);
-  const changePct     = safeNumber(holding.daily_pnl_percent ?? holding.dailyPct ?? 0);
 
   const purchaseHistory = holding.purchase_history ?? holding.purchaseHistory ?? [];
 
-  const referenceLines = purchaseHistory.map((p, i) => ({
-    price: safeNumber(p.price),
-    label: `Lot ${i + 1}`,
-    color: '#a78bfa',
-  }));
+  const overlapRow = useMemo(() => {
+    if (!allHoldings?.length || !portfolioTotal) return null;
+    const rows = calcTrueExposure(allHoldings, portfolioTotal, convert);
+    const thisTicker = normalizeTicker(holding.ticker);
+    return rows.find(r => normalizeTicker(r.ticker) === thisTicker) || null;
+  }, [allHoldings, portfolioTotal, convert, holding.ticker]);
 
   return (
     <tr>
       <td colSpan={100} className="p-0">
         <div className="bg-secondary/10 border-b border-border p-3 md:p-4">
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-2 gap-4">
             {/* Position Details */}
             <div className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Position Details</h3>
@@ -59,46 +58,45 @@ export default function HoldingDetailRow({ holding }) {
               </div>
             </div>
 
-            {/* Price Chart */}
-            <div className="md:col-span-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Price Chart</h3>
-              <StockChart
-                ticker={holding.ticker}
-                name={holding.name}
-                lastPrice={currentPrice || 100}
-                seedVal={42}
-                compact={true}
-                onChartClick={() => openWindow({
-                  ticker: holding.ticker,
-                  name: holding.name,
-                  lastPrice: currentPrice,
-                  changePct,
-                  currency: holding.currency || 'USD',
-                })}
-                clickableChart={true}
-                referenceLines={referenceLines}
-                nativeCurrency={nativeCurrency}
-              />
-
-              {/* Purchase History badges */}
-              {purchaseHistory.length > 0 && (
-                <div className="mt-2">
-                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Purchase History</h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {purchaseHistory.map((p, i) => (
-                      <div key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card border border-border text-xs">
-                        <span className="text-[9px] font-semibold" style={{ color: '#a78bfa' }}>Lot {i + 1}</span>
-                        <span className="text-muted-foreground">{new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
-                        <span className="font-mono text-emerald-400">+{safeNumber(p.qty ?? p.quantity)}</span>
-                        <span className="text-muted-foreground">@</span>
-                        <span className="font-mono">{privacyMode ? '••••' : '$' + safeNumber(p.price).toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
+            {/* Purchase History */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Purchase History</h3>
+              {purchaseHistory.length > 0 ? (
+                <div className="flex flex-col gap-1.5">
+                  {purchaseHistory.map((p, i) => (
+                    <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-card border border-border text-xs">
+                      <span className="text-[9px] font-semibold w-8 shrink-0" style={{ color: '#a78bfa' }}>Lot {i + 1}</span>
+                      <span className="text-muted-foreground">{new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                      <span className="font-mono text-emerald-400 ml-auto">+{safeNumber(p.qty ?? p.quantity)}</span>
+                      <span className="text-muted-foreground">@</span>
+                      <span className="font-mono">{privacyMode ? '••••' : '$' + safeNumber(p.price).toFixed(2)}</span>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <p className="text-xs text-muted-foreground/50">No purchase history available.</p>
               )}
             </div>
           </div>
+
+          {/* ETF True Exposure */}
+          {overlapRow && (
+            <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-3 py-2 text-xs ${overlapRow.isHighConcentration ? 'border-amber-500/40 bg-amber-500/8' : 'border-border/50 bg-secondary/20'}`}>
+              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">True Exposure</span>
+              <span className="text-muted-foreground">Direct <span className="font-mono text-foreground">{safeNumber(overlapRow.directPct).toFixed(2)}%</span></span>
+              <span className="text-muted-foreground/50">+</span>
+              <span className="text-muted-foreground">Via ETFs <span className="font-mono text-foreground">{safeNumber(overlapRow.etfPct).toFixed(2)}%</span></span>
+              <span className="text-muted-foreground/50">=</span>
+              <span className={`font-semibold font-mono ${overlapRow.isHighConcentration ? 'text-amber-400' : 'text-foreground'}`}>
+                {overlapRow.isHighConcentration && '⚠ '}{safeNumber(overlapRow.totalPct).toFixed(2)}% total
+              </span>
+              {overlapRow.sources?.length > 0 && (
+                <span className="text-muted-foreground/70 text-[10px]">
+                  via {overlapRow.sources.join(', ')}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </td>
     </tr>
