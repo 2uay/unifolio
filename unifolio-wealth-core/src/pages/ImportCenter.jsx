@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   Upload, ChevronRight, ChevronLeft, Check, AlertTriangle,
   X, Download, BookOpen, RefreshCw, Database, FileSpreadsheet,
+  Link2, Loader2, Zap, Trash2, Lock, Building2,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,157 @@ import { bankExportInstructions, downloadInstructionAsset } from '@/lib/bankExpo
 import { saveParsedImport } from '@/lib/importPersistence';
 import { COLUMN_DEFINITIONS } from '@/lib/columnConfig';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import { useAuth } from '@/lib/AuthContext';
+import { supabase } from '@/lib/supabaseClient';
 import InstitutionLogo from '@/components/shared/InstitutionLogo';
+import PlaidConnectButton from '@/components/plaid/PlaidConnectButton';
+
+// ─── PLAID SECTION ───────────────────────────────────────────
+
+function PlaidSection() {
+  const { user, isPro } = useAuth();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [syncingId, setSyncingId] = useState(null);
+  const [disconnectingId, setDisconnectingId] = useState(null);
+
+  const loadItems = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data } = await supabase
+        .from('plaid_items')
+        .select('id, item_id, institution_name, institution_logo, accounts, last_synced_at, status, error_code')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      setItems(data || []);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => { if (isPro) loadItems(); }, [isPro, loadItems]);
+
+  const handleSync = async (itemId) => {
+    setSyncingId(itemId);
+    try {
+      const { data: s } = await supabase.auth.getSession();
+      const token = s?.session?.access_token;
+      await fetch('/api/plaid/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ itemId }),
+      });
+      await loadItems();
+    } finally { setSyncingId(null); }
+  };
+
+  const handleDisconnect = async (itemId) => {
+    setDisconnectingId(itemId);
+    try {
+      const { data: s } = await supabase.auth.getSession();
+      const token = s?.session?.access_token;
+      await fetch('/api/plaid/disconnect', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ itemId }),
+      });
+      await loadItems();
+    } finally { setDisconnectingId(null); }
+  };
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 bg-card/60">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Zap className="w-3.5 h-3.5 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Live Brokerage Sync</p>
+            <p className="text-[10px] text-muted-foreground">Connect via Plaid — holdings sync automatically</p>
+          </div>
+        </div>
+        {isPro && <PlaidConnectButton onSuccess={loadItems} className="flex-shrink-0" />}
+      </div>
+
+      {/* Body */}
+      {!isPro ? (
+        <div className="flex items-center gap-3 px-4 py-4">
+          <Lock className="w-4 h-4 text-primary/50 flex-shrink-0" />
+          <p className="text-sm text-muted-foreground">
+            Live brokerage sync is a <span className="text-primary font-medium">Pro</span> feature.{' '}
+            <a href="https://unifolio.pro" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View Plans →</a>
+          </p>
+        </div>
+      ) : loading ? (
+        <div className="flex items-center gap-2 px-4 py-4 text-xs text-muted-foreground">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading connections…
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+          <Building2 className="w-8 h-8 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">No brokerages connected yet.</p>
+          <p className="text-xs text-muted-foreground/60">Click "Connect a Brokerage" above to link your first account via Plaid.</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-border/20">
+          {items.map(item => (
+            <li key={item.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
+                {item.institution_logo
+                  ? <img src={`data:image/png;base64,${item.institution_logo}`} alt="" className="w-5 h-5 object-contain" />
+                  : <Building2 className="w-4 h-4 text-muted-foreground" />
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">{item.institution_name || 'Unknown Institution'}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {item.status === 'error'
+                    ? <span className="text-red-400">Error: {item.error_code || 'sync failed'}</span>
+                    : item.last_synced_at
+                      ? `Last synced ${new Date(item.last_synced_at).toLocaleString()}`
+                      : 'Never synced'
+                  }
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs gap-1"
+                  disabled={syncingId === item.item_id}
+                  onClick={() => handleSync(item.item_id)}
+                >
+                  {syncingId === item.item_id
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <RefreshCw className="w-3 h-3" />
+                  }
+                  Sync
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                  disabled={disconnectingId === item.item_id}
+                  onClick={() => handleDisconnect(item.item_id)}
+                >
+                  {disconnectingId === item.item_id
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <Trash2 className="w-3 h-3" />
+                  }
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 const IMPORT_HISTORY_KEY = 'unifolio_import_history';
 const TRANSFER_TYPES = new Set(['Position Transfer', 'Transfer In', 'Transfer Out', 'Deposit', 'Withdrawal']);
@@ -923,7 +1074,7 @@ function ConfirmStep({ parsed, onDone, onBack }) {
         </div>
         <p className="text-sm font-semibold text-foreground mb-1">Import synced</p>
         <p className="text-xs text-muted-foreground">
-          {importResult?.holdingsSaved ?? valid.length} holdings, {importResult?.realizedSaved ?? importBundle?.realizedPositions?.length ?? 0} realized positions, and {importResult?.transactionsSaved ?? importBundle?.transactions?.length ?? 0} transactions saved to {importResult?.backend === 'local' ? 'this browser' : 'Supabase'}
+          {importResult?.holdingsSaved ?? valid.length} holdings, {importResult?.realizedSaved ?? importBundle?.realizedPositions?.length ?? 0} realized positions, and {importResult?.transactionsSaved ?? importBundle?.transactions?.length ?? 0} transactions saved to {importResult?.backend === 'local' ? 'this browser' : 'Supabase'}{importResult?.duplicatesSkipped > 0 ? ` · ${importResult.duplicatesSkipped} duplicate${importResult.duplicatesSkipped === 1 ? '' : 's'} skipped` : ''}
         </p>
         {importResult?.batchWarning && (
           <p className="text-[11px] text-amber-400 mt-2">{importResult.batchWarning}</p>
@@ -1188,6 +1339,7 @@ export default function ImportCenter() {
 
       {step === null && (
         <>
+          <PlaidSection />
           {completedSession.length > 0 && (
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
               <p className="text-sm font-semibold text-foreground">Import session complete</p>

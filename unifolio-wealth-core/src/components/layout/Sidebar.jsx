@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, Building2, TrendingUp,
   ArrowLeftRight, Lightbulb, Zap, Link2, Settings, X,
-  CreditCard, LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem,
+  CreditCard, LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem, Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -33,6 +33,7 @@ const navItems = [
 
 const utilityNavItems = [
   { path: '/plans', label: 'Plans & Pricing', icon: Gem, href: 'https://unifolio.pro' },
+  { path: '/community', label: 'Community', icon: Users },
   { path: '/instructions', label: 'Instructions', icon: BookOpen },
   { path: '/privacy', label: 'Privacy & Data', icon: Shield },
 ];

@@ -38,18 +38,10 @@ import Profile from '@/pages/Profile';
 import ProLanding from '@/pages/ProLanding';
 import ResetPassword from '@/pages/ResetPassword';
 import Welcome from '@/pages/Welcome';
-
-const PRO_DOMAIN = 'unifolio.pro';
-const FREE_DOMAIN = 'unifolio.ca';
-
-function isDomainPro() {
-  const h = window.location.hostname;
-  return h === PRO_DOMAIN || h === `www.${PRO_DOMAIN}`;
-}
+import Community from '@/pages/Community';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isAuthenticated, isDemoMode, isPro, isPlanLoaded } = useAuth();
-  const [skipProLanding, setSkipProLanding] = useState(false);
+  const { isLoadingAuth, isAuthenticated, isDemoMode } = useAuth();
   const location = useLocation();
 
   // Password reset link — must be reachable without auth
@@ -57,33 +49,12 @@ const AuthenticatedApp = () => {
     return <ResetPassword />;
   }
 
-  const isProDomain = isDomainPro();
-
   if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
         <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
       </div>
     );
-  }
-
-  // Domain enforcement: once plan is loaded, redirect to the correct domain
-  if (isAuthenticated && isPlanLoaded && !isDemoMode) {
-    if (isPro && !isProDomain) {
-      // Pro user on free domain → send to Pro domain
-      window.location.replace(`https://${PRO_DOMAIN}${location.pathname}`);
-      return null;
-    }
-    if (!isPro && isProDomain) {
-      // Free user on Pro domain → send to free domain
-      window.location.replace(`https://${FREE_DOMAIN}${location.pathname}`);
-      return null;
-    }
-  }
-
-  // unifolio.pro unauthenticated → show Pro landing page
-  if (isProDomain && !isAuthenticated && !isDemoMode && !skipProLanding) {
-    return <ProLanding onSkipToLogin={() => setSkipProLanding(true)} />;
   }
 
   // Not authenticated and not in demo mode → show Welcome page
@@ -104,6 +75,7 @@ const AuthenticatedApp = () => {
         <Route path="/institutions" element={<Institutions />} />
         <Route path="/instructions" element={<Instructions />} />
         <Route path="/privacy" element={<PrivacyAndData />} />
+        <Route path="/community" element={<Community />} />
         <Route path="/import" element={<ImportCenter />} />
         <Route path="/tax" element={<TaxReport />} />
         <Route path="/settings" element={<Settings />} />
