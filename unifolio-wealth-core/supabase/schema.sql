@@ -206,6 +206,9 @@ create table if not exists user_profiles (
   user_id                     uuid references auth.users not null unique,
   full_name                   text,
   display_name                text,
+  phone_number                text,
+  location                    text,
+  bio                         text,
   profile_picture_url         text,
   profile_picture_type        text default 'static',
   profile_picture_file_name   text,
@@ -220,6 +223,8 @@ create table if not exists user_profiles (
   sidebar_preference          text default 'open',
   stack_assets                boolean default false,
   holdings_columns            jsonb,
+  table_layout_preferences    jsonb,
+  portfolio_breakdown_preferences jsonb,
   active_import_batch_id       text,
   created_at                  timestamptz default now(),
   updated_at                  timestamptz default now()
@@ -228,6 +233,36 @@ alter table user_profiles enable row level security;
 create policy "users own their profile" on user_profiles
   for all using (auth.uid() = user_id);
 alter table user_profiles add column if not exists active_import_batch_id text;
+alter table user_profiles add column if not exists plan text default 'free';
+
+-- Plaid Items (access tokens stored server-side; client only reads status/institution info)
+create table if not exists plaid_items (
+  id                text primary key,
+  user_id           uuid not null references auth.users(id) on delete cascade,
+  item_id           text not null unique,
+  access_token      text not null,
+  institution_id    text,
+  institution_name  text,
+  institution_logo  text,
+  accounts          jsonb default '[]',
+  last_synced_at    timestamptz,
+  status            text default 'active',
+  error_code        text,
+  created_at        timestamptz default now()
+);
+alter table plaid_items enable row level security;
+-- Users can read their own connection status; writes come from server via service key
+create policy "users read own plaid items" on plaid_items
+  for select using (auth.uid() = user_id);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- ADMIN: Set a specific user to Pro plan
+-- Run this in the Supabase SQL editor, substituting the real email:
+--
+--   UPDATE user_profiles SET plan = 'pro'
+--   WHERE user_id = (SELECT id FROM auth.users WHERE email = 'tuaymontana@gmail.com');
+--
+-- ──────────────────────────────────────────────────────────────────────────────
 
 -- Server-side delete helpers
 -- These avoid long chains of browser/PostgREST delete requests timing out.

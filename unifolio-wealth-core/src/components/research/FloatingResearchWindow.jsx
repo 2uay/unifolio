@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import {
-  X, Minus, Maximize2, Minimize2, BarChart2, LayoutDashboard,
+  X, Minus, BarChart2, LayoutDashboard,
   TrendingUp, TrendingDown, Bell, ArrowRightLeft, GripHorizontal
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -56,6 +56,7 @@ export default function FloatingResearchWindow({ win }) {
   const onDragStart = useCallback((e) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     focusWindow(win.ticker);
     dragState.current = {
       startX: e.clientX - win.x,
@@ -69,17 +70,18 @@ export default function FloatingResearchWindow({ win }) {
     };
     const onUp = () => {
       dragState.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }, [win.x, win.y, win.ticker, focusWindow, updateWindow]);
 
   // ── Resize ─────────────────────────────────────────────────────
   const onResizeStart = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     focusWindow(win.ticker);
     resizeState.current = {
       startX: e.clientX,
@@ -95,11 +97,11 @@ export default function FloatingResearchWindow({ win }) {
     };
     const onUp = () => {
       resizeState.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }, [win.width, win.height, win.ticker, focusWindow, updateWindow]);
 
   const convertedPrice = item.lastPrice > 0 ? convert(item.lastPrice, item.currency || 'USD') : 0;
@@ -145,12 +147,12 @@ export default function FloatingResearchWindow({ win }) {
         height: win.height,
         zIndex: win.zIndex,
       }}
-      onMouseDown={() => focusWindow(win.ticker)}
+      onPointerDown={() => focusWindow(win.ticker)}
     >
       {/* ── Header / Drag handle ─────────────────────────────── */}
       <div
         className="flex items-center gap-2 px-3 py-2 border-b border-border bg-secondary/30 cursor-grab active:cursor-grabbing flex-shrink-0"
-        onMouseDown={onDragStart}
+        onPointerDown={onDragStart}
       >
         <GripHorizontal className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
         <div className="flex-1 min-w-0">
@@ -169,7 +171,7 @@ export default function FloatingResearchWindow({ win }) {
           </div>
         </div>
         {/* Controls */}
-        <div className="flex items-center gap-0.5 flex-shrink-0" onMouseDown={e => e.stopPropagation()}>
+        <div className="flex items-center gap-0.5 flex-shrink-0" onPointerDown={e => e.stopPropagation()}>
           {/* View mode toggles */}
           {!isCompact && (
             <>
@@ -304,7 +306,7 @@ export default function FloatingResearchWindow({ win }) {
       {/* ── Resize handle ────────────────────────────────────── */}
       <div
         className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize opacity-40 hover:opacity-80 transition-opacity"
-        onMouseDown={onResizeStart}
+        onPointerDown={onResizeStart}
         style={{
           background: 'linear-gradient(135deg, transparent 50%, hsl(var(--muted-foreground)) 50%)',
           borderBottomRightRadius: '0.75rem',

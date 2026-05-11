@@ -2693,6 +2693,44 @@ export const themes = {
     swatches: ['#ef4444','#38bdf8','#fbbf24','#a855f7'],
     colors: { '--background':'0 0% 1%', '--foreground':'0 0% 92%', '--card':'0 0% 4%', '--card-foreground':'0 0% 92%', '--popover':'0 0% 4%', '--popover-foreground':'0 0% 92%', '--primary':'0 96% 56%', '--primary-foreground':'0 0% 100%', '--secondary':'0 0% 9%', '--secondary-foreground':'0 0% 80%', '--muted':'0 0% 9%', '--muted-foreground':'0 0% 50%', '--accent':'0 0% 13%', '--accent-foreground':'0 0% 92%', '--destructive':'0 72% 51%', '--destructive-foreground':'0 0% 100%', '--border':'0 0% 12%', '--input':'0 0% 12%', '--ring':'0 96% 56%', '--gain':'142 71% 45%', '--loss':'0 72% 51%', '--sidebar-background':'0 0% 2%', '--sidebar-foreground':'0 0% 80%' },
   },
+  unifoliopro: {
+    name: "Unifolio Pro",
+    description: "Black & gold — exclusive to Pro members",
+    pro: true,
+    goldWheel: true,
+    chartColors: ['#FFD700', '#FFBE0B', '#FFC200', '#FFD43B', '#FFEC6E', '#FF9900', '#FFF0A0', '#E5AC00'],
+    swatches: ['#0a0900', '#FFD700', '#FFBE0B', '#E5AC00'],
+    colors: {
+      "--background": "40 15% 4%",
+      "--foreground": "45 60% 88%",
+      "--card": "40 15% 7%",
+      "--card-foreground": "45 60% 88%",
+      "--popover": "40 15% 7%",
+      "--popover-foreground": "45 60% 88%",
+      "--primary": "45 100% 50%",
+      "--primary-foreground": "40 15% 4%",
+      "--secondary": "40 12% 11%",
+      "--secondary-foreground": "45 40% 78%",
+      "--muted": "40 12% 11%",
+      "--muted-foreground": "40 15% 45%",
+      "--accent": "40 12% 16%",
+      "--accent-foreground": "45 60% 88%",
+      "--destructive": "0 72% 51%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "40 18% 16%",
+      "--input": "40 18% 16%",
+      "--ring": "45 100% 50%",
+      "--chart-1": "45 100% 50%",
+      "--chart-2": "38 100% 55%",
+      "--chart-3": "50 100% 65%",
+      "--chart-4": "36 90% 44%",
+      "--chart-5": "44 80% 70%",
+      "--gain": "142 60% 45%",
+      "--loss": "0 72% 51%",
+      "--sidebar-background": "40 15% 3%",
+      "--sidebar-foreground": "45 40% 72%",
+    },
+  },
   };
 
 export const DEFAULT_THEME = 'royalpurple';
@@ -2748,6 +2786,7 @@ const THEME_TAGS_MAP = {
   polarNights: ['dark', 'living', 'animated', 'cyan', 'aurora', 'energy'],
   tropicStorm: ['dark', 'living', 'animated', 'teal', 'vibrant', 'energy'],
   voidPulse: ['dark', 'living', 'animated', 'red', 'minimal', 'energy'],
+  unifoliopro: ['dark', 'gold', 'black', 'pro', 'premium', 'luxury'],
 };
 
 export function applyTheme(themeId) {

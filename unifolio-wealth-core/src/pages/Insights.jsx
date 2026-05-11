@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Info, CheckCircle, AlertCircle, TrendingUp, TrendingDown, Percent, DollarSign, ChevronDown, ChevronUp, Shield, Layers } from 'lucide-react';
 import { calcTrueExposure, getHeldETFs } from '@/lib/etfOverlapEngine';
 import { calcHealthScore } from '@/lib/healthScore';
-import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
+import { formatCurrency } from '@/components/shared/ValueDisplay';
 import { safeNumber, safeDivide, safeFixed } from '@/lib/safeNum';
 import PageHeader from '@/components/shared/PageHeader';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,8 @@ import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import DraggableTableHeader from '@/components/shared/DraggableTableHeader';
+import usePersistentTableColumns from '@/hooks/usePersistentTableColumns';
 
 const severityConfig = {
   low: { bg: 'bg-blue-500/10 border-blue-500/20', icon: Info, color: 'text-blue-400' },
@@ -93,9 +95,17 @@ function HealthScoreCard({ holdings, accounts, totalValue, cashTotal, portfolioS
 }
 
 export default function Insights() {
+  const ETF_OVERLAP_COLUMNS = useMemo(() => ([
+    { id: 'asset', label: 'Asset', align: 'left' },
+    { id: 'direct', label: 'Direct', align: 'right' },
+    { id: 'viaEtfs', label: 'Via ETFs', align: 'right' },
+    { id: 'totalExposure', label: 'Total Exposure', align: 'right' },
+    { id: 'sources', label: 'Sources', align: 'left' },
+  ]), []);
   const { privacyMode } = usePrivacy();
   const { convert, displayCurrency } = useCurrency();
   const { accounts, holdings, portfolioSnapshots, isEmptyPortfolio } = usePortfolioData();
+  const [etfOverlapColumnOrder, , setEtfOverlapColumnOrder] = usePersistentTableColumns('insights_etf_overlap', ETF_OVERLAP_COLUMNS);
   const PM = '••••••';
   const allAccountIds = useMemo(() => accounts.filter(a => a.included_in_portfolio !== false && !a.excluded).map(a => a.id), [accounts]);
   const activeHoldings = useMemo(() => holdings.filter(h => h.quantity > 0 && allAccountIds.includes(h.account_id ?? h.accountId)), [holdings, allAccountIds]);
@@ -147,15 +157,6 @@ export default function Insights() {
     },
   ];
 
-  if (isEmptyPortfolio) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Insights" description="Portfolio concentration, risk, and allocation diagnostics" />
-        <EmptyPortfolioState />
-      </div>
-    );
-  }
-
   // Dynamically generated insights — no hardcoded percentages
   const insights = useMemo(() => {
     const result = [];
@@ -181,6 +182,15 @@ export default function Insights() {
 
   const overlapData = useMemo(() => calcTrueExposure(activeHoldings, totalValue, convert), [activeHoldings, totalValue, convert, displayCurrency]);
   const heldETFs = useMemo(() => getHeldETFs(activeHoldings), [activeHoldings]);
+
+  if (isEmptyPortfolio) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Insights" description="Portfolio concentration, risk, and allocation diagnostics" />
+        <EmptyPortfolioState />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -220,42 +230,71 @@ export default function Insights() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-[12px]">
-              <thead>
-                <tr className="border-b border-border/20 bg-secondary/20">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Asset</th>
-                  <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Direct</th>
-                  <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Via ETFs</th>
-                  <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Exposure</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Sources</th>
-                </tr>
-              </thead>
+              <DraggableTableHeader
+                columns={ETF_OVERLAP_COLUMNS.map((column) => ({
+                  ...column,
+                  headerClassName: cn(
+                    'px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground',
+                    column.align === 'right' ? 'text-right' : 'text-left',
+                    column.id === 'sources' && 'hidden sm:table-cell',
+                  ),
+                }))}
+                orderedColumnIds={etfOverlapColumnOrder}
+                onOrderChange={setEtfOverlapColumnOrder}
+                rowClassName="border-b border-border/20 bg-secondary/20"
+                renderCell={(column) => (
+                  <div className={cn('flex items-center', column.align === 'right' ? 'justify-end' : 'justify-start')}>
+                    <span>{column.label}</span>
+                  </div>
+                )}
+              />
               <tbody>
                 {overlapData.slice(0, 12).map(row => (
                   <tr key={row.ticker} className={cn('border-b border-border/10', row.isHighConcentration && 'bg-amber-500/5')}>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono font-semibold text-foreground">{row.ticker}</span>
-                        {row.isHighConcentration && <AlertTriangle className="h-3 w-3 text-amber-400" />}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-muted-foreground">
-                      {row.directPct > 0 ? `${row.directPct.toFixed(1)}%` : <span className="opacity-30">—</span>}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-blue-400">
-                      {row.etfPct > 0 ? `${row.etfPct.toFixed(1)}%` : <span className="opacity-30">—</span>}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <span className={cn('font-mono font-bold', row.isHighConcentration ? 'text-amber-400' : 'text-foreground')}>
-                        {row.totalPct.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 hidden sm:table-cell">
-                      <div className="flex flex-wrap gap-1">
-                        {row.sources.map(s => (
-                          <span key={s} className="rounded bg-secondary border border-border/30 px-1.5 py-0.5 text-[10px] text-muted-foreground">{s}</span>
-                        ))}
-                      </div>
-                    </td>
+                    {etfOverlapColumnOrder.map((columnId) => {
+                      if (columnId === 'asset') {
+                        return (
+                          <td key={`${row.ticker}-${columnId}`} className="px-4 py-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-semibold text-foreground">{row.ticker}</span>
+                              {row.isHighConcentration && <AlertTriangle className="h-3 w-3 text-amber-400" />}
+                            </div>
+                          </td>
+                        );
+                      }
+                      if (columnId === 'direct') {
+                        return (
+                          <td key={`${row.ticker}-${columnId}`} className="px-4 py-2 text-right font-mono text-muted-foreground">
+                            {row.directPct > 0 ? `${row.directPct.toFixed(1)}%` : <span className="opacity-30">—</span>}
+                          </td>
+                        );
+                      }
+                      if (columnId === 'viaEtfs') {
+                        return (
+                          <td key={`${row.ticker}-${columnId}`} className="px-4 py-2 text-right font-mono text-blue-400">
+                            {row.etfPct > 0 ? `${row.etfPct.toFixed(1)}%` : <span className="opacity-30">—</span>}
+                          </td>
+                        );
+                      }
+                      if (columnId === 'totalExposure') {
+                        return (
+                          <td key={`${row.ticker}-${columnId}`} className="px-4 py-2 text-right">
+                            <span className={cn('font-mono font-bold', row.isHighConcentration ? 'text-amber-400' : 'text-foreground')}>
+                              {row.totalPct.toFixed(1)}%
+                            </span>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={`${row.ticker}-${columnId}`} className="px-4 py-2 hidden sm:table-cell">
+                          <div className="flex flex-wrap gap-1">
+                            {row.sources.map(s => (
+                              <span key={s} className="rounded bg-secondary border border-border/30 px-1.5 py-0.5 text-[10px] text-muted-foreground">{s}</span>
+                            ))}
+                          </div>
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

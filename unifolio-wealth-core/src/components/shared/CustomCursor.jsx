@@ -10,6 +10,7 @@ export default function CustomCursor() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.matchMedia('(pointer: coarse)').matches) return;
 
     const cursor = cursorRef.current;
     if (!cursor) return;
@@ -24,7 +25,7 @@ export default function CustomCursor() {
     const tick = () => {
       state.px += (state.mx - state.px) * 0.22;
       state.py += (state.my - state.py) * 0.22;
-      cursor.style.transform = `translate(${(state.px - HALF).toFixed(1)}px, ${(state.py - HALF).toFixed(1)}px)`;
+      cursor.style.transform = `translate3d(${(state.px - HALF).toFixed(1)}px, ${(state.py - HALF).toFixed(1)}px, 0)`;
       state.raf = requestAnimationFrame(tick);
     };
     state.raf = requestAnimationFrame(tick);
@@ -57,15 +58,22 @@ export default function CustomCursor() {
       }, 160);
     };
 
-    document.addEventListener('mousemove', onMove, { passive: true });
-    document.addEventListener('mousedown', onDown);
+    const onLeave = () => {
+      cursor.style.opacity = '0';
+      state.active = false;
+    };
+
+    document.addEventListener('pointermove', onMove, { passive: true });
+    document.addEventListener('pointerdown', onDown, { passive: true });
+    window.addEventListener('blur', onLeave);
 
     return () => {
       if (state.raf) cancelAnimationFrame(state.raf);
       if (clickTimer) clearTimeout(clickTimer);
       document.documentElement.classList.remove('custom-cursor-active');
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('blur', onLeave);
     };
   }, []);
 

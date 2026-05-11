@@ -1,13 +1,15 @@
 import React from 'react';
-import { ChevronDown, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { cn } from '@/lib/utils';
+import usePersistentTableColumns from '@/hooks/usePersistentTableColumns';
+import DraggableTableHeader, { TableColumnGrip } from '@/components/shared/DraggableTableHeader';
 
 export default function PredictionMarketPositionsTable({ positions }) {
   const { privacyMode } = usePrivacy();
   const { convert } = useCurrency();
+  const [columnOrder, setColumnOrder] = usePersistentTableColumns('prediction_market_positions_table', ['platform', 'market', 'outcome', 'probability', 'avgPrice', 'currentPrice', 'positionValue', 'unrealized', 'realized', 'closes']);
   const PM = '••••••';
 
   const safePositions = Array.isArray(positions) ? positions.filter(Boolean) : [];
@@ -18,20 +20,29 @@ export default function PredictionMarketPositionsTable({ positions }) {
       {/* Desktop table */}
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="border-b border-border/50 bg-secondary/30">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Platform</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Market</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Outcome</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Probability</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avg Price</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Current Price</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Position Value</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Unrealized P&L</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Realized P&L</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Closes</th>
-            </tr>
-          </thead>
+          <DraggableTableHeader
+            columns={[
+              { id: 'platform', label: 'Platform', headerClassName: 'px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'market', label: 'Market', headerClassName: 'px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'outcome', label: 'Outcome', headerClassName: 'px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'probability', label: 'Probability', headerClassName: 'px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'avgPrice', label: 'Avg Price', headerClassName: 'px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'currentPrice', label: 'Current Price', headerClassName: 'px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'positionValue', label: 'Position Value', headerClassName: 'px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'unrealized', label: 'Unrealized P&L', headerClassName: 'px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'realized', label: 'Realized P&L', headerClassName: 'px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+              { id: 'closes', label: 'Closes', headerClassName: 'px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider' },
+            ]}
+            orderedColumnIds={columnOrder}
+            onOrderChange={setColumnOrder}
+            rowClassName="border-b border-border/50 bg-secondary/30"
+            renderCell={(column, dragHandleProps) => (
+              <div className={cn('flex items-center gap-1.5', ['probability', 'avgPrice', 'currentPrice', 'positionValue', 'unrealized', 'realized'].includes(column.id) ? 'justify-end' : 'justify-start')}>
+                <TableColumnGrip dragHandleProps={dragHandleProps} />
+                <span>{column.label}</span>
+              </div>
+            )}
+          />
           <tbody>
             {sortedPositions.map((position, i) => {
               const unrealizedPnL = position.unrealized_gain_loss || 0;
@@ -42,36 +53,19 @@ export default function PredictionMarketPositionsTable({ positions }) {
 
               return (
                 <tr key={position.id} className={cn('border-b border-border/30 hover:bg-secondary/30 transition-colors', i % 2 === 1 && 'bg-secondary/10')}>
-                  <td className="px-4 py-3">
-                    <span className="text-xs font-semibold">{position.platform}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-xs font-medium text-foreground line-clamp-2">{position.market_title}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">{position.outcome}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-xs font-mono">{position.probability || '—'}%</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-xs font-mono">{privacyMode ? PM : `$${(position.average_price || 0).toFixed(4)}`}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-xs font-mono">{privacyMode ? PM : `$${(position.current_price || 0).toFixed(4)}`}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-xs font-mono">{privacyMode ? PM : formatCurrency(convertedValue)}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <PnlValue value={convertedUnrealized} className="text-xs" />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <PnlValue value={convertedRealized} className="text-xs" />
-                  </td>
-                  <td className="px-4 py-3 text-left">
-                    <span className="text-xs text-muted-foreground">{position.market_close_date ? new Date(position.market_close_date).toLocaleDateString() : '—'}</span>
-                  </td>
+                  {columnOrder.map((columnId) => {
+                    if (columnId === 'platform') return <td key={`${position.id}-platform`} className="px-4 py-3"><span className="text-xs font-semibold">{position.platform}</span></td>;
+                    if (columnId === 'market') return <td key={`${position.id}-market`} className="px-4 py-3"><p className="text-xs font-medium text-foreground line-clamp-2">{position.market_title}</p></td>;
+                    if (columnId === 'outcome') return <td key={`${position.id}-outcome`} className="px-4 py-3"><span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">{position.outcome}</span></td>;
+                    if (columnId === 'probability') return <td key={`${position.id}-probability`} className="px-4 py-3 text-right"><span className="text-xs font-mono">{position.probability || '—'}%</span></td>;
+                    if (columnId === 'avgPrice') return <td key={`${position.id}-avgPrice`} className="px-4 py-3 text-right"><span className="text-xs font-mono">{privacyMode ? PM : `$${(position.average_price || 0).toFixed(4)}`}</span></td>;
+                    if (columnId === 'currentPrice') return <td key={`${position.id}-currentPrice`} className="px-4 py-3 text-right"><span className="text-xs font-mono">{privacyMode ? PM : `$${(position.current_price || 0).toFixed(4)}`}</span></td>;
+                    if (columnId === 'positionValue') return <td key={`${position.id}-positionValue`} className="px-4 py-3 text-right"><span className="text-xs font-mono">{privacyMode ? PM : formatCurrency(convertedValue)}</span></td>;
+                    if (columnId === 'unrealized') return <td key={`${position.id}-unrealized`} className="px-4 py-3 text-right"><PnlValue value={convertedUnrealized} className="text-xs" /></td>;
+                    if (columnId === 'realized') return <td key={`${position.id}-realized`} className="px-4 py-3 text-right"><PnlValue value={convertedRealized} className="text-xs" /></td>;
+                    if (columnId === 'closes') return <td key={`${position.id}-closes`} className="px-4 py-3 text-left"><span className="text-xs text-muted-foreground">{position.market_close_date ? new Date(position.market_close_date).toLocaleDateString() : '—'}</span></td>;
+                    return null;
+                  })}
                 </tr>
               );
             })}

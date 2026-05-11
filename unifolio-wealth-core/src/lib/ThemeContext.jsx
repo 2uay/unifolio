@@ -85,12 +85,24 @@ export function ThemeProvider({ children }) {
             .eq('user_id', session.user.id)
             .single();
 
-          if (data?.theme_id) {
-            const monoColor = data.custom_monochrome_color || null;
-            applyById(data.theme_id, monoColor);
-            // Sync back to localStorage so next load is instant
-            localStorage.setItem(LS_KEY, data.theme_id);
+          const plan = session.user.app_metadata?.plan;
+          const isPro = plan === 'pro' || plan === 'lifetime';
+          const savedTheme = data?.theme_id;
+          const monoColor = data?.custom_monochrome_color || null;
+          const systemDefaults = new Set([DEFAULT_THEME, LEGACY_DEFAULT_THEME, PREVIOUS_DEFAULT_THEME, 'malachite']);
+
+          if (savedTheme && !(isPro && systemDefaults.has(savedTheme))) {
+            // User has an explicit non-default theme — honour it
+            applyById(savedTheme, monoColor);
+            localStorage.setItem(LS_KEY, savedTheme);
             if (monoColor) localStorage.setItem(LS_MONO_KEY, monoColor);
+          } else if (isPro) {
+            // Pro user with no saved theme or still on a system default → upgrade to Pro theme
+            applyById('unifoliopro');
+            localStorage.setItem(LS_KEY, 'unifoliopro');
+          } else {
+            applyById(DEFAULT_THEME);
+            localStorage.setItem(LS_KEY, DEFAULT_THEME);
           }
         } catch { /* silent — keep current theme */ }
       } else {

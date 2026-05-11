@@ -59,6 +59,13 @@ function stableId(...parts) {
   return parts.map(safeId).join(':');
 }
 
+function tradeDupeKey(t) {
+  const ticker = ((t.display_ticker || t.ticker) ?? '').toUpperCase();
+  const qty    = Number(t.quantity ?? 0).toFixed(6);
+  const price  = Number(t.price    ?? 0).toFixed(6);
+  return `${t.account_id}|${t.date}|${ticker}|${qty}|${price}|${t.transaction_type}`;
+}
+
 function brokerMetadata(broker) {
   return BROKER_METADATA[broker] || {
     institutionKey: broker || 'imported-broker',
@@ -451,6 +458,17 @@ export async function saveParsedImport(parsed) {
     };
     });
 
+  // Within-batch dedup: skip rows that are semantically identical within this file
+  const _batchKeys = new Map();
+  const transactionRowsDeduped = transactionRows.filter(t => {
+    const k = tradeDupeKey(t);
+    if (_batchKeys.has(k)) return false;
+    _batchKeys.set(k, true);
+    return true;
+  });
+  let duplicatesSkipped = transactionRows.length - transactionRowsDeduped.length;
+  let dedupedTxns = transactionRowsDeduped;
+
   const localSaved = saveLocalImportedPortfolio({
     now,
     batchId,
@@ -462,7 +480,7 @@ export async function saveParsedImport(parsed) {
     accountRows,
     holdingsRows,
     realizedRows,
-    transactionRows,
+    transactionRows: transactionRowsDeduped,
     replaceAccountIds,
   });
 
@@ -488,9 +506,37 @@ export async function saveParsedImport(parsed) {
       batchResult = await trySaveImportBatch(batch);
 
       await deleteImportedRowsForAccounts(user.id, replaceAccountIds);
+
+      // Cross-batch dedup: skip trades already saved in Supabase
+      if (transactionRowsDeduped.length) {
+        try {
+          const acctIds = [...new Set(transactionRowsDeduped.map(r => r.account_id).filter(Boolean))];
+          const sortedDates = transactionRowsDeduped.map(r => r.date).filter(Boolean).sort();
+          const { data: existing } = await withTimeout(
+            supabase
+              .from('transactions')
+              .select('account_id, date, display_ticker, ticker, quantity, price, transaction_type')
+              .eq('user_id', userId)
+              .in('account_id', acctIds)
+              .gte('date', sortedDates[0])
+              .lte('date', sortedDates[sortedDates.length - 1]),
+            8000,
+            'dedup query',
+          );
+          if (existing?.length) {
+            const existingKeys = new Set(existing.map(tradeDupeKey));
+            const before = dedupedTxns.length;
+            dedupedTxns = dedupedTxns.filter(t => !existingKeys.has(tradeDupeKey(t)));
+            duplicatesSkipped += before - dedupedTxns.length;
+          }
+        } catch {
+          // If dedup query fails, proceed without cross-batch dedup
+        }
+      }
+
       await upsertChunks('holdings', holdingsRows);
       await upsertChunks('realized_positions', realizedRows);
-      await upsertChunks('transactions', transactionRows);
+      await upsertChunks('transactions', dedupedTxns);
       try {
         await withTimeout(
           supabase.from('user_profiles').upsert({
@@ -549,7 +595,8 @@ export async function saveParsedImport(parsed) {
     summary,
     holdingsSaved: holdingsRows.length,
     realizedSaved: realizedRows.length,
-    transactionsSaved: transactionRows.length,
+    transactionsSaved: dedupedTxns.length,
+    duplicatesSkipped,
     batchSaved: batchResult.ok,
     synced: syncedToSupabase,
     backend: syncedToSupabase ? 'supabase' : 'local',

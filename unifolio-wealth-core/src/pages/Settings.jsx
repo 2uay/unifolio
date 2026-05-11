@@ -1,55 +1,35 @@
 import React, { useState } from 'react';
-import { User, Eye, Shield, Bell, RefreshCw, AlertTriangle, LogOut, Trash2, Download, Lock, Smartphone, Monitor, Coins, CheckCircle2, Clock, Palette, Zap, Sparkles, Pencil, X, Check } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { User, Eye, Shield, Bell, RefreshCw, AlertTriangle, LogOut, Download, Lock, Smartphone, Monitor, Coins, CheckCircle2, Clock, Palette, Zap, ArrowRight, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import ThemedSwitch from '@/components/ui/switch-themed';
 import PageHeader from '@/components/shared/PageHeader';
 import ThemeSelector from '@/components/settings/ThemeSelector';
 import CacheManagement from '@/components/settings/CacheManagement';
-import ProfilePictureSection from '@/components/settings/ProfilePictureSection';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { getCurrencyRates, FX_PROVIDER, FX_IS_SAMPLE } from '@/lib/exchangeRates';
 import { useAuth } from '@/lib/AuthContext';
 import { useLiveData } from '@/lib/LiveDataContext';
 import { useAccentBars } from '@/lib/AccentBarsContext';
-import { useTopbarLogo } from '@/lib/TopbarLogoContext';
 import Avatar from '@/components/shared/Avatar';
 import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { cn } from '@/lib/utils';
 import { exportFullBackupJSON, exportHoldingsCSV, exportTransactionsCSV } from '@/lib/exportEngine';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import { toast } from 'sonner';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { displayCurrency, setDisplayCurrency, enabledCurrencies, setEnabledCurrencies, allCurrencies } = useCurrency();
   const { accounts, holdings, transactions, institutions, getInstitution } = usePortfolioData();
-  const { user, fullName, logout, updateFullName } = useAuth();
-  const [editingName, setEditingName] = useState(false);
-  const [nameValue, setNameValue] = useState('');
-  const [nameSaving, setNameSaving] = useState(false);
-  const [nameError, setNameError] = useState('');
+  const { user, fullName, logout, sendPasswordReset, isAuthenticated } = useAuth();
   const { liveDataEnabled, setLiveDataEnabled } = useLiveData();
   const { accentBarsEnabled, toggleAccentBars } = useAccentBars();
-  const { logoVisible, toggleLogo } = useTopbarLogo();
   const [excludedAccounts, setExcludedAccounts] = useState([]);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [priceAlerts, setPriceAlerts] = useState(true);
   const [twoFactor, setTwoFactor] = useState(false);
-
-  const handleSaveName = async () => {
-    const trimmed = nameValue.trim();
-    if (!trimmed) { setNameError('Name cannot be empty.'); return; }
-    setNameSaving(true);
-    setNameError('');
-    try {
-      await updateFullName(trimmed);
-      setEditingName(false);
-    } catch (err) {
-      setNameError(err.message || 'Failed to update name.');
-    } finally {
-      setNameSaving(false);
-    }
-  };
+  const [sendingReset, setSendingReset] = useState(false);
 
   const toggleAccount = (id) => {
     setExcludedAccounts(prev =>
@@ -68,14 +48,35 @@ export default function Settings() {
 
   const fxRates = getCurrencyRates();
 
+  const handlePasswordReset = async () => {
+    if (!user?.email) return;
+    setSendingReset(true);
+    try {
+      await sendPasswordReset(user.email);
+      toast.success(`Password reset email sent to ${user.email}`);
+    } catch (err) {
+      toast.error(err.message || 'Could not send password reset email');
+    } finally {
+      setSendingReset(false);
+    }
+  };
+
   return (
     <div className="space-y-3 sm:space-y-6 max-w-3xl">
-      <PageHeader title="Settings" description="Manage your profile and preferences" />
+      <PageHeader title="Settings" description="Manage your preferences, security, and data controls" />
 
-      {/* Profile Picture */}
-      <ProfilePictureSection />
+      {!isAuthenticated && (
+        <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/8 px-4 py-3">
+          <Zap className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-muted-foreground">
+            You're in <span className="font-semibold text-foreground">demo mode</span> — theme and display preferences are available below.{' '}
+            <a href="/" className="text-primary hover:underline">Sign in</a> to access your full account settings.
+          </p>
+        </div>
+      )}
 
       {/* Account */}
+      {isAuthenticated && (
       <div className="bg-card rounded-xl border border-border p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
         <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider">
           <User className="w-3 h-3 sm:w-4 sm:h-4" /> Account
@@ -88,59 +89,21 @@ export default function Settings() {
             <p className="text-[10px] sm:text-xs text-muted-foreground/60 mt-0.5">Role: {user?.role || 'user'}</p>
           </div>
         </div>
-        <div className="grid sm:grid-cols-2 gap-2 sm:gap-4">
-          <div>
-            <Label className="text-[10px] sm:text-xs text-muted-foreground">Full Name</Label>
-            {editingName ? (
-              <div className="mt-1 flex items-center gap-1.5">
-                <Input
-                  autoFocus
-                  value={nameValue}
-                  onChange={(e) => setNameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveName();
-                    if (e.key === 'Escape') setEditingName(false);
-                  }}
-                  className="bg-secondary border-border flex-1"
-                  disabled={nameSaving}
-                />
-                <button
-                  onClick={handleSaveName}
-                  disabled={nameSaving}
-                  className="p-1.5 rounded-md text-green-500 hover:bg-green-500/10 transition-colors disabled:opacity-40"
-                  title="Save"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => { setEditingName(false); setNameError(''); }}
-                  disabled={nameSaving}
-                  className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-40"
-                  title="Cancel"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="mt-1 flex items-center gap-1.5">
-                <Input value={fullName} className="bg-secondary border-border flex-1" readOnly />
-                <button
-                  onClick={() => { setNameValue(fullName); setNameError(''); setEditingName(true); }}
-                  className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                  title="Edit name"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-            {nameError && <p className="text-xs text-red-400 mt-1">{nameError}</p>}
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div className="rounded-lg bg-secondary/30 border border-border/50 p-3">
+            <p className="text-sm font-medium">{fullName || 'User'}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{user?.email}</p>
+            <p className="text-[11px] text-muted-foreground/70 mt-2">
+              Profile photo, name, email, phone, and personal details now live on your dedicated profile page.
+            </p>
           </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Email</Label>
-            <Input defaultValue={user?.email || ''} className="mt-1 bg-secondary border-border" readOnly />
-          </div>
+          <Button variant="outline" className="gap-2" onClick={() => navigate('/profile')}>
+            Open My Profile
+            <ArrowRight className="w-4 h-4" />
+          </Button>
         </div>
       </div>
+      )}
 
       {/* Themes */}
        <div className="bg-card rounded-xl border border-border p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-5">
@@ -148,6 +111,13 @@ export default function Settings() {
            <Palette className="w-3 h-3 sm:w-4 sm:h-4" /> Themes
          </div>
          <ThemeSelector />
+         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
+           <div>
+             <p className="text-sm font-medium">Accent Bars</p>
+             <p className="text-xs text-muted-foreground">Theme-aware accent lines around the app shell.</p>
+           </div>
+           <ThemedSwitch checked={accentBarsEnabled} onCheckedChange={toggleAccentBars} />
+         </div>
        </div>
 
        {/* Data Cache Management */}
@@ -277,6 +247,7 @@ export default function Settings() {
       </div>
 
       {/* Security & Privacy */}
+      {isAuthenticated && (
       <div className="bg-card rounded-xl border border-border p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
         <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider">
           <Shield className="w-3 h-3 sm:w-4 sm:h-4" /> Security & Privacy
@@ -290,7 +261,9 @@ export default function Settings() {
                 <p className="text-xs text-muted-foreground">Managed by platform authentication</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" disabled className="opacity-50">Change Password</Button>
+            <Button variant="outline" size="sm" onClick={handlePasswordReset} disabled={sendingReset || !user?.email}>
+              {sendingReset ? 'Sending…' : 'Change Password'}
+            </Button>
           </div>
           <div className="flex items-center justify-between py-2 border-b border-border/40">
             <div className="flex items-center gap-3">
@@ -319,8 +292,10 @@ export default function Settings() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Notifications */}
+      {isAuthenticated && (
       <div className="bg-card rounded-xl border border-border p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
         <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider">
           <Bell className="w-3 h-3 sm:w-4 sm:h-4" /> Notifications
@@ -342,6 +317,7 @@ export default function Settings() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Live Data Simulation */}
       <div className="bg-card rounded-xl border border-border p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
@@ -359,23 +335,9 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Accent Bars */}
-      <div className="bg-card rounded-xl border border-border p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
-        <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" /> Appearance
-        </div>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <p className="text-sm font-medium">Accent Bars</p>
-              <p className="text-xs text-muted-foreground">Subtle theme-aware accent lines at the top and bottom of the app for a premium look</p>
-            </div>
-            <ThemedSwitch checked={accentBarsEnabled} onCheckedChange={toggleAccentBars} />
-          </div>
-        </div>
-      </div>
-
       {/* Sign Out & Danger Zone */}
+      {isAuthenticated && (
+      <>
       <div className="bg-card rounded-xl border border-border p-3 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
         <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider">
           <LogOut className="w-3 h-3 sm:w-4 sm:h-4" /> Session
@@ -424,6 +386,8 @@ export default function Settings() {
           </Button>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

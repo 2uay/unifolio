@@ -6,6 +6,8 @@ import { useCurrency } from '@/lib/CurrencyContext';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { cn } from '@/lib/utils';
+import usePersistentTableColumns from '@/hooks/usePersistentTableColumns';
+import DraggableTableHeader, { TableColumnGrip } from '@/components/shared/DraggableTableHeader';
 
 const TYPE_CFG = {
   buy:               { icon: ArrowDownLeft,  color: 'text-emerald-400', bg: 'bg-emerald-400/10', label: 'Buy' },
@@ -31,6 +33,7 @@ export default function SecurityHistoryPanel({ ticker }) {
   const { convert } = useCurrency();
   const { transactions, getAccount, getInstitutionForAccount } = usePortfolioData();
   const PM = '••••••';
+  const [columnOrder, setColumnOrder] = usePersistentTableColumns('transactions_security_history_table', ['date', 'type', 'qty', 'price', 'total', 'running', 'account', 'institution']);
 
   const txs = useMemo(() => {
     if (!ticker) return [];
@@ -102,18 +105,27 @@ export default function SecurityHistoryPanel({ ticker }) {
       {/* Transaction table */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-border/30">
-              <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Date</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Type</th>
-              <th className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Qty</th>
-              <th className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Price</th>
-              <th className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Total</th>
-              <th className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Running</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Account</th>
-              <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Institution</th>
-            </tr>
-          </thead>
+          <DraggableTableHeader
+            columns={[
+              { id: 'date', label: 'Date', headerClassName: 'px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+              { id: 'type', label: 'Type', headerClassName: 'px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+              { id: 'qty', label: 'Qty', headerClassName: 'px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+              { id: 'price', label: 'Price', headerClassName: 'px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+              { id: 'total', label: 'Total', headerClassName: 'px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+              { id: 'running', label: 'Running', headerClassName: 'px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+              { id: 'account', label: 'Account', headerClassName: 'px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+              { id: 'institution', label: 'Institution', headerClassName: 'px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70' },
+            ]}
+            orderedColumnIds={columnOrder}
+            onOrderChange={setColumnOrder}
+            rowClassName="border-b border-border/30"
+            renderCell={(column, dragHandleProps) => (
+              <div className={cn('flex items-center gap-1.5', ['qty', 'price', 'total', 'running'].includes(column.id) ? 'justify-end' : 'justify-start')}>
+                <TableColumnGrip dragHandleProps={dragHandleProps} />
+                <span>{column.label}</span>
+              </div>
+            )}
+          />
           <tbody>
             {rows.map((tx, idx) => {
               const cfg = TYPE_CFG[tx.type] ?? { icon: RefreshCw, color: 'text-muted-foreground', bg: 'bg-secondary', label: tx.type };
@@ -124,29 +136,24 @@ export default function SecurityHistoryPanel({ ticker }) {
               const qty = parseFloat(tx.qty ?? tx.quantity ?? 0) || 0;
               return (
                 <tr key={tx.id ?? idx} className={cn('border-b border-border/20 hover:bg-secondary/30 transition-colors', rowTint(tx.type))}>
-                  <td className="px-3 py-1.5 font-mono text-muted-foreground">{tx.date || '—'}</td>
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <div className={cn('p-0.5 rounded', cfg.bg)}><Icon className={cn('w-2.5 h-2.5', cfg.color)} /></div>
-                      <span className={cn('font-medium', cfg.color)}>{cfg.label}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5 text-right font-mono">{qty > 0 ? qty.toFixed(4) : '—'}</td>
-                  <td className="px-3 py-1.5 text-right font-mono">
-                    {privacyMode ? PM : (tx.price > 0 ? '$' + Number(tx.price).toFixed(2) : '—')}
-                  </td>
-                  <td className="px-3 py-1.5 text-right font-mono font-medium">
-                    {privacyMode ? PM : formatCurrency(convert(tx.total ?? tx.total_amount ?? 0, tx.currency || 'USD'))}
-                  </td>
-                  <td className={cn('px-3 py-1.5 text-right font-mono font-semibold', tx._runningQty >= 0 ? 'text-foreground' : 'text-red-400')}>
-                    {tx._runningQty.toFixed(4)}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <span className="text-[10px] px-1 py-0.5 rounded bg-primary/10 text-primary">{acc?.account_type ?? acc?.type ?? '—'}</span>
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <InstitutionLogo institution={inst} name={inst?.name} size="xs" />
-                  </td>
+                  {columnOrder.map((columnId) => {
+                    if (columnId === 'date') return <td key={`${tx.id}-date`} className="px-3 py-1.5 font-mono text-muted-foreground">{tx.date || '—'}</td>;
+                    if (columnId === 'type') return (
+                      <td key={`${tx.id}-type`} className="px-3 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className={cn('p-0.5 rounded', cfg.bg)}><Icon className={cn('w-2.5 h-2.5', cfg.color)} /></div>
+                          <span className={cn('font-medium', cfg.color)}>{cfg.label}</span>
+                        </div>
+                      </td>
+                    );
+                    if (columnId === 'qty') return <td key={`${tx.id}-qty`} className="px-3 py-1.5 text-right font-mono">{qty > 0 ? qty.toFixed(4) : '—'}</td>;
+                    if (columnId === 'price') return <td key={`${tx.id}-price`} className="px-3 py-1.5 text-right font-mono">{privacyMode ? PM : (tx.price > 0 ? '$' + Number(tx.price).toFixed(2) : '—')}</td>;
+                    if (columnId === 'total') return <td key={`${tx.id}-total`} className="px-3 py-1.5 text-right font-mono font-medium">{privacyMode ? PM : formatCurrency(convert(tx.total ?? tx.total_amount ?? 0, tx.currency || 'USD'))}</td>;
+                    if (columnId === 'running') return <td key={`${tx.id}-running`} className={cn('px-3 py-1.5 text-right font-mono font-semibold', tx._runningQty >= 0 ? 'text-foreground' : 'text-red-400')}>{tx._runningQty.toFixed(4)}</td>;
+                    if (columnId === 'account') return <td key={`${tx.id}-account`} className="px-3 py-1.5"><span className="text-[10px] px-1 py-0.5 rounded bg-primary/10 text-primary">{acc?.account_type ?? acc?.type ?? '—'}</span></td>;
+                    if (columnId === 'institution') return <td key={`${tx.id}-institution`} className="px-3 py-1.5"><InstitutionLogo institution={inst} name={inst?.name} size="xs" /></td>;
+                    return null;
+                  })}
                 </tr>
               );
             })}

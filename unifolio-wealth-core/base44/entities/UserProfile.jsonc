@@ -18,6 +18,18 @@
       "type": "string",
       "description": "User's display name"
     },
+    "phone_number": {
+      "type": "string",
+      "description": "User's preferred phone number"
+    },
+    "location": {
+      "type": "string",
+      "description": "User's location"
+    },
+    "bio": {
+      "type": "string",
+      "description": "Short user biography"
+    },
     "initials": {
       "type": "string",
       "description": "User's initials for fallback avatar"
@@ -98,6 +110,14 @@
     "heatmap_mode": {
       "type": "string",
       "description": "Current heatmap visualization mode"
+    },
+    "table_layout_preferences": {
+      "type": "object",
+      "description": "Per-table saved column order preferences"
+    },
+    "portfolio_breakdown_preferences": {
+      "type": "object",
+      "description": "Portfolio breakdown chart visibility and order preferences"
     },
     "created_at": {
       "type": "string",

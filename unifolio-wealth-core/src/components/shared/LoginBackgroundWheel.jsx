@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState, useMemo } from 'react';
 import { useTheme } from '@/lib/ThemeContext';
 
 const N_DOTS = 24;
@@ -12,16 +12,14 @@ function randomColor() {
   return `hsl(${Math.floor(Math.random() * 360)} ${70 + Math.floor(Math.random() * 25)}% ${52 + Math.floor(Math.random() * 16)}%)`;
 }
 
-export default function LoginBackgroundWheel() {
+const LoginBackgroundWheel = forwardRef(function LoginBackgroundWheel({ hovered = false }, ref) {
   const { chartColors } = useTheme();
   const dotsRef = useRef(null);
   const stateRef = useRef({
-    angle: 0,
-    speed: BASE_SPEED,
-    lastTime: null,
-    frame: null,
-    reducedMotion: false,
+    angle: 0, speed: BASE_SPEED, lastTime: null, frame: null, reducedMotion: false,
   });
+  useImperativeHandle(ref, () => ({ getAngle: () => stateRef.current.angle }));
+
   const [clickColors, setClickColors] = useState({});
   const [breathePhases] = useState(() =>
     Array.from({ length: N_DOTS }, (_, i) => (i / N_DOTS) * Math.PI * 2)
@@ -51,7 +49,6 @@ export default function LoginBackgroundWheel() {
       const dt = Math.min(0.05, (time - state.lastTime) / 1000);
       state.lastTime = time;
 
-      // Sinusoidal speed variation for "alive" feel
       const wobble = Math.sin(time / 3800) * 2.5;
       state.angle = (state.angle + (BASE_SPEED + wobble) * dt) % 360;
 
@@ -59,13 +56,11 @@ export default function LoginBackgroundWheel() {
         dotsRef.current.style.transform = `rotate(${state.angle}deg)`;
       }
 
-      // Update breathing opacity on each dot
       const circles = dotsRef.current?.querySelectorAll('circle');
       if (circles) {
         circles.forEach((c, i) => {
           const phase = breathePhases[i] + time / 4200;
-          const opacity = 0.55 + Math.sin(phase) * 0.28;
-          c.style.opacity = opacity.toFixed(3);
+          c.style.opacity = (0.65 + Math.sin(phase) * 0.28).toFixed(3);
         });
       }
 
@@ -88,81 +83,52 @@ export default function LoginBackgroundWheel() {
   return (
     <div
       aria-hidden="true"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
-        overflow: 'hidden',
-        zIndex: 1,
-      }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 1 }}
     >
-      <svg
-        viewBox="0 0 100 100"
-        preserveAspectRatio="xMidYMid meet"
+      {/* Background rotating ring — 180vw decorative element */}
+      <div
         style={{
           position: 'absolute',
-          // Make it ~180vw wide so outer dots go off-screen on both sides
-          width: '180vw',
-          height: '180vw',
-          left: '50%',
-          top: '50%',
+          width: '180vw', height: '180vw',
+          left: '50%', top: '50%',
           transform: 'translate(-50%, -48%)',
-          opacity: 0.16,
-          pointerEvents: 'none',
         }}
       >
-        {/* Outer ring glow */}
-        <circle
-          cx={CX}
-          cy={CY}
-          r={R + DOT_R + 0.8}
-          fill="none"
-          stroke="url(#lgw-ring-grad)"
-          strokeWidth="0.3"
-          opacity="0.35"
-        />
-        <circle
-          cx={CX}
-          cy={CY}
-          r={R - DOT_R - 0.8}
-          fill="none"
-          stroke="url(#lgw-ring-grad)"
-          strokeWidth="0.15"
-          opacity="0.2"
-        />
-
-        <defs>
-          <radialGradient id="lgw-ring-grad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.6" />
-            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-
-        <g
-          ref={dotsRef}
-          style={{
-            transformOrigin: `${CX}px ${CY}px`,
-            transformBox: 'view-box',
-          }}
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="xMidYMid meet"
+          style={{ width: '100%', height: '100%', opacity: 0.72, pointerEvents: 'none' }}
         >
-          {dots.map((dot, i) => (
-            <circle
-              key={i}
-              cx={dot.x}
-              cy={dot.y}
-              r={DOT_R}
-              fill={clickColors[i] || dot.color}
-              style={{
-                transition: 'fill 320ms ease',
-                filter: `blur(0.15px) drop-shadow(0 0 0.8px ${clickColors[i] || dot.color})`,
-                pointerEvents: 'auto',
-                cursor: 'pointer',
-              }}
-              onClick={(e) => handleDotClick(i, e)}
-            />
-          ))}
-        </g>
-      </svg>
+          <circle cx={CX} cy={CY} r={R + DOT_R + 0.8}
+            fill="none" stroke="url(#lgw-ring-grad)" strokeWidth="0.3" opacity="0.5" />
+          <circle cx={CX} cy={CY} r={R - DOT_R - 0.8}
+            fill="none" stroke="url(#lgw-ring-grad)" strokeWidth="0.15" opacity="0.3" />
+          <defs>
+            <radialGradient id="lgw-ring-grad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <g ref={dotsRef} style={{ transformOrigin: `${CX}px ${CY}px`, transformBox: 'view-box' }}>
+            {dots.map((dot, i) => (
+              <circle
+                key={i}
+                cx={dot.x} cy={dot.y} r={DOT_R}
+                fill={clickColors[i] || dot.color}
+                style={{
+                  transition: 'fill 320ms ease',
+                  filter: `blur(0.1px) drop-shadow(0 0 1.8px ${clickColors[i] || dot.color})`,
+                  pointerEvents: 'auto',
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => handleDotClick(i, e)}
+              />
+            ))}
+          </g>
+        </svg>
+      </div>
     </div>
   );
-}
+});
+
+export default LoginBackgroundWheel;

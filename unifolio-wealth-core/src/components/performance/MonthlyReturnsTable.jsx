@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { safeNumber, safeArray } from '@/lib/safeNum';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import usePersistentTableColumns from '@/hooks/usePersistentTableColumns';
+import DraggableTableHeader, { TableColumnGrip } from '@/components/shared/DraggableTableHeader';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -85,6 +87,7 @@ function ReturnCell({ value }) {
 export default function MonthlyReturnsTable() {
   const { portfolioSnapshots } = usePortfolioData();
   const data = useMemo(() => deriveMonthlyReturns(portfolioSnapshots), [portfolioSnapshots]);
+  const [columnOrder, setColumnOrder] = usePersistentTableColumns('performance_monthly_returns_table', ['year', ...MONTHS, 'total']);
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -93,26 +96,42 @@ export default function MonthlyReturnsTable() {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-secondary/40 border-b border-border">
-              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-14 border-r border-border/50">Year</th>
-              {MONTHS.map(m => (
-                <th key={m} className="px-2 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-r border-border/30 min-w-[52px]">{m}</th>
-              ))}
-              <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground min-w-[64px]">Total</th>
-            </tr>
-          </thead>
+          <DraggableTableHeader
+            columns={[
+              { id: 'year', label: 'Year', headerClassName: 'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground w-14 border-r border-border/50' },
+              ...MONTHS.map(month => ({ id: month, label: month, headerClassName: 'px-2 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-r border-border/30 min-w-[52px]' })),
+              { id: 'total', label: 'Total', headerClassName: 'px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground min-w-[64px]' },
+            ]}
+            orderedColumnIds={columnOrder}
+            onOrderChange={setColumnOrder}
+            rowClassName="bg-secondary/40 border-b border-border"
+            renderCell={(column, dragHandleProps) => (
+              <div className={cn('flex items-center gap-1.5', ['year'].includes(column.id) ? 'justify-start' : 'justify-center')}>
+                <TableColumnGrip dragHandleProps={dragHandleProps} />
+                <span>{column.label}</span>
+              </div>
+            )}
+          />
           <tbody>
             {data.map((row, i) => (
               <tr key={row.year} className={cn('border-b border-border/30 hover:bg-secondary/20 transition-colors', i % 2 === 0 ? 'bg-card' : 'bg-secondary/10')}>
-                <td className="px-4 py-2.5 text-xs font-semibold text-foreground border-r border-border/50 whitespace-nowrap">{row.year}</td>
-                {MONTHS.map(m => <ReturnCell key={m} value={row.months[m]} />)}
-                <td className={cn(
-                  'px-3 py-2.5 text-center text-xs font-bold font-mono tabular-nums',
-                  row.yearTotal == null ? 'text-muted-foreground/30' : row.yearTotal > 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'
-                )}>
-                  {row.yearTotal == null ? '—' : `${row.yearTotal > 0 ? '+' : ''}${row.yearTotal.toFixed(1)}%`}
-                </td>
+                {columnOrder.map((columnId) => {
+                  if (columnId === 'year') return <td key={`${row.year}-year`} className="px-4 py-2.5 text-xs font-semibold text-foreground border-r border-border/50 whitespace-nowrap">{row.year}</td>;
+                  if (columnId === 'total') {
+                    return (
+                      <td
+                        key={`${row.year}-total`}
+                        className={cn(
+                          'px-3 py-2.5 text-center text-xs font-bold font-mono tabular-nums',
+                          row.yearTotal == null ? 'text-muted-foreground/30' : row.yearTotal > 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'
+                        )}
+                      >
+                        {row.yearTotal == null ? '—' : `${row.yearTotal > 0 ? '+' : ''}${row.yearTotal.toFixed(1)}%`}
+                      </td>
+                    );
+                  }
+                  return <ReturnCell key={`${row.year}-${columnId}`} value={row.months[columnId]} />;
+                })}
               </tr>
             ))}
           </tbody>

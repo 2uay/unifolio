@@ -1,57 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Shield, BarChart3, PieChart, RotateCcw, Zap } from 'lucide-react';
-import LoginIntroAnimation from '@/components/shared/LoginIntroAnimation';
+import { Shield, BarChart3, PieChart, Zap } from 'lucide-react';
 import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ThemedWaveBackground from '@/components/shared/ThemedWaveBackground';
 import LoginBackgroundWheel from '@/components/shared/LoginBackgroundWheel';
+import LoginIridescentBackground from '@/components/shared/LoginIridescentBackground';
+import LoginBrandReveal from '@/components/shared/LoginBrandReveal';
 import { useAuth } from '@/lib/AuthContext';
 import { useTheme } from '@/lib/ThemeContext';
 import { cn } from '@/lib/utils';
 
 const REMEMBERED_EMAIL_KEY = 'unifolio_remembered_email';
-const LOGIN_INTRO_KEY = 'unifolio_login_intro_seen';
-
-function hasAuthCallbackParams() {
-  if (typeof window === 'undefined') return false;
-  const search = new URLSearchParams(window.location.search);
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const has = (key) => search.has(key) || hash.has(key);
-
-  return [
-    'auth',
-    'auth_action',
-    'error',
-    'error_description',
-    'code',
-    'token_hash',
-    'access_token',
-  ].some(has);
-}
-
-function shouldSkipLoginIntro() {
-  if (typeof window === 'undefined') return true;
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduceMotion || hasAuthCallbackParams()) return true;
-  try {
-    return window.sessionStorage.getItem(LOGIN_INTRO_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
 
 export default function Welcome() {
   const navigate = useNavigate();
-  const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice } = useAuth();
-  const { resetToDefaultTheme } = useTheme();
-  const [introComplete, setIntroComplete] = useState(() => shouldSkipLoginIntro());
-  const [introVisible, setIntroVisible] = useState(() => !shouldSkipLoginIntro());
-  const [introRunId, setIntroRunId] = useState(0);
+  const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice, sendPasswordReset } = useAuth();
+  const { resetToDefaultTheme, chartColors } = useTheme();
 
-  const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
+  const [tab, setTab] = useState('signin'); // 'signin' | 'signup' | 'forgot'
+  const [forgotSent, setForgotSent] = useState(false);
   const [email, setEmail] = useState(() => {
     try { return localStorage.getItem(REMEMBERED_EMAIL_KEY) || ''; } catch { return ''; }
   });
@@ -63,39 +32,15 @@ export default function Welcome() {
   const [rememberMe, setRememberMe] = useState(() => {
     try { return Boolean(localStorage.getItem(REMEMBERED_EMAIL_KEY)); } catch { return false; }
   });
+  const [logoHovered, setLogoHovered] = useState(false);
+  const [logoFlung, setLogoFlung] = useState(false);
 
   useEffect(() => {
     if (!authNotice) return;
-    completeIntro();
     setTab('signin');
     setSignupSuccess(false);
     setError('');
   }, [authNotice]);
-
-  function completeIntro() {
-    try {
-      window.sessionStorage.setItem(LOGIN_INTRO_KEY, 'true');
-    } catch {
-      // Intro replay is session-only polish; storage failures should not block login.
-    }
-    setIntroComplete(true);
-    setIntroVisible(false);
-  }
-
-  function revealIntroContent() {
-    try {
-      window.sessionStorage.setItem(LOGIN_INTRO_KEY, 'true');
-    } catch {
-      // Intro replay is session-only polish; storage failures should not block login.
-    }
-    setIntroComplete(true);
-  }
-
-  function replayIntro() {
-    setIntroRunId(id => id + 1);
-    setIntroComplete(false);
-    setIntroVisible(true);
-  }
 
   const handleEnterDemo = () => {
     resetToDefaultTheme();
@@ -126,6 +71,29 @@ export default function Welcome() {
     }
   };
 
+  function maskEmail(addr) {
+    if (!addr?.includes('@')) return addr || '';
+    const [local, domain] = addr.split('@');
+    if (local.length <= 3) return `${'*'.repeat(local.length)}@${domain}`;
+    const tail = local.slice(-3);
+    return `${'*'.repeat(Math.min(local.length - 3, 12))}${tail}@${domain}`;
+  }
+
+  const handleForgot = async (e) => {
+    e?.preventDefault?.();
+    if (loading) return;
+    setError('');
+    setLoading(true);
+    try {
+      await sendPasswordReset(email);
+      setForgotSent(true);
+    } catch (err) {
+      setError(err.message || 'Could not send reset email. Check your address and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSignUp = async (e) => {
     e?.preventDefault?.();
     if (loading) return;
@@ -146,82 +114,53 @@ export default function Welcome() {
     }
   };
 
-  const replayButton = introComplete && !introVisible && typeof document !== 'undefined'
-    ? createPortal(
-      <button
-        type="button"
-        aria-label="Replay intro"
-        title="Replay intro"
-        onClick={replayIntro}
-        style={{
-          position: 'fixed',
-          right: 0,
-          bottom: 0,
-          left: 'auto',
-          top: 'auto',
-          zIndex: 2147483647,
-          display: 'grid',
-          placeItems: 'center',
-          width: 32,
-          height: 32,
-          margin: 0,
-          padding: 0,
-          border: 0,
-          background: 'transparent',
-          color: 'hsl(var(--muted-foreground))',
-          transform: 'none',
-        }}
-      >
-        <RotateCcw className="h-4 w-4" />
-      </button>,
-      document.body
-    )
-    : null;
-
   return (
     <div
       className="min-h-screen bg-background text-foreground flex flex-col items-center justify-start sm:justify-center p-4 sm:p-6 pt-8 sm:pt-6 relative overflow-x-hidden overflow-y-auto"
       style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
     >
-      <ThemedWaveBackground variant="ribbon" className="z-0" />
-      <LoginBackgroundWheel />
-      {introVisible && <LoginIntroAnimation key={introRunId} onReveal={revealIntroContent} onComplete={completeIntro} />}
+      <LoginIridescentBackground lineColors={chartColors} />
+      <div className="absolute inset-0 z-0" style={{ opacity: 0.3, pointerEvents: 'none' }}>
+        <ThemedWaveBackground variant="ribbon" />
+      </div>
+      <div className="hidden md:block"><LoginBackgroundWheel hovered={logoHovered} /></div>
+      <LoginBrandReveal hovered={logoHovered} flung={logoFlung} />
 
-      <div
-        className={cn(
-          'relative w-full max-w-md z-10 transition-all duration-500 ease-out',
-          introComplete ? 'opacity-100 translate-y-0' : 'pointer-events-none opacity-0 translate-y-3'
-        )}
-        aria-hidden={!introComplete}
-      >
-        {/* Logo */}
-        <div className="flex items-center justify-center mb-6 sm:mb-8">
-          <UnifolioWheelLogo size={144} />
+      <div className="relative w-full max-w-md z-10">
+        <div className="flex justify-center mb-6">
+          <div className="relative inline-block rounded-full p-4">
+            <UnifolioWheelLogo size={120} onHoverChange={setLogoHovered} onFlingChange={setLogoFlung} />
+            <span className="absolute bottom-0 right-0 text-[9px] font-semibold text-primary/80 leading-none select-none">
+              α<sub style={{ fontSize: '0.72em' }}>1.1</sub>
+            </span>
+          </div>
         </div>
 
         {/* Main card */}
         <div className="bg-card/72 backdrop-blur-xl border border-border/70 rounded-2xl p-5 sm:p-7 shadow-2xl shadow-primary/10 space-y-5">
           {/* Tabs */}
-          <div className="flex rounded-lg bg-muted/40 p-0.5 gap-0.5">
-            <button
-              onClick={() => { setTab('signin'); setError(''); setSignupSuccess(false); clearAuthNotice?.(); }}
-              className={cn(
-                'flex-1 py-2 text-sm font-medium rounded-md transition-all duration-200',
-                tab === 'signin' ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setTab('signup'); setError(''); setSignupSuccess(false); clearAuthNotice?.(); }}
-              className={cn(
-                'flex-1 py-2 text-sm font-medium rounded-md transition-all duration-200',
-                tab === 'signup' ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Create Account
-            </button>
-          </div>
+          {tab !== 'forgot' && (
+            <div className="flex rounded-lg bg-muted/40 p-0.5 gap-0.5">
+              <button
+                onClick={() => { setTab('signin'); setError(''); setSignupSuccess(false); clearAuthNotice?.(); }}
+                className={cn(
+                  'flex-1 py-2 text-sm font-medium rounded-md transition-all duration-200',
+                  tab === 'signin' ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => { setTab('signup'); setError(''); setSignupSuccess(false); clearAuthNotice?.(); }}
+                className={cn(
+                  'flex-1 py-2 text-sm font-medium rounded-md transition-all duration-200',
+                  tab === 'signup' ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                Create Account
+              </button>
+            </div>
+          )}
 
           {authNotice && (
             <div
@@ -264,15 +203,24 @@ export default function Welcome() {
                 required
                 className="bg-background/55 border-border/70 text-foreground placeholder:text-muted-foreground focus:border-primary/50"
               />
-              <label className="flex items-center gap-2 text-xs text-muted-foreground select-none cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-border accent-primary"
-                />
-                Remember me next time
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground select-none cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-border accent-primary"
+                  />
+                  Remember me next time
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setTab('forgot'); setError(''); setForgotSent(false); clearAuthNotice?.(); }}
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
               {error && <p className="text-red-400 text-xs">{error}</p>}
               <Button
                 type="submit"
@@ -333,30 +281,86 @@ export default function Welcome() {
             </div>
           )}
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border/70" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-card/80 px-3 text-muted-foreground">or</span>
-            </div>
-          </div>
+          {/* Forgot password form */}
+          {tab === 'forgot' && !forgotSent && (
+            <form onSubmit={handleForgot} className="space-y-3">
+              <div>
+                <p className="text-foreground font-medium text-sm mb-1">Reset your password</p>
+                <p className="text-muted-foreground text-xs">Enter your email and we'll send you a reset link.</p>
+              </div>
+              <Input
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="bg-background/55 border-border/70 text-foreground placeholder:text-muted-foreground focus:border-primary/50"
+              />
+              {error && <p className="text-red-400 text-xs">{error}</p>}
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+              >
+                {loading ? 'Sending…' : 'Send reset link'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setTab('signin'); setError(''); clearAuthNotice?.(); }}
+                className="text-xs text-muted-foreground hover:text-foreground w-full text-center transition-colors"
+              >
+                ← Back to sign in
+              </button>
+            </form>
+          )}
 
-          <Button
-            onClick={handleEnterDemo}
-            variant="outline"
-            className="w-full h-11 border-border/80 text-foreground/85 hover:bg-primary/10 hover:text-foreground gap-2"
-          >
-            <Zap className="w-4 h-4" />
-            Continue without logging in
-          </Button>
+          {/* Forgot password sent confirmation */}
+          {tab === 'forgot' && forgotSent && (
+            <div className="text-center py-2 space-y-2">
+              <div className="text-2xl">📬</div>
+              <p className="text-foreground font-medium">Check your inbox</p>
+              <p className="text-muted-foreground text-sm">
+                We sent a password reset link to{' '}
+                <span className="text-foreground font-mono">{maskEmail(email)}</span>.
+                Click the link in the email to set a new password.
+              </p>
+              <button
+                onClick={() => { setTab('signin'); setForgotSent(false); setError(''); clearAuthNotice?.(); }}
+                className="text-primary text-sm hover:underline mt-2"
+              >
+                Back to sign in
+              </button>
+            </div>
+          )}
 
-          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-muted/35 border border-border/70">
-            <Shield className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Your portfolio data is <strong className="text-foreground">private and tied to your account</strong>. Explore freely with demo data, sign in to save your portfolio.
-            </p>
-          </div>
+          {tab !== 'forgot' && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border/70" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-card/80 px-3 text-muted-foreground">or</span>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleEnterDemo}
+                variant="outline"
+                className="w-full h-11 border-border/80 text-foreground/85 hover:bg-primary/10 hover:text-foreground gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                Continue without logging in
+              </Button>
+
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-muted/35 border border-border/70">
+                <Shield className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Your portfolio data is <strong className="text-foreground">private and tied to your account</strong>. Explore freely with demo data, sign in to save your portfolio.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Feature highlights */}
@@ -374,7 +378,6 @@ export default function Welcome() {
         </div>
       </div>
 
-      {replayButton}
     </div>
   );
 }

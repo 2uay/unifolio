@@ -1,0 +1,321 @@
+import React, { useState } from 'react';
+import { Check, X, Gem, Sparkles, Crown, Zap, ArrowRight, Lock } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useTheme } from '@/lib/ThemeContext';
+import { useCurrency } from '@/lib/CurrencyContext';
+
+const PRICES = {
+  USD: { monthly: 20,  annual: 18,  lifetime: 250 },
+  CAD: { monthly: 28,  annual: 25,  lifetime: 340 },
+};
+
+const PLAN_FEATURES = {
+  starter: [
+    { label: '1 brokerage account',         included: true  },
+    { label: 'Holdings & P&L tracking',     included: true  },
+    { label: 'Watchlist (up to 10 tickers)', included: true },
+    { label: 'Sample data mode',             included: true  },
+    { label: 'IBKR / CSV import',            included: false },
+    { label: 'Real-time price feed',         included: false },
+    { label: 'Tax report export',            included: false },
+    { label: 'Insights & AI analysis',       included: false },
+    { label: '48+ custom themes',            included: false },
+    { label: 'Priority support',             included: false },
+  ],
+  pro: [
+    { label: 'Unlimited brokerage accounts', included: true },
+    { label: 'Holdings & P&L tracking',      included: true },
+    { label: 'Unlimited watchlist',           included: true },
+    { label: 'IBKR / CSV import',             included: true },
+    { label: 'Real-time price feed',          included: true },
+    { label: 'Tax report export',             included: true },
+    { label: 'Insights & AI analysis',        included: true },
+    { label: '48+ custom themes',             included: true },
+    { label: 'Priority support',              included: true },
+    { label: 'Early feature access',          included: true },
+  ],
+  lifetime: [
+    { label: 'Everything in Pro',             included: true },
+    { label: 'All future features, forever',  included: true },
+    { label: 'No recurring charges',          included: true },
+    { label: 'Dedicated support channel',     included: true },
+    { label: 'Private beta access',           included: true },
+    { label: 'Founding member badge',         included: true },
+    { label: 'Changelog early access',        included: true },
+    { label: 'Feature request priority',      included: true },
+    { label: 'Full data export tools',        included: true },
+    { label: 'API access (coming soon)',       included: true },
+  ],
+};
+
+const WHY_ITEMS = [
+  {
+    icon: Zap,
+    title: 'Real-time prices',
+    body: 'Live quotes via Finnhub across all your holdings and watchlist — no stale data.',
+  },
+  {
+    icon: ArrowRight,
+    title: 'One-click IBKR import',
+    body: 'Upload your Flex Query or activity CSV and see your full portfolio in seconds.',
+  },
+  {
+    icon: Lock,
+    title: 'Private by default',
+    body: 'Privacy mode, local-first data, and zero analytics on your trades.',
+  },
+  {
+    icon: Sparkles,
+    title: 'Constantly improving',
+    body: 'New features ship every week. Pro and Lifetime users get them first.',
+  },
+];
+
+function PlanCard({ title, badge, badgeColor, price, priceSub, description, features, cta, ctaStyle, icon: Icon, highlighted }) {
+  return (
+    <div
+      className={cn(
+        'relative flex flex-col rounded-2xl border transition-all duration-200',
+        highlighted
+          ? 'border-primary/60 bg-primary/5 shadow-[0_0_40px_hsl(var(--primary)/0.18)] scale-[1.02]'
+          : 'border-border/50 bg-card hover:border-border',
+      )}
+    >
+      {badge && (
+        <div className={cn(
+          'absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[11px] font-semibold tracking-wide border z-10',
+          badgeColor,
+        )}>
+          {badge}
+        </div>
+      )}
+
+      <div className="p-6 pb-4 flex flex-col gap-4">
+        {/* Header */}
+        <div className="flex items-center gap-2">
+          <Icon className={cn('w-4 h-4', highlighted ? 'text-primary' : 'text-muted-foreground')} />
+          <span className="text-sm font-semibold text-foreground tracking-wide uppercase">{title}</span>
+        </div>
+
+        {/* Price */}
+        <div>
+          <div className="flex items-end gap-1.5">
+            <span className="text-4xl font-bold tracking-tight text-foreground">{price}</span>
+            {priceSub && <span className="text-sm text-muted-foreground mb-1.5">{priceSub}</span>}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">{description}</p>
+        </div>
+
+        {/* CTA */}
+        <button
+          className={cn(
+            'w-full py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95',
+            ctaStyle,
+          )}
+        >
+          {cta}
+        </button>
+      </div>
+
+      {/* Divider */}
+      <div className="mx-6 border-t border-border/40" />
+
+      {/* Features */}
+      <ul className="p-6 pt-4 flex flex-col gap-2.5 flex-1">
+        {features.map((f, i) => (
+          <li key={i} className="flex items-start gap-2.5 text-sm">
+            {f.included ? (
+              <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+            ) : (
+              <X className="w-4 h-4 text-muted-foreground/40 flex-shrink-0 mt-0.5" />
+            )}
+            <span className={f.included ? 'text-foreground' : 'text-muted-foreground/50'}>{f.label}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default function Plans({ logoSlot = null }) {
+  const [billing, setBilling] = useState('annual');
+  const { chartColors } = useTheme();
+  const { displayCurrency } = useCurrency();
+
+  const currency = PRICES[displayCurrency] ? displayCurrency : 'USD';
+  const { monthly: MONTHLY_PRICE, annual: ANNUAL_PRICE, lifetime: LIFETIME_PRICE } = PRICES[currency];
+  const currSymbol = currency === 'CAD' ? 'CA$' : '$';
+  const annualSavingsPct = Math.round((1 - ANNUAL_PRICE / MONTHLY_PRICE) * 100);
+
+  const plans = [
+    {
+      id: 'starter',
+      title: 'Starter',
+      badge: null,
+      badgeColor: '',
+      icon: Gem,
+      highlighted: false,
+      price: 'Free',
+      priceSub: null,
+      description: 'Get started at unifolio.pro — no card required.',
+      features: PLAN_FEATURES.starter,
+      cta: 'Use for Free',
+      ctaStyle: 'border border-border text-foreground hover:bg-secondary',
+    },
+    {
+      id: 'pro',
+      title: 'Pro',
+      badge: 'Most Popular',
+      badgeColor: 'bg-primary/10 border-primary/30 text-primary',
+      icon: Sparkles,
+      highlighted: true,
+      price: billing === 'annual'
+        ? `${currSymbol}${ANNUAL_PRICE}`
+        : `${currSymbol}${MONTHLY_PRICE}`,
+      priceSub: billing === 'annual' ? '/mo, billed annually' : '/month',
+      description: billing === 'annual'
+        ? `${currSymbol}${ANNUAL_PRICE * 12}/yr — save ${annualSavingsPct}% vs monthly.`
+        : `Switch to annual to save ${annualSavingsPct}%.`,
+      features: PLAN_FEATURES.pro,
+      cta: 'Start 7-Day Free Trial',
+      ctaStyle: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_24px_hsl(var(--primary)/0.30)]',
+    },
+    {
+      id: 'lifetime',
+      title: 'Lifetime',
+      badge: 'Best Value',
+      badgeColor: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+      icon: Crown,
+      highlighted: false,
+      price: `${currSymbol}${LIFETIME_PRICE}`,
+      priceSub: 'one-time',
+      description: 'Pay once. Own Unifolio Pro forever.',
+      features: PLAN_FEATURES.lifetime,
+      cta: 'Buy Lifetime Access',
+      ctaStyle: 'bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20',
+    },
+  ];
+
+  return (
+    <div className="min-h-screen px-4 py-10 md:py-16 max-w-5xl mx-auto">
+      {/* Hero */}
+      <div className="text-center mb-10">
+        {logoSlot && <div className="flex justify-center mb-6">{logoSlot}</div>}
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold mb-4 tracking-wide">
+          <Gem className="w-3 h-3" />
+          unifolio.pro
+        </div>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-3">
+          Plans & Pricing
+        </h1>
+        <p className="text-muted-foreground text-lg max-w-md mx-auto">
+          Everything you need to manage, track, and understand your investments in one place.
+        </p>
+      </div>
+
+      {/* Billing toggle */}
+      <div className="flex flex-col items-center gap-3 mb-10">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setBilling('monthly')}
+          className={cn(
+            'px-4 py-1.5 rounded-lg text-sm font-medium transition-all',
+            billing === 'monthly'
+              ? 'bg-secondary text-foreground'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Monthly
+        </button>
+        <button
+          onClick={() => setBilling('annual')}
+          className={cn(
+            'px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2',
+            billing === 'annual'
+              ? 'bg-secondary text-foreground'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Annual
+          <span className="px-1.5 py-0.5 rounded-md bg-primary/15 text-primary text-[10px] font-bold">
+            -{annualSavingsPct}%
+          </span>
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Prices shown in {currency} · Change currency in{' '}
+        <a href="/settings" className="text-primary hover:underline">Settings</a>
+      </p>
+      </div>
+
+      {/* Plan cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start mb-16 pt-4">
+        {plans.map(plan => (
+          <PlanCard key={plan.id} {...plan} />
+        ))}
+      </div>
+
+      {/* Why Unifolio Pro */}
+      <div className="mb-16">
+        <h2 className="text-xl font-bold text-foreground text-center mb-8">Why Unifolio Pro?</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {WHY_ITEMS.map((item, i) => (
+            <div
+              key={i}
+              className="flex gap-4 p-5 rounded-xl border border-border/40 bg-card hover:border-border transition-colors"
+            >
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <item.icon className="w-4 h-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground mb-0.5">{item.title}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{item.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* FAQ */}
+      <div className="border-t border-border/30 pt-12">
+        <h2 className="text-xl font-bold text-foreground text-center mb-8">Common Questions</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
+          {[
+            {
+              q: 'Can I cancel anytime?',
+              a: 'Yes. Monthly plans cancel immediately. Annual plans are refundable within 14 days of renewal.',
+            },
+            {
+              q: 'Is my financial data safe?',
+              a: 'Your holdings stay in your own Supabase instance. We never store raw broker files or sell data.',
+            },
+            {
+              q: "What's the difference between unifolio.ca and unifolio.pro?",
+              a: 'unifolio.ca is free with limited accounts. unifolio.pro requires a Pro or Lifetime plan and unlocks everything.',
+            },
+            {
+              q: 'Does Lifetime include future features?',
+              a: 'Yes — every feature that ships to Pro is included in Lifetime, forever, at no extra cost.',
+            },
+          ].map((item, i) => (
+            <div key={i}>
+              <p className="text-sm font-semibold text-foreground mb-1">{item.q}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{item.a}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom CTA */}
+      <div className="mt-16 text-center">
+        <p className="text-muted-foreground text-sm mb-4">
+          Questions? Reach out at{' '}
+          <span className="text-primary font-medium">dev@unifolio.ca</span>
+        </p>
+        <p className="text-xs text-muted-foreground/50">
+          Prices in USD. Taxes may apply. Stripe-secured checkout.
+        </p>
+      </div>
+    </div>
+  );
+}

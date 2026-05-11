@@ -1,6 +1,21 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Component } from 'react';
+
+class RowErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <tr><td colSpan={100} className="p-3 text-xs text-muted-foreground bg-secondary/10 border-b border-border">
+          Unable to load detail for this position.
+        </td></tr>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { createPortal } from 'react-dom';
-import { Filter, ChevronDown, ChevronUp, ArrowUpDown, Info, Columns3, X, Download, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronUp, ArrowUpDown, Info, Columns3, X, Download, ExternalLink } from 'lucide-react';
 import { exportFilteredHoldingsCSV } from '@/lib/exportEngine';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ThemedSwitch from '@/components/ui/switch-themed';
@@ -14,7 +29,7 @@ import { useTheme } from '@/lib/ThemeContext';
 import HoldingDetailRow from '@/components/holdings/HoldingDetailRow';
 import DateRangeFilter from '@/components/holdings/DateRangeFilter';
 import { filterRealizedByDateRange } from '@/lib/realizedPositions';
-import { getSavedColumnOrder, saveColumnOrder, loadColumnOrderFromSupabase, COLUMN_DEFINITIONS } from '@/lib/columnConfig';
+import { getSavedColumnOrder, saveColumnOrder, saveColumnOrderToSupabase, loadColumnOrderFromSupabase, COLUMN_DEFINITIONS } from '@/lib/columnConfig';
 import { supabase } from '@/lib/supabaseClient';
 import { stackHoldings, stackCDRGroups } from '@/lib/stackingEngine';
 import PortfolioBreakdown from '@/components/holdings/PortfolioBreakdown';
@@ -32,6 +47,7 @@ import TickerWithStar from '@/components/shared/TickerWithStar';
 import { cn } from '@/lib/utils';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import DraggableTableHeader from '@/components/shared/DraggableTableHeader';
 
 // Filter current holdings based on a date snapshot.
 // If a date is provided, we show only holdings whose purchase_history has at least
@@ -114,6 +130,7 @@ export default function Holdings() {
   const [institutionFilter, setInstitutionFilter] = useState('all');
   const [assetClassFilter, setAssetClassFilter] = useState('all');
   const [currencyFilter, setCurrencyFilter] = useState('all');
+  const [previewFilters, setPreviewFilters] = useState({});
   const [sortField, setSortField] = useState('marketValue');
   const [sortDir, setSortDir] = useState('desc');
   const [expandedId, setExpandedId] = useState(null);
@@ -248,6 +265,8 @@ export default function Holdings() {
 
   const handleColumnsChange = (newColumns) => {
     setVisibleColumns(newColumns);
+    saveColumnOrder(newColumns);
+    saveColumnOrderToSupabase(newColumns);
   };
 
   const handleStackToggle = (val) => {
@@ -263,6 +282,19 @@ export default function Holdings() {
     setStackCDRs(val);
     localStorage.setItem('unifolio_stack_cdrs', String(val));
   };
+
+  const effectiveAccountFilter = previewFilters.account ?? accountFilter;
+  const effectiveInstitutionFilter = previewFilters.institution ?? institutionFilter;
+  const effectiveAssetClassFilter = previewFilters.assetClass ?? assetClassFilter;
+  const effectiveCurrencyFilter = previewFilters.currency ?? currencyFilter;
+
+  const previewFilter = (key, value) => setPreviewFilters(prev => ({ ...prev, [key]: value }));
+  const clearPreviewFilter = (key) => setPreviewFilters(prev => {
+    if (!(key in prev)) return prev;
+    const next = { ...prev };
+    delete next[key];
+    return next;
+  });
 
   const handleDragStart = (e) => {
     e.preventDefault();
@@ -365,13 +397,13 @@ export default function Holdings() {
     return filterRealizedByDateRange(realizedPositions, dateFilter.start, dateFilter.end)
       .filter(r => {
         const acc = getAccount(r.account_id);
-        if (accountFilter !== 'all' && (acc?.account_type ?? acc?.type) !== accountFilter) return false;
-        if (institutionFilter !== 'all' && (acc?.institution_id ?? acc?.institutionId) !== institutionFilter) return false;
-        if (assetClassFilter !== 'all' && (r.asset_class ?? r.assetClass) !== assetClassFilter) return false;
-        if (currencyFilter !== 'all' && r.currency !== currencyFilter) return false;
+        if (effectiveAccountFilter !== 'all' && (acc?.account_type ?? acc?.type) !== effectiveAccountFilter) return false;
+        if (effectiveInstitutionFilter !== 'all' && (acc?.institution_id ?? acc?.institutionId) !== effectiveInstitutionFilter) return false;
+        if (effectiveAssetClassFilter !== 'all' && (r.asset_class ?? r.assetClass) !== effectiveAssetClassFilter) return false;
+        if (effectiveCurrencyFilter !== 'all' && r.currency !== effectiveCurrencyFilter) return false;
         return true;
       });
-  }, [showRealized, dateFilter, realizedPositions, accountFilter, institutionFilter, assetClassFilter, currencyFilter, getAccount]);
+  }, [showRealized, dateFilter, realizedPositions, effectiveAccountFilter, effectiveInstitutionFilter, effectiveAssetClassFilter, effectiveCurrencyFilter, getAccount]);
 
   // Calculate total absolute realized P&L across visible holdings and realized positions
   const totalAbsoluteRealizedPnl = useMemo(() => {
@@ -407,10 +439,10 @@ export default function Holdings() {
       const accType = acc.account_type ?? acc.type;
       const instId = acc.institution_id ?? acc.institutionId;
       const ac = h.asset_class ?? h.assetClass;
-      if (accountFilter !== 'all' && accType !== accountFilter) return false;
-      if (institutionFilter !== 'all' && instId !== institutionFilter) return false;
-      if (assetClassFilter !== 'all' && ac !== assetClassFilter) return false;
-      if (currencyFilter !== 'all' && h.currency !== currencyFilter) return false;
+      if (effectiveAccountFilter !== 'all' && accType !== effectiveAccountFilter) return false;
+      if (effectiveInstitutionFilter !== 'all' && instId !== effectiveInstitutionFilter) return false;
+      if (effectiveAssetClassFilter !== 'all' && ac !== effectiveAssetClassFilter) return false;
+      if (effectiveCurrencyFilter !== 'all' && h.currency !== effectiveCurrencyFilter) return false;
       return true;
     }).sort((a, b) => {
       let aVal, bVal;
@@ -451,7 +483,7 @@ export default function Holdings() {
       if (typeof aVal === 'string') return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       return sortDir === 'asc' ? (aVal ?? 0) - (bVal ?? 0) : (bVal ?? 0) - (aVal ?? 0);
     });
-  }, [enrichedForHeatmap, accountFilter, institutionFilter, assetClassFilter, currencyFilter, sortField, sortDir]);
+  }, [enrichedForHeatmap, effectiveAccountFilter, effectiveInstitutionFilter, effectiveAssetClassFilter, effectiveCurrencyFilter, sortField, sortDir]);
 
   // Stack same-ticker holdings across accounts when toggle is on
   const displayHoldings = useMemo(() => {
@@ -846,22 +878,6 @@ export default function Holdings() {
     }
   };
 
-  const SortHeader = ({ field, children, className }) => (
-    <th
-      className={cn(compressTable ? 'px-1.5 py-1' : 'px-3 py-2.5', 'text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground select-none whitespace-nowrap', className)}
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center gap-1">
-        {children}
-        {sortField === field ? (
-          sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ArrowUpDown className="w-3 h-3 opacity-30" />
-        )}
-      </div>
-    </th>
-  );
-
   const isHistorical = dateFilter?.preset !== 'current';
 
   // Calculate max holding % for responsive heatmap scaling
@@ -890,40 +906,46 @@ export default function Holdings() {
     <div className="space-y-4">
       {/* Filters Row */}
        <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
-         <Filter className="w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
-
          {/* Date filter */}
          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
 
-        <Select value={accountFilter} onValueChange={setAccountFilter}>
+        <Select value={accountFilter} onValueChange={(value) => { setAccountFilter(value); clearPreviewFilter('account'); }}>
           <SelectTrigger className="w-24 sm:w-32 h-7 sm:h-8 text-[10px] sm:text-xs bg-secondary border-border"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Accounts</SelectItem>
-            {accountTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+          <SelectContent onPointerLeave={() => clearPreviewFilter('account')}>
+            <SelectItem value="all" onPointerEnter={() => previewFilter('account', 'all')} onFocus={() => previewFilter('account', 'all')}>All Accounts</SelectItem>
+            {accountTypes.map(t => (
+              <SelectItem key={t} value={t} onPointerEnter={() => previewFilter('account', t)} onFocus={() => previewFilter('account', t)}>
+                {t}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
-        <Select value={institutionFilter} onValueChange={setInstitutionFilter}>
+        <Select value={institutionFilter} onValueChange={(value) => { setInstitutionFilter(value); clearPreviewFilter('institution'); }}>
           <SelectTrigger className="w-28 sm:w-40 h-7 sm:h-8 text-[10px] sm:text-xs bg-secondary border-border"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Institutions</SelectItem>
-            {institutions.filter(i => (i.connection_status ?? i.status) === 'connected').map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+          <SelectContent onPointerLeave={() => clearPreviewFilter('institution')}>
+            <SelectItem value="all" onPointerEnter={() => previewFilter('institution', 'all')} onFocus={() => previewFilter('institution', 'all')}>All Institutions</SelectItem>
+            {institutions.filter(i => (i.connection_status ?? i.status) === 'connected').map(i => (
+              <SelectItem key={i.id} value={i.id} onPointerEnter={() => previewFilter('institution', i.id)} onFocus={() => previewFilter('institution', i.id)}>
+                {i.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
-        <Select value={assetClassFilter} onValueChange={setAssetClassFilter}>
+        <Select value={assetClassFilter} onValueChange={(value) => { setAssetClassFilter(value); clearPreviewFilter('assetClass'); }}>
           <SelectTrigger className="w-24 sm:w-32 h-7 sm:h-8 text-[10px] sm:text-xs bg-secondary border-border"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Classes</SelectItem>
-            <SelectItem value="Equity">Equity</SelectItem>
-            <SelectItem value="ETF">ETF</SelectItem>
-            <SelectItem value="Stock">Stock</SelectItem>
+          <SelectContent onPointerLeave={() => clearPreviewFilter('assetClass')}>
+            <SelectItem value="all" onPointerEnter={() => previewFilter('assetClass', 'all')} onFocus={() => previewFilter('assetClass', 'all')}>All Classes</SelectItem>
+            <SelectItem value="Equity" onPointerEnter={() => previewFilter('assetClass', 'Equity')} onFocus={() => previewFilter('assetClass', 'Equity')}>Equity</SelectItem>
+            <SelectItem value="ETF" onPointerEnter={() => previewFilter('assetClass', 'ETF')} onFocus={() => previewFilter('assetClass', 'ETF')}>ETF</SelectItem>
+            <SelectItem value="Stock" onPointerEnter={() => previewFilter('assetClass', 'Stock')} onFocus={() => previewFilter('assetClass', 'Stock')}>Stock</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+        <Select value={currencyFilter} onValueChange={(value) => { setCurrencyFilter(value); clearPreviewFilter('currency'); }}>
           <SelectTrigger className="w-20 sm:w-28 h-7 sm:h-8 text-[10px] sm:text-xs bg-secondary border-border"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Currencies</SelectItem>
-            <SelectItem value="USD">USD</SelectItem>
-            <SelectItem value="CAD">CAD</SelectItem>
+          <SelectContent onPointerLeave={() => clearPreviewFilter('currency')}>
+            <SelectItem value="all" onPointerEnter={() => previewFilter('currency', 'all')} onFocus={() => previewFilter('currency', 'all')}>All Currencies</SelectItem>
+            <SelectItem value="USD" onPointerEnter={() => previewFilter('currency', 'USD')} onFocus={() => previewFilter('currency', 'USD')}>USD</SelectItem>
+            <SelectItem value="CAD" onPointerEnter={() => previewFilter('currency', 'CAD')} onFocus={() => previewFilter('currency', 'CAD')}>CAD</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -1012,24 +1034,41 @@ export default function Holdings() {
         <div className="bg-card rounded-lg border border-border/30 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-[11px] sm:text-sm">
-              <thead>
-                <tr className="border-b border-border bg-secondary/30">
-                  {visibleColumns.map(colId => {
-                    const col = COLUMN_DEFINITIONS.find(c => c.id === colId);
-                    if (!col) return null;
-                    const isSortable = colId !== 'trend';
-                    const headerClass = ['price', 'quantity', 'pctPortfolio', 'pctAccount', 'avgPrice', 'realizedGain', 'realizedGainContrib', 'unrealizedGainPct', 'unrealizedGain', 'dailyPnl', 'dailyPnlPct', 'marketValue', 'nativeMarketValue', 'costBasis'].includes(colId) ? 'text-right' : 'text-left';
-                    const colLabel = compressTable ? (col.shortLabel ?? col.label) : col.label;
-                    return isSortable ? (
-                      <SortHeader key={colId} field={colId} className={headerClass}>{colLabel}</SortHeader>
-                    ) : (
-                      <th key={colId} className={`${compressTable ? 'px-1.5 py-1' : 'px-2 sm:px-3 py-1.5 sm:py-2.5'} text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap ${headerClass}`}>
-                        {colLabel}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
+              <DraggableTableHeader
+                columns={COLUMN_DEFINITIONS.map(col => ({
+                  ...col,
+                  headerClassName: `${compressTable ? 'px-1.5 py-1' : 'px-2 sm:px-3 py-1.5 sm:py-2.5'} text-[9px] sm:text-[11px] font-semibold uppercase tracking-wider text-muted-foreground ${['price', 'quantity', 'pctPortfolio', 'pctAccount', 'avgPrice', 'realizedGain', 'realizedGainContrib', 'unrealizedGainPct', 'unrealizedGain', 'dailyPnl', 'dailyPnlPct', 'marketValue', 'nativeMarketValue', 'costBasis'].includes(col.id) ? 'text-right' : 'text-left'}`
+                }))}
+                orderedColumnIds={visibleColumns}
+                onOrderChange={handleColumnsChange}
+                rowClassName="border-b border-border bg-secondary/30"
+                renderCell={(column) => {
+                  const colId = column.id;
+                  const isSortable = colId !== 'trend';
+                  const headerClass = ['price', 'quantity', 'pctPortfolio', 'pctAccount', 'avgPrice', 'realizedGain', 'realizedGainContrib', 'unrealizedGainPct', 'unrealizedGain', 'dailyPnl', 'dailyPnlPct', 'marketValue', 'nativeMarketValue', 'costBasis'].includes(colId) ? 'justify-end' : 'justify-start';
+                  const colLabel = compressTable ? (column.shortLabel ?? column.label) : column.label;
+                  return (
+                    <div className={cn('flex items-center gap-1.5', headerClass)}>
+                      {isSortable ? (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => handleSort(colId)}
+                        >
+                          <span>{colLabel}</span>
+                          {sortField === colId ? (
+                            sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-30" />
+                          )}
+                        </button>
+                      ) : (
+                        <span>{colLabel}</span>
+                      )}
+                    </div>
+                  );
+                }}
+              />
               <tbody>
                 {/* Active holdings + nested realized positions */}
                 {displayHoldings.flatMap(h => {
@@ -1132,11 +1171,11 @@ export default function Holdings() {
                         </tr>
                       );
                       if (isChildExpanded) {
-                        rows.push(<HoldingDetailRow key={`child-detail-${child.id}`} holding={child} />);
+                        rows.push(<RowErrorBoundary key={`child-detail-${child.id}`}><HoldingDetailRow holding={child} allHoldings={liveUpdatedBaseHoldings} portfolioTotal={convertedPortfolioTotal} /></RowErrorBoundary>);
                       }
                     });
                   } else if (isExpanded) {
-                    rows.push(<HoldingDetailRow key={`detail-${h.id}`} holding={h} />);
+                    rows.push(<RowErrorBoundary key={`detail-${h.id}`}><HoldingDetailRow holding={h} allHoldings={liveUpdatedBaseHoldings} portfolioTotal={convertedPortfolioTotal} /></RowErrorBoundary>);
                   }
 
                   // Add nested realized rows for this active holding
@@ -1501,6 +1540,10 @@ export default function Holdings() {
           <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
             {holdingsTableSection}
           </div>
+          {/* Edge drag strips — left, right, bottom */}
+          <div className="absolute left-0 top-10 bottom-5 w-2 cursor-grab z-10" style={{ touchAction: 'none' }} onPointerDown={handleDragStart} />
+          <div className="absolute right-0 top-10 bottom-5 w-2 cursor-grab z-10" style={{ touchAction: 'none' }} onPointerDown={handleDragStart} />
+          <div className="absolute bottom-0 left-0 right-5 h-2 cursor-grab z-10" style={{ touchAction: 'none' }} onPointerDown={handleDragStart} />
           <div
             className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize"
             style={{ touchAction: 'none' }}

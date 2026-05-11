@@ -94,6 +94,8 @@ export const AuthProvider = ({ children }) => {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [authNotice, setAuthNotice] = useState(null);
+  const [plan, setPlan] = useState('free');
+  const [isPlanLoaded, setIsPlanLoaded] = useState(false);
 
   useEffect(() => {
     const callbackParams = getAuthCallbackParams();
@@ -107,9 +109,23 @@ export const AuthProvider = ({ children }) => {
         setUser(session.user);
         setIsAuthenticated(true);
         setIsDemoMode(false);
+        // app_metadata.plan is authoritative (set by server, not editable by user)
+        const metaPlan = session.user.app_metadata?.plan;
+        if (metaPlan) {
+          setPlan(metaPlan);
+          setIsPlanLoaded(true);
+        } else {
+          // Fall back to user_profiles table (legacy / future migration path)
+          supabase.from('user_profiles').select('plan').eq('user_id', session.user.id).single()
+            .then(({ data }) => { if (data?.plan) setPlan(data.plan); })
+            .catch(() => {})
+            .finally(() => setIsPlanLoaded(true));
+        }
       } else {
         setUser(null);
         setIsAuthenticated(false);
+        setPlan('free');
+        setIsPlanLoaded(true);
       }
       if (event === 'INITIAL_SESSION') {
         setIsLoadingAuth(false);
@@ -256,6 +272,21 @@ export const AuthProvider = ({ children }) => {
     // onAuthStateChange fires USER_UPDATED and refreshes user state automatically
   };
 
+  const updateEmail = async (newEmail) => {
+    const { error } = await supabase.auth.updateUser({ email: newEmail });
+    if (error) throw error;
+    setAuthNotice({
+      type: 'success',
+      message: 'Confirmation emails were sent to your old and new addresses. Confirm the new email to finish the change.',
+    });
+    if (user?.id) {
+      await supabase.from('user_profiles').upsert({
+        user_id: user.id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    }
+  };
+
   const logout = async () => {
     setAuthError(null);
     setAuthNotice(null);
@@ -269,6 +300,8 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false);
       setIsDemoMode(false);
       setIsLoadingAuth(false);
+      setPlan('free');
+      setIsPlanLoaded(false);
     }
   };
 
@@ -284,7 +317,16 @@ export const AuthProvider = ({ children }) => {
     setAuthNotice(null);
   };
 
+  const sendPasswordReset = async (email) => {
+    const redirectTo = typeof window !== 'undefined'
+      ? `${window.location.origin}/reset-password`
+      : 'https://unifolio.ca/reset-password';
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) throw error;
+  };
+
   const fullName = user?.user_metadata?.full_name || user?.full_name || user?.email || '';
+  const isPro = plan === 'pro' || plan === 'lifetime';
 
   return (
     <AuthContext.Provider value={{
@@ -295,13 +337,18 @@ export const AuthProvider = ({ children }) => {
       isDemoMode,
       authError,
       authNotice,
+      plan,
+      isPro,
+      isPlanLoaded,
       signUp,
       signIn,
       logout,
       enterDemoMode,
       exitDemoMode,
       updateFullName,
+      updateEmail,
       clearAuthNotice,
+      sendPasswordReset,
     }}>
       {children}
     </AuthContext.Provider>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link2, CheckCircle, AlertCircle, Circle, RefreshCw, Trash2, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link2, CheckCircle, AlertCircle, Circle, RefreshCw, Trash2, Loader2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
@@ -9,6 +9,8 @@ import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { supabase } from '@/lib/supabaseClient';
 import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
+import PlaidConnectButton from '@/components/plaid/PlaidConnectButton';
+import { useAuth } from '@/lib/AuthContext';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -22,8 +24,61 @@ const statusConfig = {
 
 export default function Institutions() {
   const { institutions, accounts, holdings, calcAccountValue, isEmptyPortfolio, refreshPortfolioData } = usePortfolioData();
+  const { user } = useAuth();
   const [pendingDelete, setPendingDelete] = useState(null); // inst object
   const [deleting, setDeleting] = useState(false);
+
+  // Plaid connections state
+  const [plaidItems, setPlaidItems] = useState([]);
+  const [plaidLoading, setPlaidLoading] = useState(false);
+  const [syncingItemId, setSyncingItemId] = useState(null);
+  const [disconnectingItemId, setDisconnectingItemId] = useState(null);
+
+  const loadPlaidItems = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('plaid_items')
+      .select('id, item_id, institution_name, institution_logo, accounts, last_synced_at, status, error_code')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    setPlaidItems(data || []);
+  }, [user?.id]);
+
+  useEffect(() => { loadPlaidItems(); }, [loadPlaidItems]);
+
+  const handlePlaidSync = async (itemId) => {
+    setSyncingItemId(itemId);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      await fetch('/api/plaid/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ itemId }),
+      });
+      await loadPlaidItems();
+      await refreshPortfolioData?.();
+    } finally {
+      setSyncingItemId(null);
+    }
+  };
+
+  const handlePlaidDisconnect = async (item) => {
+    if (!window.confirm(`Disconnect ${item.institution_name || 'this brokerage'}? Holdings data will remain.`)) return;
+    setDisconnectingItemId(item.item_id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      await fetch('/api/plaid/disconnect', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ itemId: item.item_id }),
+      });
+      await loadPlaidItems();
+    } finally {
+      setDisconnectingItemId(null);
+    }
+  };
 
   const connected  = institutions.filter(i => (i.connection_status ?? i.status) === 'connected');
   const available  = institutions.filter(i => (i.connection_status ?? i.status) !== 'connected');
@@ -82,6 +137,76 @@ export default function Institutions() {
   return (
     <div className="space-y-6">
       <PageHeader title="Connected Institutions" description="Manage your brokerage and bank connections" />
+
+      {/* Plaid API connections */}
+      {user && (
+        <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold flex items-center gap-2">
+                <Zap className="w-4 h-4 text-primary" />
+                Live Brokerage Sync
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Connect your broker directly via Plaid for automatic holdings sync</p>
+            </div>
+            <PlaidConnectButton onSuccess={async () => { await loadPlaidItems(); await refreshPortfolioData?.(); }} />
+          </div>
+
+          {plaidItems.length > 0 && (
+            <div className="space-y-2">
+              {plaidItems.map(item => {
+                const isError = item.status === 'error';
+                const isSyncing = syncingItemId === item.item_id;
+                const isDisconnecting = disconnectingItemId === item.item_id;
+                return (
+                  <div key={item.id} className={cn(
+                    'flex items-center justify-between rounded-lg border px-4 py-3',
+                    isError ? 'border-red-400/30 bg-red-500/5' : 'border-border/50 bg-secondary/30'
+                  )}>
+                    <div className="flex items-center gap-3">
+                      {item.institution_logo
+                        ? <img src={`data:image/png;base64,${item.institution_logo}`} alt="" className="w-8 h-8 rounded object-contain bg-white" />
+                        : <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center"><Link2 className="w-4 h-4 text-primary" /></div>
+                      }
+                      <div>
+                        <p className="text-sm font-medium">{item.institution_name || 'Connected Brokerage'}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {isError
+                            ? <span className="text-red-400">Error: {item.error_code || 'Sync failed'}</span>
+                            : item.last_synced_at
+                              ? `Synced ${new Date(item.last_synced_at).toLocaleString()}`
+                              : 'Never synced'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline" size="sm"
+                        className="text-xs gap-1"
+                        onClick={() => handlePlaidSync(item.item_id)}
+                        disabled={isSyncing || isDisconnecting}
+                      >
+                        {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                        {isSyncing ? 'Syncing…' : 'Sync'}
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="text-xs gap-1 text-red-400 hover:text-red-300 hover:border-red-400/40"
+                        onClick={() => handlePlaidDisconnect(item)}
+                        disabled={isSyncing || isDisconnecting}
+                      >
+                        {isDisconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                        {isDisconnecting ? 'Removing…' : 'Disconnect'}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Connected */}
       <div>

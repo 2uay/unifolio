@@ -4,14 +4,6 @@ import { useAuth } from '@/lib/AuthContext';
 
 const ProfilePictureContext = createContext();
 
-function withTimeout(promise, ms, label) {
-  let timeoutId;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
-}
-
 // Resize non-GIF images to max 200×200 JPEG ~85% quality (~30–50 KB)
 function compressImageDataUrl(dataUrl) {
   return new Promise((resolve) => {
@@ -92,30 +84,22 @@ export function ProfilePictureProvider({ children }) {
     const ext = animated ? 'gif' : 'jpg';
     const storagePath = `${user.id}/avatar.${ext}`;
 
-    const { error: uploadError } = await withTimeout(
-      supabase.storage.from('avatars').upload(storagePath, blob, {
-        upsert: true,
-        contentType: blob.type,
-      }),
-      20000,
-      'Profile picture upload'
-    );
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(storagePath, blob, {
+      upsert: true,
+      contentType: blob.type,
+    });
     if (uploadError) throw new Error(uploadError.message || 'Upload failed');
 
     const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(storagePath);
     const versionedUrl = `${publicUrl}?v=${Date.now()}`;
 
-    const { error: dbError } = await withTimeout(
-      supabase.from('user_profiles').upsert({
-        user_id: user.id,
-        profile_picture_url: versionedUrl,
-        profile_picture_type: animated ? 'animated_gif' : 'static',
-        profile_picture_file_name: storagePath,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' }),
-      15000,
-      'Profile picture sync'
-    );
+    const { error: dbError } = await supabase.from('user_profiles').upsert({
+      user_id: user.id,
+      profile_picture_url: versionedUrl,
+      profile_picture_type: animated ? 'animated_gif' : 'static',
+      profile_picture_file_name: storagePath,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
     if (dbError) throw new Error(dbError.message || 'Database sync failed');
 
     setProfilePicture(versionedUrl);
@@ -131,17 +115,13 @@ export function ProfilePictureProvider({ children }) {
       `${user.id}/avatar.gif`,
     ]);
 
-    const { error: dbError } = await withTimeout(
-      supabase.from('user_profiles').upsert({
-        user_id: user.id,
-        profile_picture_url: null,
-        profile_picture_type: 'static',
-        profile_picture_file_name: null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' }),
-      15000,
-      'Profile picture sync'
-    );
+    const { error: dbError } = await supabase.from('user_profiles').upsert({
+      user_id: user.id,
+      profile_picture_url: null,
+      profile_picture_type: 'static',
+      profile_picture_file_name: null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' });
     if (dbError) throw new Error(dbError.message || 'Database sync failed');
 
     setProfilePicture(null);

@@ -2,13 +2,32 @@ import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/ThemeContext';
 
-// ── Ribbon config — depth drives per-ribbon parallax intensity ─────────────
-const RIBBONS = [
-  { id: 'a', left: '50%', top: '44%', w: '240vw', h: '46px', rotZ: -38, alpha: 0.58, zIndex: 3, depth: 0.7 },
-  { id: 'b', left: '50%', top: '58%', w: '200vw', h: '26px', rotZ:  42, alpha: 0.44, zIndex: 4, depth: 1.2 },
-  { id: 'c', left: '50%', top: '31%', w: '220vw', h: '62px', rotZ: -14, alpha: 0.50, zIndex: 2, depth: 0.3 },
-  { id: 'd', left: '56%', top: '66%', w: '130vw', h: '20px', rotZ:  70, alpha: 0.32, zIndex: 5, depth: 1.6 },
-  { id: 'e', left: '44%', top: '50%', w: '170vw', h: '34px', rotZ: -58, alpha: 0.38, zIndex: 1, depth: 0.9 },
+// ── Login page bumper-car floater seed ────────────────────────────────────
+const LOGIN_FLOATERS = [
+  { x:  8, y: 18, size:  28, speed: 28, phase: 0.0, baseOp: 0.22, breathPeriod:  7200 },
+  { x: 18, y: 72, size:  56, speed: 14, phase: 1.1, baseOp: 0.18, breathPeriod: 10400 },
+  { x: 28, y: 35, size:  90, speed:  8, phase: 2.3, baseOp: 0.15, breathPeriod: 14000 },
+  { x: 38, y: 82, size:  38, speed: 22, phase: 0.6, baseOp: 0.21, breathPeriod:  8600 },
+  { x: 50, y: 22, size:  70, speed: 11, phase: 3.0, baseOp: 0.17, breathPeriod: 12200 },
+  { x: 62, y: 65, size:  44, speed: 19, phase: 1.7, baseOp: 0.22, breathPeriod:  9000 },
+  { x: 72, y: 12, size: 110, speed:  6, phase: 0.4, baseOp: 0.13, breathPeriod: 16000 },
+  { x: 80, y: 55, size:  32, speed: 32, phase: 2.1, baseOp: 0.25, breathPeriod:  6800 },
+  { x: 90, y: 30, size:  62, speed: 15, phase: 1.4, baseOp: 0.18, breathPeriod: 11600 },
+  { x: 14, y: 50, size:  48, speed: 20, phase: 3.4, baseOp: 0.20, breathPeriod:  9800 },
+  { x: 45, y: 45, size:  88, speed:  9, phase: 0.9, baseOp: 0.14, breathPeriod: 15000 },
+  { x: 85, y: 78, size:  24, speed: 36, phase: 2.6, baseOp: 0.27, breathPeriod:  6000 },
+  { x: 55, y: 88, size:  74, speed: 12, phase: 1.2, baseOp: 0.16, breathPeriod: 13400 },
+  { x: 25, y: 60, size:  36, speed: 26, phase: 3.8, baseOp: 0.24, breathPeriod:  7600 },
+  { x: 70, y: 42, size:  52, speed: 17, phase: 0.2, baseOp: 0.19, breathPeriod: 10800 },
+  { x:  4, y: 85, size: 120, speed:  5, phase: 2.8, baseOp: 0.12, breathPeriod: 18000 },
+  { x: 92, y: 62, size:  40, speed: 24, phase: 1.5, baseOp: 0.23, breathPeriod:  8000 },
+  { x: 34, y: 15, size:  66, speed: 13, phase: 0.8, baseOp: 0.17, breathPeriod: 12800 },
+  { x: 58, y: 72, size:  80, speed: 10, phase: 3.2, baseOp: 0.15, breathPeriod: 14600 },
+  { x: 78, y: 90, size:  30, speed: 30, phase: 1.9, baseOp: 0.26, breathPeriod:  6400 },
+  { x: 10, y: 38, size: 100, speed:  7, phase: 0.5, baseOp: 0.13, breathPeriod: 16800 },
+  { x: 48, y: 62, size:  46, speed: 21, phase: 2.4, baseOp: 0.21, breathPeriod:  9400 },
+  { x: 22, y: 90, size:  58, speed: 16, phase: 3.6, baseOp: 0.18, breathPeriod: 11200 },
+  { x: 65, y: 25, size:  34, speed: 28, phase: 0.7, baseOp: 0.24, breathPeriod:  7400 },
 ];
 
 // ── Dot-ring helpers (existing wave mode) ──────────────────────────────────
@@ -243,55 +262,169 @@ function FloatingWheels({ chartColors, cursorRef }) {
   );
 }
 
-// ── Ribbon background (login page) ─────────────────────────────────────────
+// ── Login page bumper-cars background ──────────────────────────────────────
 function RibbonBackground({ className }) {
-  const stageRef = useRef(null);
-  const ribbonRefs = useRef([]);
-  const mouse = useRef({ tx: 0, ty: 0, cx: 0, cy: 0, frame: null });
+  const { chartColors } = useTheme();
+  const floaterRefs = useRef([]);
+  const groupRefs = useRef([]);
+  const physicsRef = useRef(null);
+  const cursorRef = useRef({ x: -999, y: -999 });
 
   useEffect(() => {
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const s = mouse.current;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    physicsRef.current = LOGIN_FLOATERS.map((f, i) => ({
+      ...f,
+      px: (f.x / 100) * vw,
+      py: (f.y / 100) * vh,
+      vx: (Math.random() - 0.5) * 90,
+      vy: (Math.random() - 0.5) * 90,
+      rot: (i * 29) % 360,
+    }));
+
+    const cursorVel = { x: 0, y: 0 };
+    let lastCx = -999, lastCy = -999;
+    let raf = null;
+    let lastTime = null;
+
+    const MAX_SPEED = 900;
+    const DAMPING_60FPS = 0.970;
+    const DRIFT_ACCEL = 38;
+    const CURSOR_SPRING = 4200;
+    const CURSOR_XFER = 1.8;
+    const HIT_MULT = 1.6;
 
     const onPointer = (e) => {
-      const x = e.touches ? e.touches[0].clientX : e.clientX;
-      const y = e.touches ? e.touches[0].clientY : e.clientY;
-      s.tx = (x / window.innerWidth  - 0.5) * 2;
-      s.ty = (y / window.innerHeight - 0.5) * 2;
+      cursorRef.current.x = e.clientX;
+      cursorRef.current.y = e.clientY;
     };
     window.addEventListener('pointermove', onPointer, { passive: true });
-    window.addEventListener('touchmove',   onPointer, { passive: true });
 
-    if (reducedMotion) {
-      return () => {
-        window.removeEventListener('pointermove', onPointer);
-        window.removeEventListener('touchmove',   onPointer);
-      };
-    }
+    // Logo wrap zone — sampled once per second to avoid layout thrash
+    const logoZone = { x: window.innerWidth / 2, y: window.innerHeight * 0.22, r: 80, speed: 34 };
+    let lastLogoSample = 0;
+    const LOGO_SPRING = 4200;    // radial repulsion
+    const LOGO_TANGENTIAL = 3600; // sideways deflection (creates wrap-around)
 
-    const tick = () => {
-      s.cx += (s.tx - s.cx) * 0.12;
-      s.cy += (s.ty - s.cy) * 0.12;
-      if (stageRef.current) {
-        stageRef.current.style.transform =
-          `perspective(1100px) rotateX(${(-s.cy * 18).toFixed(2)}deg) rotateY(${(s.cx * 24).toFixed(2)}deg)`;
+    const tick = (now) => {
+      if (!lastTime) lastTime = now;
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+
+      const cx = cursorRef.current.x;
+      const cy = cursorRef.current.y;
+
+      if (lastCx > -990) {
+        cursorVel.x = (cx - lastCx) / dt;
+        cursorVel.y = (cy - lastCy) / dt;
       }
-      RIBBONS.forEach((r, i) => {
-        const el = ribbonRefs.current[i];
-        if (el) {
-          const px = (s.cx * r.depth * 55).toFixed(1);
-          const py = (s.cy * r.depth * 35).toFixed(1);
-          el.style.transform = `translateX(calc(-50% + ${px}px)) translateY(calc(-50% + ${py}px)) rotateZ(${r.rotZ}deg)`;
-        }
-      });
-      s.frame = requestAnimationFrame(tick);
-    };
-    s.frame = requestAnimationFrame(tick);
+      lastCx = cx; lastCy = cy;
 
+      // Resample logo position and spin speed once per second
+      if (now - lastLogoSample > 1000) {
+        lastLogoSample = now;
+        const logoEl = document.querySelector('.unifolio-wheel-logo');
+        if (logoEl) {
+          const r = logoEl.getBoundingClientRect();
+          logoZone.x = r.left + r.width / 2;
+          logoZone.y = r.top + r.height / 2;
+          logoZone.r = r.width * 0.72;
+          logoZone.speed = parseFloat(logoEl.dataset.speed || '34');
+        }
+      }
+
+      const cvw = window.innerWidth;
+      const cvh = window.innerHeight;
+      const damp = Math.pow(DAMPING_60FPS, dt * 60);
+
+      physicsRef.current.forEach((f, i) => {
+        const el = floaterRefs.current[i];
+        const g = groupRefs.current[i];
+        if (!el || !g) return;
+
+        f.vx += Math.sin(now / 8000 + f.phase) * DRIFT_ACCEL * dt;
+        f.vy += Math.cos(now / 11000 + f.phase * 1.3) * DRIFT_ACCEL * dt;
+
+        const dx = f.px - cx;
+        const dy = f.py - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const hitR = f.size * HIT_MULT;
+
+        if (dist < hitR && cx > -990) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = (hitR - dist) / hitR;
+          f.vx += nx * CURSOR_SPRING * overlap * dt;
+          f.vy += ny * CURSOR_SPRING * overlap * dt;
+          const approach = -(cursorVel.x * nx + cursorVel.y * ny);
+          if (approach > 0) {
+            f.vx -= nx * approach * CURSOR_XFER;
+            f.vy -= ny * approach * CURSOR_XFER;
+          }
+        }
+
+        // Logo spin-wrap: radial push + tangential deflection (makes floaters curve around)
+        const ldx = f.px - logoZone.x;
+        const ldy = f.py - logoZone.y;
+        const ldist = Math.sqrt(ldx * ldx + ldy * ldy) || 0.001;
+        // Influence zone is wider than hard-contact zone so floaters start curving early
+        const lhitR = logoZone.r + f.size * 0.5;
+        const lInfluenceR = lhitR * 2.2;
+        if (ldist < lInfluenceR) {
+          const lnx = ldx / ldist;
+          const lny = ldy / ldist;
+          // Soft influence falloff (1 at contact, 0 at edge of influence zone)
+          const softFall = Math.max(0, 1 - ldist / lInfluenceR);
+          const hardOverlap = ldist < lhitR ? (lhitR - ldist) / lhitR : 0;
+
+          // Radial repulsion (hard contact only)
+          f.vx += lnx * LOGO_SPRING * hardOverlap * dt;
+          f.vy += lny * LOGO_SPRING * hardOverlap * dt;
+
+          // Tangential deflection — 90° clockwise from radial, matching logo spin direction
+          // Scales with logo speed (idle ~34 deg/s → hover ~390 deg/s → fling ~2400)
+          const spinNorm = Math.min(logoZone.speed / 390, 3.0); // cap at fling
+          const tx = lny;   // tangential = 90° CW from outward radial
+          const ty = -lnx;
+          f.vx += tx * LOGO_TANGENTIAL * softFall * spinNorm * dt;
+          f.vy += ty * LOGO_TANGENTIAL * softFall * spinNorm * dt;
+        }
+
+        f.vx *= damp;
+        f.vy *= damp;
+
+        const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy);
+        if (speed > MAX_SPEED) { f.vx *= MAX_SPEED / speed; f.vy *= MAX_SPEED / speed; }
+
+        f.px += f.vx * dt;
+        f.py += f.vy * dt;
+
+        const m = f.size * 0.5;
+        if (f.px < m)       { f.px = m;       f.vx =  Math.abs(f.vx) * 0.72; }
+        if (f.px > cvw - m) { f.px = cvw - m; f.vx = -Math.abs(f.vx) * 0.72; }
+        if (f.py < m)       { f.py = m;       f.vy =  Math.abs(f.vy) * 0.72; }
+        if (f.py > cvh - m) { f.py = cvh - m; f.vy = -Math.abs(f.vy) * 0.72; }
+
+        f.rot = (f.rot + f.speed * dt) % 360;
+
+        const breathe = Math.sin(now / f.breathPeriod + f.phase) * 0.04;
+        const opacity = Math.max(0, f.baseOp + breathe).toFixed(4);
+
+        el.style.transform = `translate(${(f.px - f.size / 2).toFixed(1)}px, ${(f.py - f.size / 2).toFixed(1)}px)`;
+        el.style.opacity = opacity;
+        g.style.transform = `rotate(${f.rot.toFixed(2)}deg)`;
+      });
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('pointermove', onPointer);
-      window.removeEventListener('touchmove',   onPointer);
-      cancelAnimationFrame(s.frame);
     };
   }, []);
 
@@ -301,79 +434,44 @@ function RibbonBackground({ className }) {
       style={{ background: 'hsl(var(--background))' }}
       aria-hidden="true"
     >
-      {/* Stage — tilts with cursor */}
-      <div
-        ref={stageRef}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          transform: 'perspective(1100px) rotateX(0deg) rotateY(0deg)',
-        }}
-      >
-        {RIBBONS.map((r, i) => (
-          <div
-            key={r.id}
-            ref={el => { ribbonRefs.current[i] = el; }}
-            style={{
-              position: 'absolute',
-              left: r.left,
-              top: r.top,
-              width: r.w,
-              height: r.h,
-              zIndex: r.zIndex,
-              transform: `translateX(-50%) translateY(-50%) rotateZ(${r.rotZ}deg)`,
-              borderRadius: '3px',
-              background: [
-                `linear-gradient(to right,`,
-                `  transparent 0%,`,
-                `  hsl(var(--primary) / ${(r.alpha * 0.55).toFixed(2)}) 8%,`,
-                `  hsl(var(--primary) / ${r.alpha.toFixed(2)}) 25%,`,
-                `  hsl(var(--primary) / ${r.alpha.toFixed(2)}) 75%,`,
-                `  hsl(var(--primary) / ${(r.alpha * 0.55).toFixed(2)}) 92%,`,
-                `  transparent 100%`,
-                `)`,
-              ].join(''),
-              boxShadow: `0 0 80px hsl(var(--primary) / ${(r.alpha * 0.40).toFixed(2)})`,
-            }}
-          >
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '3px',
-              background: 'linear-gradient(to bottom, rgba(255,255,255,0.40) 0%, rgba(255,255,255,0.10) 38%, transparent 68%)',
-            }} />
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: '8%',
-              right: '8%',
-              height: '28%',
-              borderRadius: '3px 3px 0 0',
-              background: 'rgba(255,255,255,0.22)',
-              filter: 'blur(1.5px)',
-            }} />
-          </div>
-        ))}
-      </div>
+      {LOGIN_FLOATERS.map((f, i) => (
+        <div
+          key={i}
+          ref={el => { floaterRefs.current[i] = el; }}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: f.size,
+            height: f.size,
+            willChange: 'transform, opacity',
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          <svg viewBox="0 0 28 28" width={f.size} height={f.size}>
+            <g
+              ref={el => { groupRefs.current[i] = el; }}
+              style={{ transformOrigin: `${CX_W}px ${CY_W}px`, transformBox: 'view-box' }}
+            >
+              {WHEEL_DOTS.map((dot, di) => (
+                <circle
+                  key={di}
+                  cx={dot.x}
+                  cy={dot.y}
+                  r={2.5}
+                  fill={chartColors[(i * 3 + di) % chartColors.length] || 'hsl(var(--primary))'}
+                />
+              ))}
+            </g>
+          </svg>
+        </div>
+      ))}
 
       <div style={{
         position: 'absolute',
         inset: 0,
-        background: [
-          'radial-gradient(ellipse 90% 80% at 50% 50%,',
-          '  transparent 15%,',
-          '  hsl(var(--background) / 0.72) 100%)',
-        ].join(''),
-        pointerEvents: 'none',
-      }} />
-
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: '35%',
-        background: 'linear-gradient(to top, hsl(var(--background)) 0%, transparent 100%)',
+        background: 'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 20%, hsl(var(--background) / 0.55) 100%)',
         pointerEvents: 'none',
       }} />
     </div>
@@ -398,8 +496,8 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
   });
   const animState = useRef({ targetX: 50, targetY: 85, currentX: 50, currentY: 85, frame: 0, frameCount: 0 });
   const cursorPx = useRef({ x: -999, y: -999 });
+  const clickPulse = useRef({ x: 0, y: 0, t: -99999 });
   const [renderKey, setRenderKey] = useState(0);
-  const [ripples, setRipples] = useState([]);
 
   useEffect(() => {
     const el = ref.current;
@@ -425,9 +523,7 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
     window.addEventListener('pointermove', onMove, { passive: true });
 
     const onDown = (e) => {
-      const id = Date.now() + Math.random();
-      setRipples(prev => [...prev, { id, x: e.clientX, y: e.clientY }]);
-      setTimeout(() => setRipples(prev => prev.filter(r => r.id !== id)), 750);
+      clickPulse.current = { x: e.clientX, y: e.clientY, t: performance.now() };
     };
     document.addEventListener('mousedown', onDown);
 
@@ -452,8 +548,19 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
       const driftX = Math.sin(now / 9000) * 6;
       const driftY = Math.cos(now / 11000) * 4;
 
-      el.style.setProperty('--wave-x', `${(s.currentX + driftX).toFixed(2)}%`);
-      el.style.setProperty('--wave-y', `${(s.currentY + driftY).toFixed(2)}%`);
+      // Click pulse: smoothstep decay pulls the wave origin toward the click, then springs back
+      const p = clickPulse.current;
+      const pAge = now - p.t;
+      let pulseOffX = 0, pulseOffY = 0;
+      if (pAge < 1100) {
+        const t = Math.max(0, 1 - pAge / 1100);
+        const pStr = t * t * (3 - 2 * t); // smoothstep — peaks at t=1, eases to 0
+        pulseOffX = ((p.x / window.innerWidth)  * 100 - s.currentX) * pStr * 0.28;
+        pulseOffY = ((p.y / window.innerHeight) * 100 - s.currentY) * pStr * 0.28;
+      }
+
+      el.style.setProperty('--wave-x', `${(s.currentX + driftX + pulseOffX).toFixed(2)}%`);
+      el.style.setProperty('--wave-y', `${(s.currentY + driftY + pulseOffY).toFixed(2)}%`);
       el.style.setProperty('--wave-lift', `${Math.max(0, 90 - s.currentY).toFixed(2)}px`);
       s.frameCount++;
       if (s.frameCount % 4 === 0) setRenderKey(k => k + 1);
@@ -520,15 +627,6 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
       {/* Floating wheel logos */}
       <FloatingWheels chartColors={chartColors} cursorRef={cursorPx} />
 
-      {/* Click ripples */}
-      {ripples.map(r => (
-        <div
-          key={r.id}
-          className="twb-ripple-el"
-          style={{ left: r.x - 100, top: r.y - 100 }}
-        />
-      ))}
-
       <style>{`
         .twb-field {
           ${isRainbow ? `
@@ -537,9 +635,9 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
             animation: twb-rainbow-shift 13s ease-in-out infinite alternate;
           ` : `
             background:
-              radial-gradient(circle at var(--wave-x) var(--wave-y), hsl(var(--primary) / ${strong ? '0.30' : '0.18'}) 0%, transparent 26%),
-              radial-gradient(circle at calc(var(--wave-x) + 18%) calc(var(--wave-y) + 8%), hsl(var(--ring) / ${strong ? '0.18' : '0.12'}) 0%, transparent 27%),
-              radial-gradient(circle at calc(var(--wave-x) - 16%) calc(var(--wave-y) + 10%), hsl(var(--accent) / ${strong ? '0.18' : '0.11'}) 0%, transparent 28%),
+              radial-gradient(circle at var(--wave-x) var(--wave-y), hsl(var(--primary) / ${strong ? '0.30' : '0.18'}) 0%, transparent 36%),
+              radial-gradient(circle at calc(var(--wave-x) + 18%) calc(var(--wave-y) + 8%), hsl(var(--ring) / ${strong ? '0.18' : '0.12'}) 0%, transparent 38%),
+              radial-gradient(circle at calc(var(--wave-x) - 16%) calc(var(--wave-y) + 10%), hsl(var(--accent) / ${strong ? '0.18' : '0.11'}) 0%, transparent 40%),
               linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background)) 55%, hsl(var(--primary) / ${strong ? '0.10' : '0.07'}) 100%);
           `}
         }
@@ -584,22 +682,9 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
               radial-gradient(ellipse at calc(var(--wave-x) - 20%) 115%, hsl(var(--ring) / 0.20) 0%, transparent 45%),
               radial-gradient(ellipse at calc(var(--wave-x) + 22%) 115%, hsl(var(--accent) / 0.18) 0%, transparent 45%);
             filter: grayscale(1) contrast(0.9) brightness(0.85);
-            mask-image: radial-gradient(circle 180px at var(--cursor-x) var(--cursor-y), black 30%, transparent 100%);
-            -webkit-mask-image: radial-gradient(circle 180px at var(--cursor-x) var(--cursor-y), black 30%, transparent 100%);
+            mask-image: radial-gradient(circle 300px at var(--cursor-x) var(--cursor-y), black 0%, rgba(0,0,0,0.7) 35%, rgba(0,0,0,0.25) 65%, transparent 100%);
+            -webkit-mask-image: radial-gradient(circle 300px at var(--cursor-x) var(--cursor-y), black 0%, rgba(0,0,0,0.7) 35%, rgba(0,0,0,0.25) 65%, transparent 100%);
           `}
-        }
-        .twb-ripple-el {
-          position: fixed;
-          border-radius: 50%;
-          border: 1.5px solid hsl(var(--primary) / 0.5);
-          width: 200px;
-          height: 200px;
-          pointer-events: none;
-          animation: twb-ripple 0.75s ease-out 1 forwards;
-        }
-        @keyframes twb-ripple {
-          from { transform: scale(0.05); opacity: 0.5; }
-          to   { transform: scale(1);    opacity: 0; }
         }
         @keyframes twb-rainbow-shift {
           0%   { background-position: 0% 0%; }
@@ -617,7 +702,6 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
         @media (prefers-reduced-motion: reduce) {
           .twb-surface, .twb-field, .twb-bw { animation: none; }
           svg[aria-hidden] { animation: none; }
-          .twb-ripple-el { display: none; }
         }
       `}</style>
     </div>

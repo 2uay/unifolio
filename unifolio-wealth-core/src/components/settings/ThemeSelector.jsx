@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Check, ChevronDown, RotateCcw, Sparkles, Search, X } from 'lucide-react';
+import { Check, ChevronDown, RotateCcw, Sparkles, Search, X, Crown, Lock, Star } from 'lucide-react';
 import { getAllThemes, DEFAULT_THEME } from '@/lib/themes';
 import { useTheme } from '@/lib/ThemeContext';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import MonochromeColorPicker from './MonochromeColorPicker';
@@ -11,6 +12,7 @@ const DEFAULT_THEME_KEY = 'unifolio_default_theme';
 
 export default function ThemeSelector() {
   const { selectedTheme, changeTheme, previewTheme, clearThemePreview } = useTheme();
+  const { isPro } = useAuth();
   const [open, setOpen] = useState(false);
   const [showMonochrome, setShowMonochrome] = useState(false);
   const [defaultTheme, setDefaultTheme] = useState(() => localStorage.getItem(DEFAULT_THEME_KEY) || DEFAULT_THEME);
@@ -41,13 +43,17 @@ export default function ThemeSelector() {
   }, [open]);
 
   const q = searchQuery.trim().toLowerCase();
-  const filteredThemes = q
-    ? allThemes.filter(t =>
-        t.name.toLowerCase().includes(q) ||
-        (t.description || '').toLowerCase().includes(q) ||
-        (t.tags || []).some(tag => tag.toLowerCase().includes(q))
-      )
-    : allThemes;
+  const filteredThemes = (() => {
+    const base = q
+      ? allThemes.filter(t =>
+          t.name.toLowerCase().includes(q) ||
+          (t.description || '').toLowerCase().includes(q) ||
+          (t.tags || []).some(tag => tag.toLowerCase().includes(q))
+        )
+      : allThemes;
+    // Pro themes always float to top
+    return [...base].sort((a, b) => (b.pro ? 1 : 0) - (a.pro ? 1 : 0));
+  })();
 
   const handleSetDefault = async () => {
     localStorage.setItem(DEFAULT_THEME_KEY, selectedTheme);
@@ -163,8 +169,87 @@ export default function ThemeSelector() {
               {filteredThemes.length === 0 && (
                 <p className="px-4 py-6 text-xs text-muted-foreground text-center">No themes match "{searchQuery}"</p>
               )}
+              <style>{`
+                @keyframes uf-gold-sweep {
+                  0% { transform: translateX(-120%) skewX(-18deg); }
+                  100% { transform: translateX(320%) skewX(-18deg); }
+                }
+                @keyframes uf-star-spin {
+                  0% { transform: rotate(0deg) scale(1); }
+                  50% { transform: rotate(180deg) scale(1.25); }
+                  100% { transform: rotate(360deg) scale(1); }
+                }
+                .uf-gold-sweep { animation: uf-gold-sweep 2.2s ease-in-out infinite; }
+                .uf-star-spin { animation: uf-star-spin 3s ease-in-out infinite; }
+              `}</style>
               {filteredThemes.map((theme) => {
                 const isSelected = selectedTheme === theme.id;
+                const isProTheme = !!theme.pro;
+                const locked = isProTheme && !isPro;
+                if (isProTheme) {
+                  return (
+                    <button
+                      key={theme.id}
+                      onMouseEnter={() => !locked && previewTheme(theme.id)}
+                      onFocus={() => !locked && previewTheme(theme.id)}
+                      onClick={() => { if (!locked) { changeTheme(theme.id); setOpen(false); } }}
+                      disabled={locked}
+                      className={cn(
+                        'relative w-full flex items-center gap-3 px-4 py-3 text-left overflow-hidden transition-all duration-150',
+                        'border-y border-amber-500/25',
+                        locked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                        isSelected
+                          ? 'bg-amber-500/12 shadow-[inset_0_0_20px_rgba(234,179,8,0.08)]'
+                          : 'bg-amber-500/6 hover:bg-amber-500/10',
+                      )}
+                    >
+                      {/* Sweep shimmer */}
+                      {!locked && (
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                          <div className="uf-gold-sweep absolute inset-y-0 w-1/4 bg-gradient-to-r from-transparent via-amber-300/25 to-transparent" />
+                        </div>
+                      )}
+                      {/* Gold glow border top */}
+                      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent pointer-events-none" />
+                      <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent pointer-events-none" />
+
+                      {/* Swatches */}
+                      <div className="flex gap-1 flex-shrink-0" style={{ filter: 'drop-shadow(0 0 3px rgba(255,200,0,0.5))' }}>
+                        {theme.swatches.slice(0, 3).map((c, i) => (
+                          <div key={i} className="w-3.5 h-3.5 rounded-full border border-amber-400/30" style={{ backgroundColor: c }} />
+                        ))}
+                      </div>
+
+                      {/* Text */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-bold text-amber-300 truncate">{theme.name}</p>
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-wider bg-amber-500/20 border border-amber-400/40 text-amber-300 flex-shrink-0">
+                            <Crown className="w-2.5 h-2.5" />
+                            PRO
+                          </span>
+                        </div>
+                        <p className="text-[10px] truncate" style={{ color: locked ? 'rgba(180,140,0,0.6)' : 'rgba(234,179,8,0.7)' }}>
+                          {locked ? 'Upgrade to Pro to unlock' : theme.description}
+                        </p>
+                      </div>
+
+                      {/* Star + check/lock */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {!locked && (
+                          <Star
+                            className="uf-star-spin w-3.5 h-3.5 text-amber-400"
+                            fill="rgba(234,179,8,0.4)"
+                          />
+                        )}
+                        {locked
+                          ? <Lock className="w-3.5 h-3.5 text-amber-500/50" />
+                          : isSelected && <Check className="w-3.5 h-3.5 text-amber-400" />
+                        }
+                      </div>
+                    </button>
+                  );
+                }
                 return (
                   <button
                     key={theme.id}

@@ -51,12 +51,22 @@ export default function UserMenu({ collapsed }) {
             <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
           </div>
           <Link
+            to="/profile"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <User className="w-3.5 h-3.5" />
+            My Profile
+          </Link>
+          <Link
             to="/settings"
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setOpen(false)}
             className="flex items-center gap-2.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <Settings className="w-3.5 h-3.5" />
-            Account Settings
+            Settings
           </Link>
           <button
             onClick={() => { setOpen(false); logout(); }}

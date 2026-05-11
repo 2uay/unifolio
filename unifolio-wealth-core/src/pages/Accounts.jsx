@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Clock, Wallet, Hash, Plus, Upload, Trash2, Loader2 } from 'lucide-react';
+import { Clock, Plus, Upload, Trash2, Loader2, Pencil } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AssetAppraisalModal from '@/components/accounts/AssetAppraisalModal';
-import CustomAssetCard from '@/components/accounts/CustomAssetCard';
 import MetalsBreakdownSection from '@/components/accounts/MetalsBreakdownSection';
 import NetValueSummary from '@/components/accounts/NetValueSummary';
 import { useLiveData } from '@/lib/LiveDataContext';
@@ -23,6 +22,35 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import usePersistentTableColumns from '@/hooks/usePersistentTableColumns';
+import DraggableTableHeader, { TableColumnGrip } from '@/components/shared/DraggableTableHeader';
+import { cn } from '@/lib/utils';
+
+const ACCOUNT_TABLE_ID = 'accounts_connected_table';
+const ACCOUNT_COLUMNS = [
+  { id: 'name', label: 'Account', align: 'left' },
+  { id: 'type', label: 'Type', align: 'left' },
+  { id: 'holdings', label: 'Holdings', align: 'right' },
+  { id: 'cash', label: 'Cash', align: 'right' },
+  { id: 'total', label: 'Total', align: 'right' },
+  { id: 'dailyPnl', label: 'Daily P&L', align: 'right' },
+  { id: 'currency', label: 'Currency', align: 'left' },
+  { id: 'actions', label: 'Actions', align: 'right' },
+];
+const DEFAULT_ACCOUNT_ORDER = ['name', 'type', 'holdings', 'cash', 'total', 'dailyPnl', 'currency', 'actions'];
+
+const CUSTOM_ASSET_TABLE_ID = 'accounts_custom_assets_table';
+const CUSTOM_ASSET_COLUMNS = [
+  { id: 'asset', label: 'Asset', align: 'left' },
+  { id: 'type', label: 'Type', align: 'left' },
+  { id: 'gross', label: 'Chosen Value', align: 'right' },
+  { id: 'liability', label: 'Liability', align: 'right' },
+  { id: 'net', label: 'Net Value', align: 'right' },
+  { id: 'currency', label: 'Currency', align: 'left' },
+  { id: 'status', label: 'Included', align: 'left' },
+  { id: 'actions', label: 'Actions', align: 'right' },
+];
+const DEFAULT_CUSTOM_ASSET_ORDER = ['asset', 'type', 'gross', 'liability', 'net', 'currency', 'status', 'actions'];
 
 export default function Accounts() {
   const navigate = useNavigate();
@@ -31,12 +59,13 @@ export default function Accounts() {
   const PM = '••••••';
   const queryClient = useQueryClient();
   const { registerTicker, liveHoldings: liveMarketData } = useLiveData();
-  const { accounts, holdings, getInstitution, calcAccountValue, isEmptyPortfolio, refreshPortfolioData, calcContributionTotals } = usePortfolioData();
+  const { accounts, holdings, getInstitution, isEmptyPortfolio, refreshPortfolioData, calcContributionTotals } = usePortfolioData();
   const { user } = useAuth();
+  const [accountColumnOrder, setAccountColumnOrder] = usePersistentTableColumns(ACCOUNT_TABLE_ID, DEFAULT_ACCOUNT_ORDER);
+  const [customAssetColumnOrder, setCustomAssetColumnOrder] = usePersistentTableColumns(CUSTOM_ASSET_TABLE_ID, DEFAULT_CUSTOM_ASSET_ORDER);
   const safeAccounts = useMemo(() => Array.isArray(accounts) ? accounts.filter(Boolean) : [], [accounts]);
   const safeHoldings = useMemo(() => Array.isArray(holdings) ? holdings.filter(Boolean) : [], [holdings]);
 
-  // Register tickers
   useEffect(() => {
     safeHoldings.filter(h => safeNumber(h.quantity ?? h.position) > 0).forEach(h => {
       if (!h.ticker) return;
@@ -44,38 +73,28 @@ export default function Accounts() {
     });
   }, [registerTicker, safeHoldings]);
 
-  // Use live-updated holdings for account values with recalculated dependent values
   const liveHoldings = useMemo(() => {
     return safeHoldings.map(holding => {
       const ticker = holding.quote_symbol || holding.ticker;
       const liveData = ticker ? liveMarketData?.[ticker] : null;
       const livePrice = liveData?.price;
-      
       if (!livePrice || safeNumber(holding.quantity ?? holding.position) <= 0) return holding;
-
       const quantity = safeNumber(holding.quantity ?? holding.position ?? 0);
       const avgPrice = safeNumber(holding.average_price ?? holding.avgPrice ?? livePrice);
       const costBasis = safeNumber(holding.cost_basis ?? holding.costBasis ?? (quantity * avgPrice));
       const oldPrice = safeNumber(holding.current_price ?? holding.lastPrice ?? 0);
-
       const newMarketValue = quantity * livePrice;
-      const newUnrealizedGainLoss = newMarketValue - costBasis;
       const previousClose = safeNumber(liveData?.previousClose ?? liveData?.previous_close, oldPrice);
       const newDailyPnl = (livePrice - previousClose) * quantity;
-
       return {
         ...holding,
         current_price: livePrice,
         lastPrice: livePrice,
         market_value: newMarketValue,
         marketValue: newMarketValue,
-        unrealized_gain_loss_amount: newUnrealizedGainLoss,
-        unrealizedAmt: newUnrealizedGainLoss,
         daily_pnl_amount: newDailyPnl,
         dailyPnl: newDailyPnl,
-        sparkline: liveData?.sparkline || holding.sparkline,
-        price_source: liveData?.priceSource ?? holding.price_source,
-        valuation_status: liveData?.valuationStatus ?? holding.valuation_status,
+        unrealized_gain_loss_amount: newMarketValue - costBasis,
       };
     });
   }, [safeHoldings, liveMarketData]);
@@ -91,8 +110,7 @@ export default function Accounts() {
     if (!pendingDeleteAcc) return;
     setDeletingAcc(true);
     try {
-      const accId = pendingDeleteAcc.id;
-      await deleteImportedAccountData(accId, user?.id);
+      await deleteImportedAccountData(pendingDeleteAcc.id, user?.id);
       await refreshPortfolioData?.();
     } catch (err) {
       console.error('[Accounts] delete failed:', err);
@@ -103,8 +121,7 @@ export default function Accounts() {
     }
   };
 
-  // ── Custom assets from DB ──────────────────────────────────────
-  const { data: customAssetsRaw = [], isLoading: customAssetsLoading, isError: customAssetsError } = useQuery({
+  const { data: customAssetsRaw = [] } = useQuery({
     queryKey: ['customAssets'],
     queryFn: async () => {
       try {
@@ -146,34 +163,30 @@ export default function Accounts() {
   const handleEdit = (asset) => { setEditingAsset(asset); setShowModal(true); };
   const handleCloseModal = () => { setShowModal(false); setEditingAsset(null); };
 
-  // ── Investment account totals ─────────────────────────────────
   const grouped = useMemo(() => {
-    const g = {};
+    const groups = {};
     safeAccounts.forEach(acc => {
-      if (!acc?.id) return;
       const instId = acc.institution_id ?? acc.institutionId;
       if (!instId) return;
-      if (!g[instId]) g[instId] = [];
-      g[instId].push(acc);
+      if (!groups[instId]) groups[instId] = [];
+      groups[instId].push(acc);
     });
-    return g;
+    return groups;
   }, [safeAccounts]);
 
   const typeTotals = useMemo(() => {
-    const t = {};
+    const totals = {};
     safeAccounts.forEach(acc => {
-      if (!acc?.id) return;
       const type = acc.account_type ?? acc.type ?? 'Account';
-      const nativeValue = calcAccountValue(acc.id);
-      const nativeCurrency = acc.base_currency || 'CAD';
-      t[type] = (t[type] || 0) + convert(nativeValue, nativeCurrency);
+      const accountHoldings = liveHoldings.filter(h => (h.account_id ?? h.accountId) === acc.id && safeNumber(h.quantity) > 0);
+      const holdingsValue = accountHoldings.reduce((sum, h) => sum + convert(safeNumber(h.market_value ?? h.marketValue ?? 0), h.currency || 'USD'), 0);
+      const cashValue = convert(safeNumber(acc.cash_balance ?? acc.cashBalance ?? 0), acc.base_currency || 'CAD');
+      totals[type] = (totals[type] || 0) + holdingsValue + cashValue;
     });
-    return t;
-  }, [safeAccounts, calcAccountValue, convert, displayCurrency]);
+    return totals;
+  }, [safeAccounts, liveHoldings, convert, displayCurrency]);
 
-  const investmentTotal = useMemo(() =>
-    Object.values(typeTotals).reduce((s, v) => s + v, 0),
-    [typeTotals]);
+  const investmentTotal = useMemo(() => Object.values(typeTotals).reduce((s, v) => s + v, 0), [typeTotals]);
   const contributionTotals = calcContributionTotals();
   const convertedDeposited = useMemo(() => Object.entries(contributionTotals.byCurrency || {}).reduce((sum, [currency, value]) => (
     sum + convert(safeNumber(value.deposited), currency)
@@ -182,17 +195,10 @@ export default function Accounts() {
     sum + convert(safeNumber(value.deposited) - safeNumber(value.withdrawn), currency)
   ), 0), [contributionTotals, convert, displayCurrency]);
 
-  // ── Custom asset totals (convert each to display currency) ────
   const includedAssets = customAssets.filter(a => a.include_in_net_value !== false);
-  const customAssetsGross = useMemo(() =>
-    includedAssets.reduce((s, a) => s + convert(a.estimated_value || 0, a.currency || 'USD'), 0),
-    [includedAssets, convert, displayCurrency]);
-  const customAssetsLiability = useMemo(() =>
-    includedAssets.reduce((s, a) => s + convert(a.liability_amount || 0, a.currency || 'USD'), 0),
-    [includedAssets, convert, displayCurrency]);
-  const customAssetsNet = useMemo(() =>
-    includedAssets.reduce((s, a) => s + convert(a.net_value || 0, a.currency || 'USD'), 0),
-    [includedAssets, convert, displayCurrency]);
+  const customAssetsGross = useMemo(() => includedAssets.reduce((s, a) => s + convert(a.chosen_value || 0, a.currency || 'USD'), 0), [includedAssets, convert, displayCurrency]);
+  const customAssetsLiability = useMemo(() => includedAssets.reduce((s, a) => s + convert(a.liability_amount || 0, a.currency || 'USD'), 0), [includedAssets, convert, displayCurrency]);
+  const customAssetsNet = useMemo(() => includedAssets.reduce((s, a) => s + convert(a.net_value || 0, a.currency || 'USD'), 0), [includedAssets, convert, displayCurrency]);
 
   if (isEmptyPortfolio) {
     return (
@@ -220,7 +226,6 @@ export default function Accounts() {
         }
       />
 
-      {/* Net Value Summary */}
       <NetValueSummary
         investmentTotal={investmentTotal}
         customAssetsGross={customAssetsGross}
@@ -240,163 +245,180 @@ export default function Accounts() {
           <p className="text-lg font-bold font-mono mt-1">{privacyMode ? PM : formatCurrency(convertedNetContributions)}</p>
           <p className="text-xs text-muted-foreground mt-1">Deposits minus withdrawals</p>
         </div>
+        {Object.entries(typeTotals).slice(0, 2).map(([type, total]) => (
+          <div key={type} className="bg-card rounded-xl border border-border p-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{type}</p>
+            <p className="text-lg font-bold font-mono mt-1">{privacyMode ? PM : formatCurrency(total)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{safeAccounts.filter(a => (a.account_type ?? a.type ?? 'Account') === type).length} account(s)</p>
+          </div>
+        ))}
       </div>
 
-      {/* Account Type Totals */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {Object.entries(typeTotals).map(([type, total]) => {
-          const count = safeAccounts.filter(a => (a.account_type ?? a.type ?? 'Account') === type).length;
-          return (
-            <div key={type} className="bg-card rounded-xl border border-border p-4">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{type} Total</p>
-              <p className="text-lg font-bold font-mono mt-1">{privacyMode ? PM : formatCurrency(total)}</p>
-              <p className="text-xs text-muted-foreground mt-1">{count} account{count > 1 ? 's' : ''}</p>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Grouped by Institution */}
       {Object.entries(grouped).map(([instId, accs]) => {
         const inst = getInstitution(instId);
         return (
-          <div key={instId} className="space-y-3">
-            <div className="flex items-center gap-3">
-              <InstitutionLogo institution={inst} id={instId} size="lg" />
-              <div>
-                <h2 className="font-semibold">{inst?.name}</h2>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Last synced: {(inst?.last_sync_time ?? inst?.lastSync) ? new Date(inst.last_sync_time ?? inst.lastSync).toLocaleString() : 'Never'}
-                </p>
+          <div key={instId} className="rounded-2xl border border-border bg-card/70 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-4 py-4">
+              <div className="flex items-center gap-3">
+                <InstitutionLogo institution={inst} id={instId} size="lg" />
+                <div>
+                  <h2 className="font-semibold">{inst?.name}</h2>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Last synced: {(inst?.last_sync_time ?? inst?.lastSync) ? new Date(inst.last_sync_time ?? inst.lastSync).toLocaleString() : 'Never'}
+                  </p>
+                </div>
               </div>
+              <p className="text-xs text-muted-foreground">{accs.length} connected account{accs.length === 1 ? '' : 's'}</p>
             </div>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {accs.map(acc => {
-                const nativeCurrency = acc.base_currency || 'CAD';
-                const accHoldings = liveHoldings.filter(h => (h.account_id ?? h.accountId) === acc.id && h.quantity > 0);
-                const holdingsValueNative = accHoldings.reduce((sum, h) => sum + safeNumber(h.market_value ?? h.marketValue ?? 0), 0);
-                const totalValueNative = holdingsValueNative + (acc.cash_balance ?? acc.cashBalance ?? 0);
-                const dailyPnlNative = accHoldings.reduce((sum, h) => sum + safeNumber(h.daily_pnl_amount ?? h.dailyPnl ?? 0), 0);
-
-                const convertedTotal = convert(totalValueNative, nativeCurrency);
-                const convertedHoldings = convert(holdingsValueNative, nativeCurrency);
-                const convertedDailyPnl = convert(dailyPnlNative, nativeCurrency);
-                const showConversion = nativeCurrency !== displayCurrency;
-                
-                // International account indicator
-                const instCountry = inst?.country;
-                const isInternational = instCountry && instCountry !== 'CA';
-
-                return (
-                  <div key={acc.id} className="bg-card rounded-xl border border-border p-5 hover:border-primary/30 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{acc.account_type ?? acc.type}</span>
-                          {isInternational && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20">
-                              US Account
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-2xl font-bold font-mono mt-2">{privacyMode ? PM : formatCurrency(convertedTotal)}</p>
-                        {showConversion && <p className="text-xs text-muted-foreground">{displayCurrency} equivalent</p>}
-                        {showConversion && !privacyMode && (
-                          <p className="text-[11px] text-muted-foreground/60 font-mono mt-0.5">
-                            {formatCurrency(totalValueNative)} {nativeCurrency} native
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5 ml-2 flex-shrink-0">
-                        {showConversion && (
-                          <span className="text-[10px] text-muted-foreground/50">{nativeCurrency} → {displayCurrency}</span>
-                        )}
-                        <button
-                          onClick={() => handleDeleteAccount(acc)}
-                          title="Delete account"
-                          className="p-1 rounded text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <DraggableTableHeader
+                  columns={ACCOUNT_COLUMNS}
+                  orderedColumnIds={accountColumnOrder}
+                  onOrderChange={setAccountColumnOrder}
+                  rowClassName="border-b border-border bg-secondary/30"
+                  cellClassName="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  renderCell={(column, dragHandleProps) => (
+                    <div className={cn('flex items-center gap-1.5', column.align === 'right' ? 'justify-end' : 'justify-start')}>
+                      <TableColumnGrip dragHandleProps={dragHandleProps} />
+                      <span>{column.label}</span>
                     </div>
+                  )}
+                />
+                <tbody>
+                  {accs.map(acc => {
+                    const nativeCurrency = acc.base_currency || 'CAD';
+                    const accHoldings = liveHoldings.filter(h => (h.account_id ?? h.accountId) === acc.id && safeNumber(h.quantity) > 0);
+                    const holdingsValueNative = accHoldings.reduce((sum, h) => sum + safeNumber(h.market_value ?? h.marketValue ?? 0), 0);
+                    const totalValueNative = holdingsValueNative + safeNumber(acc.cash_balance ?? acc.cashBalance ?? 0);
+                    const dailyPnlNative = accHoldings.reduce((sum, h) => sum + safeNumber(h.daily_pnl_amount ?? h.dailyPnl ?? 0), 0);
+                    const convertedTotal = convert(totalValueNative, nativeCurrency);
+                    const convertedHoldings = convert(holdingsValueNative, nativeCurrency);
+                    const convertedCash = convert(acc.cash_balance ?? acc.cashBalance ?? 0, nativeCurrency);
+                    const convertedDailyPnl = convert(dailyPnlNative, nativeCurrency);
 
-                    <div className="mt-4 space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground flex items-center gap-1"><Wallet className="w-3 h-3" /> Holdings</span>
-                        <div className="text-right">
-                          <span className="font-mono">{privacyMode ? PM : formatCurrency(convertedHoldings)}</span>
-                          {showConversion && !privacyMode && (
-                            <p className="text-[10px] text-muted-foreground/50 font-mono">{formatCurrency(holdingsValueNative)} {nativeCurrency}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Cash</span>
-                        <span className="font-mono">{privacyMode ? PM : formatCurrency(convert(acc.cash_balance ?? acc.cashBalance ?? 0, nativeCurrency))}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground flex items-center gap-1"><Hash className="w-3 h-3" /> Positions</span>
-                        <span className="font-mono">{accHoldings.length}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Daily P&L</span>
-                        <PnlValue value={convertedDailyPnl} className="text-xs" />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    return (
+                      <tr key={acc.id} className="border-b border-border/40 hover:bg-secondary/20 transition-colors">
+                        {accountColumnOrder.map((columnId) => {
+                          const align = ACCOUNT_COLUMNS.find(col => col.id === columnId)?.align === 'right' ? 'text-right' : 'text-left';
+                          if (columnId === 'name') {
+                            return (
+                              <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}>
+                                <div>
+                                  <p className="text-sm font-medium">{acc.account_name || `${acc.account_type ?? acc.type} Account`}</p>
+                                  <p className="text-[11px] text-muted-foreground">{inst?.country ? `${inst.country} institution` : 'Connected account'}</p>
+                                </div>
+                              </td>
+                            );
+                          }
+                          if (columnId === 'type') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{acc.account_type ?? acc.type}</span></td>;
+                          if (columnId === 'holdings') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 font-mono ${align}`}>{privacyMode ? PM : formatCurrency(convertedHoldings)}</td>;
+                          if (columnId === 'cash') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 font-mono ${align}`}>{privacyMode ? PM : formatCurrency(convertedCash)}</td>;
+                          if (columnId === 'total') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 font-mono font-semibold ${align}`}>{privacyMode ? PM : formatCurrency(convertedTotal)}</td>;
+                          if (columnId === 'dailyPnl') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}><PnlValue value={convertedDailyPnl} className="justify-end" /></td>;
+                          if (columnId === 'currency') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}><span className="font-mono text-xs">{nativeCurrency}</span></td>;
+                          if (columnId === 'actions') {
+                            return (
+                              <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-1.5 text-xs text-destructive/80 hover:text-destructive"
+                                  onClick={() => handleDeleteAccount(acc)}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  Remove
+                                </Button>
+                              </td>
+                            );
+                          }
+                          return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}>—</td>;
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         );
       })}
 
-      {/* Precious Metals Breakdown Section */}
-      {customAssets.some(a => a.asset_type === 'Precious Metals') && (
-        <div className="space-y-3">
-          <h2 className="font-semibold">Precious Metals Portfolio</h2>
-          <MetalsBreakdownSection customAssets={customAssets} />
+      {customAssets.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card/70 overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-4">
+            <div>
+              <h2 className="font-semibold">Custom Assets</h2>
+              <p className="text-xs text-muted-foreground">Manually tracked assets, cards, metals, and private holdings.</p>
+            </div>
+            <p className="text-xs text-muted-foreground">{customAssets.length} asset{customAssets.length === 1 ? '' : 's'}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <DraggableTableHeader
+                columns={CUSTOM_ASSET_COLUMNS}
+                orderedColumnIds={customAssetColumnOrder}
+                onOrderChange={setCustomAssetColumnOrder}
+                rowClassName="border-b border-border bg-secondary/30"
+                cellClassName="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                renderCell={(column, dragHandleProps) => (
+                  <div className={cn('flex items-center gap-1.5', column.align === 'right' ? 'justify-end' : 'justify-start')}>
+                    <TableColumnGrip dragHandleProps={dragHandleProps} />
+                    <span>{column.label}</span>
+                  </div>
+                )}
+              />
+              <tbody>
+                {customAssets.map((asset) => (
+                  <tr key={asset.id} className="border-b border-border/40 hover:bg-secondary/20 transition-colors">
+                    {customAssetColumnOrder.map((columnId) => {
+                      const align = CUSTOM_ASSET_COLUMNS.find(col => col.id === columnId)?.align === 'right' ? 'text-right' : 'text-left';
+                      if (columnId === 'asset') {
+                        return (
+                          <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 ${align}`}>
+                            <div>
+                              <p className="text-sm font-medium">{asset.asset_name}</p>
+                              <p className="text-[11px] text-muted-foreground truncate max-w-[240px]">{asset.location || asset.description || 'Custom tracked asset'}</p>
+                            </div>
+                          </td>
+                        );
+                      }
+                      if (columnId === 'type') return <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 ${align}`}>{asset.asset_type}</td>;
+                      if (columnId === 'gross') return <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 font-mono ${align}`}>{privacyMode ? PM : formatCurrency(convert(asset.chosen_value || 0, asset.currency || 'USD'))}</td>;
+                      if (columnId === 'liability') return <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 font-mono ${align}`}>{privacyMode ? PM : formatCurrency(convert(asset.liability_amount || 0, asset.currency || 'USD'))}</td>;
+                      if (columnId === 'net') return <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 font-mono font-semibold ${align}`}>{privacyMode ? PM : formatCurrency(convert(asset.net_value || 0, asset.currency || 'USD'))}</td>;
+                      if (columnId === 'currency') return <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 ${align}`}><span className="font-mono text-xs">{asset.currency || 'USD'}</span></td>;
+                      if (columnId === 'status') return <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 ${align}`}><span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium', asset.include_in_net_value !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-secondary text-muted-foreground')}>{asset.include_in_net_value !== false ? 'Included' : 'Excluded'}</span></td>;
+                      if (columnId === 'actions') {
+                        return (
+                          <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 ${align}`}>
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => handleEdit(asset)}>
+                                <Pencil className="w-3 h-3" />
+                                Edit
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs text-destructive/80 hover:text-destructive" onClick={() => deleteMutation.mutate(asset.id)}>
+                                <Trash2 className="w-3 h-3" />
+                                Delete
+                              </Button>
+                            </div>
+                          </td>
+                        );
+                      }
+                      return <td key={`${asset.id}-${columnId}`} className={`px-4 py-3 ${align}`}>—</td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* Custom Assets Section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold">All Custom Assets</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Manually tracked assets like property, vehicles, and more</p>
-          </div>
-          <Button size="sm" variant="outline" onClick={() => setShowModal(true)} className="gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Add Asset
-          </Button>
-        </div>
+      <MetalsBreakdownSection customAssets={customAssets} />
 
-        {customAssets.length === 0 ? (
-          <div className="bg-card rounded-xl border border-border border-dashed p-10 text-center">
-            <p className="text-sm text-muted-foreground">No custom assets added yet.</p>
-            <p className="text-xs text-muted-foreground/60 mt-1 mb-4">Track real estate, vehicles, precious metals, and more.</p>
-            <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
-              <Plus className="w-3.5 h-3.5" /> Add your first custom asset
-            </Button>
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {customAssets.filter(a => a.asset_type !== 'Precious Metals').map(asset => (
-              <CustomAssetCard
-                key={asset.id}
-                asset={asset}
-                onEdit={handleEdit}
-                onDelete={(id) => deleteMutation.mutate(id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Modal */}
       {showModal && (
         <AssetAppraisalModal
           onClose={handleCloseModal}
@@ -405,25 +427,18 @@ export default function Accounts() {
         />
       )}
 
-      {/* Confirm account delete dialog */}
-      <AlertDialog open={!!pendingDeleteAcc} onOpenChange={(open) => { if (!open && !deletingAcc) setPendingDeleteAcc(null); }}>
+      <AlertDialog open={Boolean(pendingDeleteAcc)} onOpenChange={(open) => !open && setPendingDeleteAcc(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete account?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the
-              <strong className="text-foreground"> {pendingDeleteAcc?.account_type ?? pendingDeleteAcc?.type} </strong>
-              account and all its holdings, transactions, and import history. This cannot be undone.
+              This removes the imported account, its holdings, realized positions, and transactions from your portfolio.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletingAcc}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDeleteAccount}
-              disabled={deletingAcc}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              {deletingAcc ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Deleting…</> : 'Yes, delete'}
+            <AlertDialogAction onClick={confirmDeleteAccount} disabled={deletingAcc} className="bg-destructive hover:bg-destructive/90">
+              {deletingAcc ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete Account'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
