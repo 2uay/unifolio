@@ -134,7 +134,7 @@ export function ThemeProvider({ children }) {
     const theme = themes[selectedTheme];
     if (!theme?.isLiving || !theme?.living) return;
 
-    const { primaryBaseHue, shiftSpeed, saturation, lightness, chartHueOffsets, chartSat, chartLight } = theme.living;
+    const { primaryBaseHue, shiftSpeed, saturation, lightness, chartHueOffsets, chartSat, chartLight, ringOffset = 20, accentOffset } = theme.living;
     const root = document.documentElement;
     let startTime = null;
 
@@ -143,7 +143,11 @@ export function ThemeProvider({ children }) {
       const elapsed = (now - startTime) / 1000;
       const hue = (primaryBaseHue + elapsed * shiftSpeed) % 360;
       root.style.setProperty('--primary', `${hue.toFixed(1)} ${saturation}% ${lightness}%`);
-      root.style.setProperty('--ring', `${((hue + 20) % 360).toFixed(1)} ${saturation}% ${lightness}%`);
+      root.style.setProperty('--ring', `${((hue + ringOffset) % 360).toFixed(1)} ${saturation}% ${lightness}%`);
+      if (accentOffset !== undefined) {
+        const ah = (hue + accentOffset) % 360;
+        root.style.setProperty('--wave-color-2', `${ah.toFixed(1)} ${saturation}% ${lightness}%`);
+      }
       if (chartHueOffsets) {
         chartHueOffsets.forEach((offset, i) => {
           const ch = (hue + offset) % 360;

@@ -637,7 +637,7 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
             background:
               radial-gradient(circle at var(--wave-x) var(--wave-y), hsl(var(--primary) / ${strong ? '0.30' : '0.18'}) 0%, transparent 36%),
               radial-gradient(circle at calc(var(--wave-x) + 18%) calc(var(--wave-y) + 8%), hsl(var(--ring) / ${strong ? '0.18' : '0.12'}) 0%, transparent 38%),
-              radial-gradient(circle at calc(var(--wave-x) - 16%) calc(var(--wave-y) + 10%), hsl(var(--accent) / ${strong ? '0.18' : '0.11'}) 0%, transparent 40%),
+              radial-gradient(circle at calc(var(--wave-x) - 16%) calc(var(--wave-y) + 10%), hsl(var(--wave-color-2, var(--accent)) / ${strong ? '0.22' : '0.14'}) 0%, transparent 42%),
               linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background)) 55%, hsl(var(--primary) / ${strong ? '0.10' : '0.07'}) 100%);
           `}
         }
@@ -647,7 +647,7 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
           transform: translateY(calc(36% - var(--wave-lift) * 0.16));
           background:
             radial-gradient(ellipse at var(--wave-x) -10%, hsl(var(--primary) / ${strong ? '0.42' : '0.28'}) 0%, transparent 34%),
-            radial-gradient(ellipse at calc(var(--wave-x) - 22%) 8%, hsl(var(--accent) / ${strong ? '0.26' : '0.16'}) 0%, transparent 36%),
+            radial-gradient(ellipse at calc(var(--wave-x) - 22%) 8%, hsl(var(--wave-color-2, var(--accent)) / ${strong ? '0.30' : '0.20'}) 0%, transparent 38%),
             radial-gradient(ellipse at calc(var(--wave-x) + 25%) 12%, hsl(var(--ring) / ${strong ? '0.22' : '0.14'}) 0%, transparent 37%),
             linear-gradient(180deg, hsl(var(--primary) / ${strong ? '0.20' : '0.12'}) 0%, hsl(var(--card) / ${strong ? '0.18' : '0.10'}) 56%, transparent 100%);
           border-top: 1px solid hsl(var(--primary) / ${strong ? '0.28' : '0.18'});
@@ -680,7 +680,7 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
             background:
               radial-gradient(ellipse at var(--wave-x) 110%, hsl(var(--primary) / 0.35) 0%, transparent 55%),
               radial-gradient(ellipse at calc(var(--wave-x) - 20%) 115%, hsl(var(--ring) / 0.20) 0%, transparent 45%),
-              radial-gradient(ellipse at calc(var(--wave-x) + 22%) 115%, hsl(var(--accent) / 0.18) 0%, transparent 45%);
+              radial-gradient(ellipse at calc(var(--wave-x) + 22%) 115%, hsl(var(--wave-color-2, var(--accent)) / 0.22) 0%, transparent 47%);
             filter: grayscale(1) contrast(0.9) brightness(0.85);
             mask-image: radial-gradient(circle 300px at var(--cursor-x) var(--cursor-y), black 0%, rgba(0,0,0,0.7) 35%, rgba(0,0,0,0.25) 65%, transparent 100%);
             -webkit-mask-image: radial-gradient(circle 300px at var(--cursor-x) var(--cursor-y), black 0%, rgba(0,0,0,0.7) 35%, rgba(0,0,0,0.25) 65%, transparent 100%);
