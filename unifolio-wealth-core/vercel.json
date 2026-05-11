@@ -1,3 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/((?!plans|pro|_next|favicon|assets|api).*)",
+      "has": [{ "type": "host", "value": "unifolio.pro" }],
+      "destination": "/plans",
+      "permanent": false
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
