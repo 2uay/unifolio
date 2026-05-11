@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, Building2, TrendingUp,
   ArrowLeftRight, Lightbulb, Zap, Link2, Settings, X,
-  CreditCard, LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem, Users,
+  LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem, Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -22,7 +22,6 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/holdings', label: 'Holdings', icon: Briefcase },
   { path: '/accounts', label: 'Accounts', icon: Building2 },
-  { path: '/debts', label: 'Debts & Balances', icon: CreditCard },
   { path: '/performance', label: 'Performance', icon: TrendingUp },
   { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { path: '/insights', label: 'Insights', icon: Lightbulb },
@@ -32,7 +31,7 @@ const navItems = [
 ];
 
 const utilityNavItems = [
-  { path: '/plans', label: 'Plans & Pricing', icon: Gem, href: 'https://unifolio.pro' },
+  { path: '/plans', label: 'Plans & Pricing', icon: Gem },
   { path: '/community', label: 'Community', icon: Users },
   { path: '/instructions', label: 'Instructions', icon: BookOpen },
   { path: '/privacy', label: 'Privacy & Data', icon: Shield },

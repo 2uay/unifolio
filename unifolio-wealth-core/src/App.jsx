@@ -24,7 +24,6 @@ import CustomCursor from '@/components/shared/CustomCursor';
 import Dashboard from '@/pages/Dashboard';
 import Holdings from '@/pages/Holdings';
 import Accounts from '@/pages/Accounts';
-import DebtsAndBalances from '@/pages/DebtsAndBalances';
 import Performance from '@/pages/Performance';
 import Transactions from '@/pages/Transactions';
 import Insights from '@/pages/Insights';
@@ -36,6 +35,7 @@ import TaxReport from '@/pages/TaxReport';
 import Settings from '@/pages/Settings';
 import Profile from '@/pages/Profile';
 import ProLanding from '@/pages/ProLanding';
+import Plans from '@/pages/Plans';
 import ResetPassword from '@/pages/ResetPassword';
 import Welcome from '@/pages/Welcome';
 import Community from '@/pages/Community';
@@ -68,7 +68,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<Dashboard />} />
         <Route path="/holdings" element={<Holdings />} />
         <Route path="/accounts" element={<Accounts />} />
-        <Route path="/debts" element={<DebtsAndBalances />} />
+        {/* <Route path="/debts" element={<DebtsAndBalances />} /> */}
         <Route path="/performance" element={<Performance />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/insights" element={<Insights />} />
@@ -76,6 +76,7 @@ const AuthenticatedApp = () => {
         <Route path="/instructions" element={<Instructions />} />
         <Route path="/privacy" element={<PrivacyAndData />} />
         <Route path="/community" element={<Community />} />
+        <Route path="/plans" element={<Plans />} />
         <Route path="/import" element={<ImportCenter />} />
         <Route path="/tax" element={<TaxReport />} />
         <Route path="/settings" element={<Settings />} />

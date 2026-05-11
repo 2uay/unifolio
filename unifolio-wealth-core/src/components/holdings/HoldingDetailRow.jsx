@@ -28,72 +28,62 @@ export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal 
     return rows.find(r => normalizeTicker(r.ticker) === thisTicker) || null;
   }, [allHoldings, portfolioTotal, convert, holding.ticker]);
 
+  const Dot = () => <span className="text-border/60 select-none">·</span>;
+
   return (
     <tr>
       <td colSpan={100} className="p-0">
-        <div className="bg-secondary/10 border-b border-border p-3 md:p-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* Position Details */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Position Details</h3>
-              <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
-                <span className="text-muted-foreground">Market Value</span>
-                <span className="font-mono text-right">{privacyMode ? PM : formatCurrency(convert(marketValue, nativeCurrency))}</span>
-                <span className="text-muted-foreground">Cost Basis</span>
-                <span className="font-mono text-right">{privacyMode ? PM : formatCurrency(convert(safeNumber(holding.cost_basis ?? holding.costBasis), nativeCurrency))}</span>
-                <span className="text-muted-foreground">Unrealized P&L</span>
-                <PnlValue value={unrealizedAmt} className="text-right block" />
-                <span className="text-muted-foreground">Realized P&L</span>
-                <PnlValue value={holding.realized_gain_loss_amount ?? holding.realizedGain} className="text-right block" />
-                <span className="text-muted-foreground">Account Type</span>
-                <span className="text-right text-primary">{acc?.account_type ?? acc?.type ?? '—'}</span>
-                <span className="text-muted-foreground">Institution</span>
-                <span className="text-right">{inst?.name ?? '—'}</span>
-                <span className="text-muted-foreground">Currency</span>
-                <span className="text-right">{holding.currency}</span>
-                <span className="text-muted-foreground">Asset Class</span>
-                <span className="text-right">{holding.asset_class ?? holding.assetClass}</span>
-                <span className="text-muted-foreground">Sector</span>
-                <span className="text-right">{holding.sector}</span>
-              </div>
-            </div>
+        <div className="bg-secondary/10 border-b border-border px-4 py-2 space-y-1.5">
 
-            {/* Purchase History */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Purchase History</h3>
-              {purchaseHistory.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
-                  {purchaseHistory.map((p, i) => (
-                    <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-card border border-border text-xs">
-                      <span className="text-[9px] font-semibold w-8 shrink-0" style={{ color: '#a78bfa' }}>Lot {i + 1}</span>
-                      <span className="text-muted-foreground">{new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
-                      <span className="font-mono text-emerald-400 ml-auto">+{safeNumber(p.qty ?? p.quantity)}</span>
-                      <span className="text-muted-foreground">@</span>
-                      <span className="font-mono">{privacyMode ? '••••' : '$' + safeNumber(p.price).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground/50">No purchase history available.</p>
-              )}
-            </div>
+          {/* Single dense stat row */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="text-muted-foreground/60 uppercase tracking-wider text-[10px] font-medium shrink-0">Position</span>
+            <Dot />
+            <span className="text-muted-foreground">Mkt Val <span className="font-mono text-foreground">{privacyMode ? PM : formatCurrency(convert(marketValue, nativeCurrency))}</span></span>
+            <Dot />
+            <span className="text-muted-foreground">Cost <span className="font-mono text-foreground">{privacyMode ? PM : formatCurrency(convert(safeNumber(holding.cost_basis ?? holding.costBasis), nativeCurrency))}</span></span>
+            <Dot />
+            <span className="text-muted-foreground">Unreal. <PnlValue value={unrealizedAmt} className="inline" /></span>
+            <Dot />
+            <span className="text-muted-foreground">Real. <PnlValue value={holding.realized_gain_loss_amount ?? holding.realizedGain} className="inline" /></span>
+            <Dot />
+            {(acc?.account_type ?? acc?.type) && <span className="text-primary font-medium">{acc?.account_type ?? acc?.type}</span>}
+            {(acc?.account_type ?? acc?.type) && <Dot />}
+            {inst?.name && <span className="text-muted-foreground">{inst.name}</span>}
+            {inst?.name && <Dot />}
+            {holding.currency && <span className="text-muted-foreground">{holding.currency}</span>}
+            {(holding.asset_class ?? holding.assetClass) && <><Dot /><span className="text-muted-foreground">{holding.asset_class ?? holding.assetClass}</span></>}
+            {holding.sector && <><Dot /><span className="text-muted-foreground">{holding.sector}</span></>}
           </div>
+
+          {/* Purchase lots — horizontal pills */}
+          {purchaseHistory.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-muted-foreground/60 uppercase tracking-wider text-[10px] font-medium shrink-0 mr-1">Lots</span>
+              {purchaseHistory.map((p, i) => (
+                <div key={i} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border border-border text-[11px]">
+                  <span className="font-semibold text-[9px]" style={{ color: '#a78bfa' }}>L{i + 1}</span>
+                  <span className="text-muted-foreground">{new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                  <span className="font-mono text-emerald-400">+{safeNumber(p.qty ?? p.quantity)}</span>
+                  <span className="font-mono text-muted-foreground">@{privacyMode ? '••••' : '$' + safeNumber(p.price).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ETF True Exposure */}
           {overlapRow && (
-            <div className={`mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-3 py-2 text-xs ${overlapRow.isHighConcentration ? 'border-amber-500/40 bg-amber-500/8' : 'border-border/50 bg-secondary/20'}`}>
-              <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">True Exposure</span>
+            <div className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md border px-2.5 py-1 text-[11px] ${overlapRow.isHighConcentration ? 'border-amber-500/40 bg-amber-500/5' : 'border-border/40 bg-secondary/10'}`}>
+              <span className="text-muted-foreground/60 uppercase tracking-wider text-[9px] font-medium">Exposure</span>
               <span className="text-muted-foreground">Direct <span className="font-mono text-foreground">{safeNumber(overlapRow.directPct).toFixed(2)}%</span></span>
-              <span className="text-muted-foreground/50">+</span>
-              <span className="text-muted-foreground">Via ETFs <span className="font-mono text-foreground">{safeNumber(overlapRow.etfPct).toFixed(2)}%</span></span>
-              <span className="text-muted-foreground/50">=</span>
+              <span className="text-border/50">+</span>
+              <span className="text-muted-foreground">ETFs <span className="font-mono text-foreground">{safeNumber(overlapRow.etfPct).toFixed(2)}%</span></span>
+              <span className="text-border/50">=</span>
               <span className={`font-semibold font-mono ${overlapRow.isHighConcentration ? 'text-amber-400' : 'text-foreground'}`}>
-                {overlapRow.isHighConcentration && '⚠ '}{safeNumber(overlapRow.totalPct).toFixed(2)}% total
+                {overlapRow.isHighConcentration && '⚠ '}{safeNumber(overlapRow.totalPct).toFixed(2)}%
               </span>
               {overlapRow.sources?.length > 0 && (
-                <span className="text-muted-foreground/70 text-[10px]">
-                  via {overlapRow.sources.join(', ')}
-                </span>
+                <span className="text-muted-foreground/50 text-[10px]">via {overlapRow.sources.join(', ')}</span>
               )}
             </div>
           )}
