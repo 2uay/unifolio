@@ -1,10 +1,16 @@
 {
   "redirects": [
     {
-      "source": "/((?!plans|pro|_next|favicon|assets|api).*)",
-      "has": [{ "type": "host", "value": "unifolio.pro" }],
-      "destination": "/plans",
-      "permanent": false
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "www.unifolio.pro" }],
+      "destination": "https://unifolio.pro/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "www.unifolio.ca" }],
+      "destination": "https://unifolio.ca/$1",
+      "permanent": true
     }
   ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]

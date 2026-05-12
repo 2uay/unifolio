@@ -63,6 +63,7 @@ export default function PlaidConnectButton({ onSuccess, className }) {
   const [linkToken, setLinkToken] = useState(null);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!user || !isPro) return;
@@ -82,27 +83,46 @@ export default function PlaidConnectButton({ onSuccess, className }) {
           if (d.link_token) setLinkToken(d.link_token);
           else setError(d.error || 'Could not start Plaid Link');
         })
-        .catch(() => { if (!cancelled) setError('Network error fetching link token'); })
+        .catch(() => { if (!cancelled) setError('Network error — check connection'); })
         .finally(() => { if (!cancelled) setFetching(false); });
     });
     return () => { cancelled = true; };
-  }, [user?.id, isPro]);
+  }, [user?.id, isPro, attempt]);
 
   if (!isPro) return null;
 
-  return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      {fetching || !linkToken ? (
+  if (fetching) {
+    return (
+      <div className={cn('flex flex-col gap-1.5', className)}>
         <Button disabled className="gap-2 bg-primary text-primary-foreground opacity-70">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading…
         </Button>
-      ) : (
+      </div>
+    );
+  }
+
+  if (linkToken) {
+    return (
+      <div className={cn('flex flex-col gap-1.5', className)}>
         <PlaidLinkOpener
           linkToken={linkToken}
           onSuccess={() => { setLinkToken(null); onSuccess?.(); }}
           onError={setError}
         />
-      )}
+        {error && <p className="text-xs text-red-400">{error}</p>}
+      </div>
+    );
+  }
+
+  // No token yet (initial state or after error) — show connect button that triggers fetch
+  return (
+    <div className={cn('flex flex-col gap-1.5', className)}>
+      <Button
+        onClick={() => setAttempt(a => a + 1)}
+        className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+      >
+        <Link2 className="w-4 h-4" /> Connect a Brokerage
+      </Button>
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );

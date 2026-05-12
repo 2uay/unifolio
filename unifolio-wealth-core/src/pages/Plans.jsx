@@ -71,7 +71,9 @@ const WHY_ITEMS = [
   },
 ];
 
-function PlanCard({ title, badge, badgeColor, price, priceSub, description, features, cta, ctaStyle, icon: Icon, highlighted }) {
+const APP_URL = 'https://unifolio.ca';
+
+function PlanCard({ title, badge, badgeColor, price, priceSub, description, features, cta, ctaStyle, ctaHref, icon: Icon, highlighted }) {
   return (
     <div
       className={cn(
@@ -107,14 +109,15 @@ function PlanCard({ title, badge, badgeColor, price, priceSub, description, feat
         </div>
 
         {/* CTA */}
-        <button
+        <a
+          href={ctaHref || APP_URL}
           className={cn(
-            'w-full py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95',
+            'w-full py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95 text-center block',
             ctaStyle,
           )}
         >
           {cta}
-        </button>
+        </a>
       </div>
 
       {/* Divider */}
@@ -137,6 +140,9 @@ function PlanCard({ title, badge, badgeColor, price, priceSub, description, feat
   );
 }
 
+const isOnProDomain = typeof window !== 'undefined' &&
+  (window.location.hostname === 'unifolio.pro' || window.location.hostname === 'www.unifolio.pro');
+
 export default function Plans({ logoSlot = null }) {
   const [billing, setBilling] = useState('annual');
   const { chartColors } = useTheme();
@@ -157,9 +163,10 @@ export default function Plans({ logoSlot = null }) {
       highlighted: false,
       price: 'Free',
       priceSub: null,
-      description: 'Get started at unifolio.pro — no card required.',
+      description: 'Get started free — no card required.',
       features: PLAN_FEATURES.starter,
-      cta: 'Use for Free',
+      cta: 'Go to unifolio.ca',
+      ctaHref: APP_URL,
       ctaStyle: 'border border-border text-foreground hover:bg-secondary',
     },
     {
@@ -178,6 +185,7 @@ export default function Plans({ logoSlot = null }) {
         : `Switch to annual to save ${annualSavingsPct}%.`,
       features: PLAN_FEATURES.pro,
       cta: 'Start 7-Day Free Trial',
+      ctaHref: `${APP_URL}/?plan=pro`,
       ctaStyle: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_24px_hsl(var(--primary)/0.30)]',
     },
     {
@@ -192,12 +200,25 @@ export default function Plans({ logoSlot = null }) {
       description: 'Pay once. Own Unifolio Pro forever.',
       features: PLAN_FEATURES.lifetime,
       cta: 'Buy Lifetime Access',
+      ctaHref: `${APP_URL}/?plan=lifetime`,
       ctaStyle: 'bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20',
     },
   ];
 
   return (
     <div className="min-h-screen px-4 py-10 md:py-16 max-w-5xl mx-auto">
+      {/* Sign-in link when shown standalone on unifolio.pro */}
+      {isOnProDomain && (
+        <div className="flex justify-end mb-4">
+          <a
+            href={APP_URL}
+            className="text-sm text-muted-foreground hover:text-foreground border border-border/40 hover:border-border bg-card/60 backdrop-blur-sm px-4 py-1.5 rounded-xl transition-all"
+          >
+            Sign In →
+          </a>
+        </div>
+      )}
+
       {/* Hero */}
       <div className="text-center mb-10">
         {logoSlot && <div className="flex justify-center mb-6">{logoSlot}</div>}

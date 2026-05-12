@@ -40,9 +40,17 @@ import ResetPassword from '@/pages/ResetPassword';
 import Welcome from '@/pages/Welcome';
 import Community from '@/pages/Community';
 
+const isProDomain = typeof window !== 'undefined' &&
+  (window.location.hostname === 'unifolio.pro' || window.location.hostname === 'www.unifolio.pro');
+
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, isDemoMode } = useAuth();
   const location = useLocation();
+
+  // unifolio.pro always shows the Plans/pricing page regardless of auth state
+  if (isProDomain) {
+    return <Plans />;
+  }
 
   // Password reset link — must be reachable without auth
   if (location.pathname === '/reset-password') {

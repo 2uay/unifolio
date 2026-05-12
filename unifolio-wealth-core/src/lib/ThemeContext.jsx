@@ -134,26 +134,53 @@ export function ThemeProvider({ children }) {
     const theme = themes[selectedTheme];
     if (!theme?.isLiving || !theme?.living) return;
 
-    const { primaryBaseHue, shiftSpeed, saturation, lightness, chartHueOffsets, chartSat, chartLight, ringOffset = 20, accentOffset } = theme.living;
+    const { primaryBaseHue, shiftSpeed, saturation, lightness, chartHueOffsets, chartSat, chartLight, ringOffset = 20, accentOffset, oscillateRange } = theme.living;
     const root = document.documentElement;
+    const isPro = !!theme.pro;
     let startTime = null;
 
     const tick = (now) => {
       if (!startTime) startTime = now;
       const elapsed = (now - startTime) / 1000;
-      const hue = (primaryBaseHue + elapsed * shiftSpeed) % 360;
-      root.style.setProperty('--primary', `${hue.toFixed(1)} ${saturation}% ${lightness}%`);
-      root.style.setProperty('--ring', `${((hue + ringOffset) % 360).toFixed(1)} ${saturation}% ${lightness}%`);
-      if (accentOffset !== undefined) {
-        const ah = (hue + accentOffset) % 360;
-        root.style.setProperty('--wave-color-2', `${ah.toFixed(1)} ${saturation}% ${lightness}%`);
+
+      let hue, ringHue, accentHue;
+      if (oscillateRange !== undefined) {
+        // Bounded oscillation — stays within color family, each channel at a different phase
+        hue = ((primaryBaseHue + Math.sin(elapsed * shiftSpeed) * oscillateRange) + 360) % 360;
+        ringHue = ((primaryBaseHue + ringOffset + Math.sin(elapsed * shiftSpeed * 1.27 + 0.8) * oscillateRange * 0.8) + 360) % 360;
+        if (accentOffset !== undefined) {
+          accentHue = ((primaryBaseHue + accentOffset + Math.sin(elapsed * shiftSpeed * 0.93 + 1.6) * oscillateRange * 0.9) + 360) % 360;
+        }
+      } else {
+        hue = (primaryBaseHue + elapsed * shiftSpeed) % 360;
+        ringHue = (hue + ringOffset) % 360;
+        if (accentOffset !== undefined) accentHue = (hue + accentOffset) % 360;
       }
+
+      root.style.setProperty('--primary', `${hue.toFixed(1)} ${saturation}% ${lightness}%`);
+      root.style.setProperty('--ring', `${ringHue.toFixed(1)} ${saturation}% ${lightness}%`);
+      if (accentHue !== undefined) {
+        root.style.setProperty('--wave-color-2', `${accentHue.toFixed(1)} ${saturation}% ${lightness}%`);
+      }
+
       if (chartHueOffsets) {
         chartHueOffsets.forEach((offset, i) => {
-          const ch = (hue + offset) % 360;
+          let ch;
+          if (oscillateRange !== undefined) {
+            ch = ((primaryBaseHue + offset + Math.sin(elapsed * shiftSpeed * 0.7 + i * 0.5) * oscillateRange * 0.4) + 360) % 360;
+          } else {
+            ch = (hue + offset) % 360;
+          }
           root.style.setProperty(`--chart-${i + 1}`, `${ch.toFixed(1)} ${chartSat}% ${chartLight}%`);
         });
       }
+
+      // Pro themes: all logo dots animate as a single unified color (the primary hue)
+      if (isPro) {
+        const dotColor = `hsl(${hue.toFixed(1)} ${saturation}% ${lightness}%)`;
+        for (let d = 1; d <= 12; d++) root.style.setProperty(`--logo-dot-${d}`, dotColor);
+      }
+
       livingRafRef.current = requestAnimationFrame(tick);
     };
     livingRafRef.current = requestAnimationFrame(tick);
