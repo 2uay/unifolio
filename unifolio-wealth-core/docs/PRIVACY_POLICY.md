@@ -75,8 +75,8 @@ All data is encrypted **at rest** (AES-256 via AWS KMS, managed by Supabase) and
 | Data | Retention |
 |---|---|
 | Active account data | While your account is active |
-| Account data after deletion request | Hard-deleted within **24 hours** from `holdings`, `realized_positions`, `transactions`, `import_batches`, `watchlist`, `accounts`, `institutions`, `user_profiles`, and the Supabase Storage `avatars` bucket. |
-| Plaid access tokens after deletion | Revoked via Plaid `/item/remove` **immediately** when the user explicitly disconnects an Item from Settings (a separate user action prompted before account-wide deletion). Removal of the `plaid_items` database row and of the `auth.users` record from the full-account-delete cascade is on the Q3 2026 roadmap (see `DATA_RETENTION_POLICY.md` §3.1). |
+| Account data after deletion request | Hard-deleted within **24 hours** from `holdings`, `realized_positions`, `transactions`, `import_batches`, `watchlist`, `accounts`, `institutions`, `user_profiles`, `plaid_items`, the Supabase Storage `avatars` bucket, and the `auth.users` authentication record. After deletion the user cannot sign back in. |
+| Plaid access tokens after deletion | Revoked via Plaid's `/item/remove` API **automatically and immediately** as part of the full-account-delete cascade (the `/api/account/delete-all` serverless function loops over every `plaid_items` row and revokes each before deleting the database row). Tokens are also revoked when the user explicitly disconnects an individual Item from Settings without deleting the account. |
 | Operational audit signals (Supabase Auth audit log, Postgres logs, Vercel function logs) | Per Supabase tier policy (currently 7 days on Free; longer on Pro) |
 | Backup copies (Supabase automated daily backups, retention per Supabase tier) | Cycled out per Supabase backup rotation (currently 7 days on Free tier) |
 | Marketing email opt-in records (if applicable) | Until withdrawn + 30-day suppression list |

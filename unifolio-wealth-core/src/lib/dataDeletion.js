@@ -244,6 +244,32 @@ export async function deleteImportedAccountData(accountId, userId) {
   })();
 }
 
+// Server endpoint that revokes Plaid Items and deletes the auth.users row.
+// The browser cannot do either directly (both require service-role / admin
+// privileges), so we hand off to a Vercel serverless function with the
+// user's session JWT for authorization.
+async function callDeleteAccountEndpoint() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      console.warn('[DataDeletion] No session token available for full account delete');
+      return null;
+    }
+    const res = await withTimeout(fetch('/api/account/delete-all', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    }), DELETE_TIMEOUT_MS, 'Account delete endpoint');
+    if (!res?.ok && res?.status !== 207) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.error || `HTTP ${res.status}`);
+    }
+    return res.json().catch(() => ({}));
+  } catch (err) {
+    console.warn('[DataDeletion] Account delete endpoint failed:', err?.message || err);
+    return null;
+  }
+}
+
 export async function deleteAllUserPortfolioData(userId) {
   if (!userId) {
     markAllDeletedLocally(userId);
@@ -257,6 +283,7 @@ export async function deleteAllUserPortfolioData(userId) {
   window.dispatchEvent(new CustomEvent('unifolio:portfolio-imported', { detail: { deletedAll: true } }));
 
   void (async () => {
+    // Step 1: clear app data tables via the Postgres RPC (or client fallback).
     try {
       await runDeleteRpc('delete_unifolio_user_data');
     } catch (rpcError) {
@@ -267,5 +294,16 @@ export async function deleteAllUserPortfolioData(userId) {
         console.warn('[DataDeletion] Background full cleanup still pending:', clientError?.message || clientError);
       }
     }
+
+    // Step 2: revoke Plaid Items + delete auth.users row via the server
+    // endpoint (requires service-role + Plaid client secret — both server-only).
+    // After this completes, the user account is fully gone — they cannot
+    // sign back in, and their Plaid access tokens are invalidated at the
+    // bank end as well.
+    await callDeleteAccountEndpoint();
+
+    // Force any remaining session to terminate immediately so the UI
+    // reflects the deletion and the user lands on the public Welcome page.
+    try { await supabase.auth.signOut(); } catch { /* ignore */ }
   })();
 }
