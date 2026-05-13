@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import {
   parseFile, parseRows, parseHoldingsRows, composeParsedImports, verifyParsedSecurities, BROKER_LABELS, FIELD_LABELS,
 } from '@/lib/csvParser';
-import { applySecurityChoice, buildSecurityAmbiguities } from '@/lib/securityIdentity';
+import { applySecurityChoice, buildSecurityAmbiguities, buildDualListingGroups, reassignRowIdentity } from '@/lib/securityIdentity';
 import { setManualListing } from '@/lib/listingResolver';
 import { bankExportInstructions, downloadInstructionAsset } from '@/lib/bankExportInstructions';
 import { saveParsedImport } from '@/lib/importPersistence';
@@ -511,14 +511,47 @@ function applyAccountResolutions(parsed, resolutions) {
   };
 }
 
-function getSecurityAmbiguities(parsed) {
+function getAllParsedRows(parsed) {
   const bundle = parsed?.importBundle || {};
-  const rows = [
+  return [
     ...(bundle.positions || parsed?.valid || []),
     ...(bundle.transactions || []),
     ...(bundle.realizedPositions || []),
   ];
-  return bundle.securityAmbiguities || buildSecurityAmbiguities(rows);
+}
+
+function getSecurityAmbiguities(parsed) {
+  const bundle = parsed?.importBundle || {};
+  return bundle.securityAmbiguities || buildSecurityAmbiguities(getAllParsedRows(parsed));
+}
+
+function getDualListingGroups(parsed) {
+  return buildDualListingGroups(getAllParsedRows(parsed));
+}
+
+function applyDualListingOverrides(parsed, rowOverrides) {
+  // rowOverrides: { [rowId]: targetIdentity ('cdr' | 'us' | 'tsx') }
+  if (!rowOverrides || Object.keys(rowOverrides).length === 0) return parsed;
+  const patch = (rows) => (rows || []).map(row => {
+    const id = row.id || row.tradeId || row.transaction_id;
+    const target = rowOverrides[id];
+    return target ? reassignRowIdentity(row, target) : row;
+  });
+  const bundle = parsed.importBundle || {};
+  const positions = patch(bundle.positions || parsed.valid || []);
+  const transactions = patch(bundle.transactions || []);
+  const realizedPositions = patch(bundle.realizedPositions || []);
+  return {
+    ...parsed,
+    valid: parsed.isHoldings ? positions : transactions,
+    importBundle: {
+      ...bundle,
+      positions,
+      openHoldings: positions,
+      transactions,
+      realizedPositions,
+    },
+  };
 }
 
 function applySecurityChoices(parsed, choices) {
@@ -611,12 +644,90 @@ function manualToCandidate(underlying, manual) {
   };
 }
 
+function DualListingPanel({ groups, rowOverrides, setRowOverrides }) {
+  if (!groups || groups.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3">
+        <p className="text-sm font-semibold text-foreground">Dual-listed holdings detected</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          We found {groups.length} stock{groups.length === 1 ? '' : 's'} with both the US listing AND the Canadian (CDR / TSX) version in your file. They have been auto-classified by name and will be saved as separate holdings. If any individual transaction is mis-classified, override it below.
+        </p>
+      </div>
+      {groups.map(group => (
+        <div key={group.id} className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
+          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border/30 bg-secondary/20">
+            <span className="text-sm font-bold text-foreground">{group.underlying}</span>
+            <span className="text-[11px] text-muted-foreground">{group.totalRows} transactions across {group.buckets.length} listings</span>
+            <div className="ml-auto flex flex-wrap gap-1.5">
+              {group.buckets.map(b => (
+                <span key={b.identity} className="rounded-full bg-secondary border border-border/30 px-2 py-0.5 text-[10px] font-mono">
+                  {b.display_ticker} · {b.listing_currency} · {b.rowCount}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            <table className="w-full text-[11px]">
+              <thead className="bg-secondary/30 sticky top-0">
+                <tr>
+                  <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
+                  <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Type</th>
+                  <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
+                  <th className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Qty</th>
+                  <th className="px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Listing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.buckets.flatMap(b => b.rows).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(r => {
+                  const current = rowOverrides[r.id] || r.security_identity;
+                  return (
+                    <tr key={r.id || `${r.date}-${r.ticker}-${r.quantity}`} className="border-t border-border/10">
+                      <td className="px-3 py-1 font-mono text-muted-foreground">{r.date}</td>
+                      <td className="px-3 py-1 text-muted-foreground">{r.type}</td>
+                      <td className="px-3 py-1 text-muted-foreground truncate max-w-[200px]">{r.name}</td>
+                      <td className="px-3 py-1 text-right font-mono text-muted-foreground">{r.quantity}</td>
+                      <td className="px-3 py-1">
+                        <div className="flex justify-center gap-1">
+                          {['us', 'cdr', 'tsx'].map(opt => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => setRowOverrides(prev => ({ ...prev, [r.id]: opt }))}
+                              className={cn(
+                                'rounded px-1.5 py-0.5 text-[9px] font-mono uppercase font-semibold transition-colors',
+                                current === opt
+                                  ? (opt === 'cdr' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                     : opt === 'tsx' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                                     : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40')
+                                  : 'bg-secondary border border-border/30 text-muted-foreground hover:text-foreground'
+                              )}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SecurityReviewStep({ parsed, onApply, onBack }) {
   const ambiguities = useMemo(() => getSecurityAmbiguities(parsed), [parsed]);
+  const dualGroups = useMemo(() => getDualListingGroups(parsed), [parsed]);
   const [choices, setChoices] = useState(() => Object.fromEntries(
     ambiguities.map(item => [item.id, item.candidates[0] || null])
   ));
   const [manualEntries, setManualEntries] = useState({});
+  const [rowOverrides, setRowOverrides] = useState({});
 
   const apply = () => {
     // Persist manual entries to listingResolver cache so future imports skip the prompt.
@@ -630,10 +741,12 @@ function SecurityReviewStep({ parsed, onApply, onBack }) {
         cdr: manual.listing_currency === 'CAD' && (manual.listing_exchange === 'NEO' || isCdr) ? { symbol: manual.quote_symbol, displaySymbol: manual.quote_symbol, exchange: manual.listing_exchange || 'NEO', description: '', currency: 'CAD' } : null,
       });
     });
-    onApply(applySecurityChoices(parsed, choices));
+    const afterChoices = applySecurityChoices(parsed, choices);
+    const afterDual = applyDualListingOverrides(afterChoices, rowOverrides);
+    onApply(afterDual);
   };
 
-  if (ambiguities.length === 0) {
+  if (ambiguities.length === 0 && dualGroups.length === 0) {
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
@@ -650,8 +763,21 @@ function SecurityReviewStep({ parsed, onApply, onBack }) {
     );
   }
 
+  if (ambiguities.length === 0 && dualGroups.length > 0) {
+    return (
+      <div className="space-y-4">
+        <DualListingPanel groups={dualGroups} rowOverrides={rowOverrides} setRowOverrides={setRowOverrides} />
+        <div className="flex items-center justify-between pt-1">
+          <Button variant="outline" size="sm" onClick={onBack}><ChevronLeft className="h-3.5 w-3.5 mr-1" />Back</Button>
+          <Button size="sm" onClick={apply}>Continue <ChevronRight className="h-3.5 w-3.5 ml-1" /></Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      <DualListingPanel groups={dualGroups} rowOverrides={rowOverrides} setRowOverrides={setRowOverrides} />
       <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
         <p className="text-sm font-semibold text-foreground">Confirm ambiguous listings</p>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -1443,7 +1569,7 @@ export default function ImportCenter() {
   const [completedSession, setCompletedSession] = useState([]);
   const { accounts: existingAccounts = [], institutions = [] } = usePortfolioData();
   const hasTransfers = useMemo(() => buildTransferGroups(parsed).length > 0, [parsed]);
-  const hasSecurityReview = useMemo(() => getSecurityAmbiguities(parsed).length > 0, [parsed]);
+  const hasSecurityReview = useMemo(() => getSecurityAmbiguities(parsed).length > 0 || getDualListingGroups(parsed).length > 0, [parsed]);
 
   const handleParsed = (bundles) => {
     const queue = Array.isArray(bundles) ? bundles : [bundles].filter(Boolean);

@@ -43,7 +43,11 @@ function stripExchangeSuffix(ticker) {
 }
 
 function hasCdrText(row = {}) {
-  return /\bCDR\b|CANADIAN DEPOSITARY RECEIPT/i.test(`${row.name || row.asset_name || ''} ${row.notes || ''}`);
+  const text = `${row.name || row.asset_name || ''} ${row.notes || ''} ${row.description || ''}`;
+  // Primary signal: explicit "CDR" or "Canadian Depositary Receipt" in the name.
+  // Secondary signals (Wealthsimple/Questrade variants): "(CAD Hedged)",
+  // "CIBC Canadian Depositary Receipts", or "(CAD)" suffix on a US-listed name.
+  return /\bCDR\b|CANADIAN DEPOSITARY RECEIPT|CIBC\s+(CANADIAN\s+)?DEPOSITARY|\(CAD\s*HEDGED\)|HEDGED\s*CDR/i.test(text);
 }
 
 function normalizeExchange(value) {
@@ -377,6 +381,115 @@ function rowToCandidate(row) {
     confidence: row.identity_confidence || 'medium',
     reason: row.identity_reason || '',
     sample_price: safeNumber(row.price ?? row.current_price ?? row.avgPrice),
+  };
+}
+
+// ─── Dual-listing detection ───────────────────────────────────────────
+//
+// When a single import contains BOTH the underlying (US listing) AND the CDR
+// of the same security — e.g. some "Eli Lilly" rows and some "Eli Lilly CDR"
+// rows in one Wealthsimple file — we want to:
+//   1. Confirm the parser auto-classified each row by its name (it does).
+//   2. Surface the split to the user so they can verify or remap individual
+//      rows that the parser got wrong (rare but possible if WS used the same
+//      name field for both listings).
+//
+// Returns one entry per underlying that has 2+ distinct identities present:
+//   { underlying, totalRows, buckets: [{ identity, rows: [{ id, ticker, name, date, qty }], ... }] }
+export function buildDualListingGroups(rows = []) {
+  const byUnderlying = new Map();
+  rows.filter(r => r?.ticker).forEach(row => {
+    const underlying = cleanTicker(row.underlying_ticker || stripExchangeSuffix(row.ticker));
+    if (!underlying) return;
+    if (!byUnderlying.has(underlying)) byUnderlying.set(underlying, []);
+    byUnderlying.get(underlying).push(row);
+  });
+  const groups = [];
+  byUnderlying.forEach((rs, underlying) => {
+    const identities = new Set(rs.map(r => r.security_identity).filter(Boolean));
+    if (identities.size < 2) return; // Only one listing — no dual case.
+    const buckets = [...identities].map(identity => {
+      const bucket = rs.filter(r => r.security_identity === identity);
+      return {
+        identity,
+        display_ticker: bucket[0].display_ticker,
+        listing_exchange: bucket[0].listing_exchange,
+        listing_currency: bucket[0].listing_currency,
+        security_key: bucket[0].security_key,
+        quote_symbol: bucket[0].quote_symbol,
+        rowCount: bucket.length,
+        rows: bucket.map(r => ({
+          id: r.id || r.tradeId || r.transaction_id,
+          ticker: r.ticker,
+          name: r.name || r.asset_name,
+          date: r.date,
+          quantity: r.quantity,
+          price: r.price,
+          type: r.type || r.transaction_type,
+          security_identity: r.security_identity,
+        })),
+      };
+    });
+    groups.push({
+      id: `dual::${underlying}`,
+      underlying,
+      totalRows: rs.length,
+      buckets,
+    });
+  });
+  return groups;
+}
+
+// Re-classify a single row by id to a target identity. Used by the dual-listing
+// override UI to flip individual mis-classified rows.
+export function reassignRowIdentity(row, targetIdentity) {
+  const underlying = cleanTicker(row.underlying_ticker || stripExchangeSuffix(row.ticker));
+  if (targetIdentity === 'cdr') {
+    return {
+      ...row,
+      security_key: buildKey({ underlying, exchange: 'NEO', currency: 'CAD' }),
+      display_ticker: `${underlying} CDR`,
+      ticker: `${underlying} CDR`,
+      quote_symbol: `${underlying}.NE`,
+      listing_exchange: 'NEO',
+      listing_currency: 'CAD',
+      currency: 'CAD',
+      security_identity: 'cdr',
+      identity_confidence: 'confirmed',
+      identity_reason: 'User reassigned during import review',
+      _needs_verification: false,
+    };
+  }
+  if (targetIdentity === 'tsx') {
+    return {
+      ...row,
+      security_key: buildKey({ underlying, exchange: 'TSX', currency: 'CAD' }),
+      display_ticker: `${underlying}.TO`,
+      ticker: `${underlying}.TO`,
+      quote_symbol: `${underlying}.TO`,
+      listing_exchange: 'TSX',
+      listing_currency: 'CAD',
+      currency: 'CAD',
+      security_identity: 'tsx',
+      identity_confidence: 'confirmed',
+      identity_reason: 'User reassigned during import review',
+      _needs_verification: false,
+    };
+  }
+  // default 'us'
+  return {
+    ...row,
+    security_key: buildKey({ underlying, exchange: 'NASDAQ/NYSE', currency: 'USD' }),
+    display_ticker: underlying,
+    ticker: underlying,
+    quote_symbol: underlying,
+    listing_exchange: 'NASDAQ/NYSE',
+    listing_currency: 'USD',
+    currency: 'USD',
+    security_identity: 'us',
+    identity_confidence: 'confirmed',
+    identity_reason: 'User reassigned during import review',
+    _needs_verification: false,
   };
 }
 

@@ -17,8 +17,61 @@ import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
 import { fetchValidatedPrices, fetchHistoricalPricesForTickers, fetchManyProfiles } from '@/lib/stockApi';
 import { getLocallyDeletedAccountIds, isLocalDeleteAllPending } from '@/lib/dataDeletion';
 import { displayTicker, securityKey } from '@/lib/securityIdentity';
+import { buildHoldingsFromTransactions } from '@/lib/transactionEngine';
 
 const PortfolioDataContext = createContext(null);
+
+const ENGINE_FLAG_KEY = 'unifolio_use_transaction_engine';
+function transactionEngineEnabled() {
+  try {
+    const v = typeof window !== 'undefined' ? window.localStorage.getItem(ENGINE_FLAG_KEY) : null;
+    return v === null ? true : v === 'true';
+  } catch { return true; }
+}
+
+// Merge transaction-engine recomputed values onto existing holdings rows.
+// We trust the engine for cost_basis, avg_price, quantity, realized P/L,
+// dividends — but keep broker metadata (sector, country, logos, IDs) and let
+// downstream enrichment fill in the live current_price.
+function mergeEngineRecomputation(holdings, transactions) {
+  if (!transactionEngineEnabled()) return holdings;
+  if (!Array.isArray(transactions) || transactions.length === 0) return holdings;
+  const engineRows = buildHoldingsFromTransactions({ transactions, baseCurrency: 'USD' });
+  if (engineRows.length === 0) return holdings;
+  // Index by (account_id, ticker_upper) — fall back to ticker-only when account
+  // is missing on either side (rare).
+  const byKey = new Map();
+  engineRows.forEach((row) => {
+    const tk = String(row.ticker || row.display_ticker || '').toUpperCase();
+    if (!tk) return;
+    byKey.set(`${row.account_id || ''}::${tk}`, row);
+    byKey.set(`::${tk}`, row); // ticker-only fallback
+  });
+  return holdings.map((h) => {
+    const tk = String(h.ticker || h.display_ticker || '').toUpperCase();
+    const acct = h.account_id || h.accountId || '';
+    const eng = byKey.get(`${acct}::${tk}`) || byKey.get(`::${tk}`);
+    if (!eng) return h;
+    return {
+      ...h,
+      quantity: eng.quantity,
+      cost_basis: eng.cost_basis,
+      costBasis: eng.cost_basis,
+      average_price: eng.avg_price,
+      avg_price: eng.avg_price,
+      avgPrice: eng.avg_price,
+      avg_price_clean: eng.avg_price_clean,
+      realized_gain_loss_amount: eng.realized_gain_loss_amount,
+      realizedAmt: eng.realized_gain_loss_amount,
+      dividends_received: eng.dividends_native,
+      dividends_native: eng.dividends_native,
+      dividends_base: eng.dividends_base,
+      total_fees: eng.fees,
+      _engine_lots: eng.lots,
+      _engine_computed: true,
+    };
+  });
+}
 
 function withTimeout(promise, ms, label) {
   let timer;
@@ -503,7 +556,8 @@ function loadLocalImportedBundle() {
 
     const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
     const transactions = (stored.transactions || []).filter(keepAccount).map(normalizeTransaction);
-    const holdings = applyTransferContextToHoldings(holdingsRaw.map(h => withAliases(h, accountMap)), transactions, accounts);
+    const transferAdjusted = applyTransferContextToHoldings(holdingsRaw.map(h => withAliases(h, accountMap)), transactions, accounts);
+    const holdings = mergeEngineRecomputation(transferAdjusted, transactions);
     const realizedPositions = (stored.realizedPositions || []).filter(keepAccount).map(normalizeRealized);
     const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 
@@ -529,7 +583,8 @@ function loadLocalImportedBundle() {
 
 async function enrichImportedBundle(bundle) {
   if (!bundle?.hasImportedPortfolio) return bundle;
-  const holdings = await enrichHoldingsWithMarketData(bundle.holdings || []);
+  const engineMerged = mergeEngineRecomputation(bundle.holdings || [], bundle.transactions || []);
+  const holdings = await enrichHoldingsWithMarketData(engineMerged);
   return {
     ...bundle,
     holdings,
@@ -590,7 +645,8 @@ export function PortfolioDataProvider({ children }) {
       const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
       const transactions = (transactionsRes.data || []).filter(keepAccount).map(normalizeTransaction);
       const transferAdjusted = applyTransferContextToHoldings(holdingsRaw.map(h => withAliases(h, accountMap)), transactions, accounts);
-      const holdings = await enrichHoldingsWithMarketData(transferAdjusted);
+      const engineMerged = mergeEngineRecomputation(transferAdjusted, transactions);
+      const holdings = await enrichHoldingsWithMarketData(engineMerged);
       const realizedPositions = realizedRes.error ? [] : (realizedRes.data || []).filter(keepAccount).map(normalizeRealized);
       const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 

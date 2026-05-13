@@ -1249,7 +1249,217 @@ function parseIBKRSectionedReport(allRows, filename) {
       });
     });
 
-  const transactions = [...tradeTransactions, ...cashTransactions].filter(row => row.date);
+  // ─── TRFR (Transfers) — security in/out without a trade. Cost basis travels
+  //     with the security; we book one Position Transfer row so the engine can
+  //     adjust quantity (and treat the lot price as the broker-reported value
+  //     per share, preserving cost basis).
+  const transferRows = getSectionRows(sections, 'TRFR')
+    .filter(row => row.ClientAccountID && row.ClientAccountID !== '-')
+    .map(row => {
+      const qty = parseNum(row.Quantity || row.PositionAmount);
+      const direction = qty >= 0 ? 'Transfer In' : 'Transfer Out';
+      const value = Math.abs(parseNum(row.PositionValue || row.CashValue || row.Value || (qty * parseNum(row.TransferPrice || row.Price))));
+      return resolveSecurityIdentity({
+        id: row.TransactionID || row.TransferID || '',
+        date: compactDate(row.Date || row['Date/Time'] || row.SettleDate || row.ReportDate),
+        type: direction,
+        ticker: (row.Symbol || '').toUpperCase() || null,
+        name: row.Description || row.Symbol || direction,
+        assetClass: normalizedAssetClass(row.AssetClass),
+        quantity: qty,
+        price: parseNum(row.TransferPrice || row.Price),
+        grossAmount: value,
+        fees: 0,
+        netAmount: value,
+        currency: (row.CurrencyPrimary || account.currency || 'USD').toUpperCase(),
+        account: row.ClientAccountID || account.clientAccountId,
+        accountType: accountById[row.ClientAccountID]?.accountType || account.accountType,
+        institution: 'Interactive Brokers',
+        costBasis: parseNum(row.CostBasis),
+        proceeds: 0,
+        realizedGL: 0,
+        notes: `${row.Type || 'Transfer'} ${row.Direction || ''}`.trim(),
+        sourceSection: 'TRFR',
+        transferDirection: transferDirection(direction),
+        sourceAccount: row.FromAccount || row.BrokerAccountFrom || '',
+        destinationAccount: row.ToAccount || row.BrokerAccountTo || '',
+      });
+    });
+
+  // ─── CORP (Corporate Actions) — splits, spinoffs, mergers. Splits change
+  //     quantity but not cost basis; emit a Split row the engine can apply.
+  const corporateActions = getSectionRows(sections, 'CORP')
+    .filter(row => row.ClientAccountID && row.ClientAccountID !== '-')
+    .map(row => {
+      const actionType = (row.Type || row.ActionDescription || '').toUpperCase();
+      const isSplit = /SPLIT|FORWARD\s*SPLIT|REVERSE\s*SPLIT/.test(actionType);
+      const ratio = parseNum(row.Quantity || row.Ratio || row.SplitRatio) || 1;
+      return resolveSecurityIdentity({
+        id: row.TransactionID || row.ActionID || '',
+        date: compactDate(row.Date || row.ReportDate || row['Date/Time']),
+        type: isSplit ? 'Split' : 'Corporate Action',
+        ticker: (row.Symbol || '').toUpperCase() || null,
+        name: row.Description || row.ActionDescription || actionType,
+        assetClass: normalizedAssetClass(row.AssetClass),
+        quantity: isSplit ? ratio : parseNum(row.Quantity),
+        price: parseNum(row.Price),
+        grossAmount: 0,
+        fees: 0,
+        netAmount: parseNum(row.Proceeds || row.Value),
+        currency: (row.CurrencyPrimary || account.currency || 'USD').toUpperCase(),
+        account: row.ClientAccountID || account.clientAccountId,
+        accountType: accountById[row.ClientAccountID]?.accountType || account.accountType,
+        institution: 'Interactive Brokers',
+        costBasis: 0,
+        proceeds: parseNum(row.Proceeds),
+        realizedGL: 0,
+        notes: row.Description || actionType,
+        sourceSection: 'CORP',
+      });
+    });
+
+  // ─── OPTT (Option exercises/assignments) — option-related cost-basis events.
+  //     Surface as Option transactions so the engine doesn't see orphan trades.
+  const optionEvents = getSectionRows(sections, 'OPTT')
+    .filter(row => row.ClientAccountID && row.ClientAccountID !== '-')
+    .map(row => {
+      const qty = parseNum(row.Quantity);
+      const isAssign = /ASSIGN/i.test(row.TransactionType || row.Description || '');
+      const isExercise = /EXERCISE/i.test(row.TransactionType || row.Description || '');
+      return resolveSecurityIdentity({
+        id: row.TransactionID || '',
+        date: compactDate(row.Date || row['Date/Time'] || row.ReportDate),
+        type: isAssign ? 'Option Assignment' : isExercise ? 'Option Exercise' : 'Option',
+        ticker: (row.UnderlyingSymbol || row.Symbol || '').toUpperCase() || null,
+        name: row.Description || row.Symbol,
+        assetClass: 'Option',
+        quantity: qty,
+        price: parseNum(row.Price || row.StrikePrice),
+        grossAmount: parseNum(row.Proceeds),
+        fees: Math.abs(parseNum(row.IBCommission || row.Commission)),
+        netAmount: parseNum(row.NetCash || row.Proceeds),
+        currency: (row.CurrencyPrimary || account.currency || 'USD').toUpperCase(),
+        account: row.ClientAccountID || account.clientAccountId,
+        accountType: accountById[row.ClientAccountID]?.accountType || account.accountType,
+        institution: 'Interactive Brokers',
+        costBasis: parseNum(row.CostBasis),
+        proceeds: parseNum(row.Proceeds),
+        realizedGL: parseNum(row.RealizedPnl || row.FifoPnlRealized),
+        notes: row.Description || row.TransactionType,
+        sourceSection: 'OPTT',
+      });
+    });
+
+  // ─── TRTX (Transaction tax / withholding) — surface as Tax fee rows so
+  //     after-tax dividend totals are accurate. Attach to symbol when present.
+  const taxRows = getSectionRows(sections, 'TRTX')
+    .filter(row => row.ClientAccountID && row.ClientAccountID !== '-')
+    .map(row => {
+      const amount = Math.abs(parseNum(row.TaxAmount || row.Amount));
+      return resolveSecurityIdentity({
+        id: row.TransactionID || '',
+        date: compactDate(row.Date || row['Date/Time'] || row.ReportDate),
+        type: 'Withholding Tax',
+        ticker: (row.Symbol || '').toUpperCase() || null,
+        name: row.Description || 'Withholding tax',
+        assetClass: normalizedAssetClass(row.AssetClass),
+        quantity: 0,
+        price: 0,
+        grossAmount: -amount,
+        fees: amount,
+        netAmount: -amount,
+        currency: (row.CurrencyPrimary || account.currency || 'USD').toUpperCase(),
+        account: row.ClientAccountID || account.clientAccountId,
+        accountType: accountById[row.ClientAccountID]?.accountType || account.accountType,
+        institution: 'Interactive Brokers',
+        costBasis: 0,
+        proceeds: 0,
+        realizedGL: 0,
+        notes: row.TaxDescription || row.Description || 'Withholding tax',
+        sourceSection: 'TRTX',
+      });
+    });
+
+  // ─── IACC (Interest accruals) — affect cash drag. Surface as Interest rows.
+  const interestRows = getSectionRows(sections, 'IACC')
+    .filter(row => row.ClientAccountID && row.ClientAccountID !== '-')
+    .map(row => {
+      const amount = parseNum(row.InterestAmount || row.Amount);
+      return resolveSecurityIdentity({
+        id: row.TransactionID || '',
+        date: compactDate(row.Date || row['Date/Time'] || row.ReportDate),
+        type: amount >= 0 ? 'Interest' : 'Interest Charge',
+        ticker: null,
+        name: row.Description || (amount >= 0 ? 'Interest credited' : 'Interest charged'),
+        assetClass: 'Cash',
+        quantity: 0,
+        price: 0,
+        grossAmount: amount,
+        fees: amount < 0 ? Math.abs(amount) : 0,
+        netAmount: amount,
+        currency: (row.CurrencyPrimary || account.currency || 'USD').toUpperCase(),
+        account: row.ClientAccountID || account.clientAccountId,
+        accountType: accountById[row.ClientAccountID]?.accountType || account.accountType,
+        institution: 'Interactive Brokers',
+        costBasis: 0,
+        proceeds: 0,
+        realizedGL: 0,
+        notes: row.Description || '',
+        sourceSection: 'IACC',
+      });
+    });
+
+  // ─── STFU (Statement of Funds) — the canonical cash-flow source. We don't
+  //     duplicate every row into the txn ledger (CTRN already covers most),
+  //     but we use it to backfill anything missing from CTRN. Heuristic: only
+  //     emit STFU rows whose ActivityID isn't already present from CTRN.
+  const stfuExistingIds = new Set([...cashTransactions, ...transferRows].map(r => r.id).filter(Boolean));
+  const stfuRows = getSectionRows(sections, 'STFU')
+    .filter(row => row.ClientAccountID && row.ClientAccountID !== '-')
+    .filter(row => row.ActivityID && !stfuExistingIds.has(row.ActivityID))
+    .map(row => {
+      const rawType = row.ActivityCode || row.ActivityDescription || '';
+      const amount = parseNum(row.Amount);
+      let type = txnType(rawType);
+      if (/dividend/i.test(rawType)) type = 'Dividend';
+      else if (/interest/i.test(rawType)) type = amount >= 0 ? 'Interest' : 'Interest Charge';
+      else if (/transfer/i.test(rawType)) type = amount >= 0 ? 'Transfer In' : 'Transfer Out';
+      else if (/deposit/i.test(rawType)) type = 'Deposit';
+      else if (/withdraw/i.test(rawType)) type = 'Withdrawal';
+      return resolveSecurityIdentity({
+        id: row.ActivityID || '',
+        date: compactDate(row.Date || row.ReportDate),
+        type,
+        ticker: (row.Symbol || '').toUpperCase() || null,
+        name: row.ActivityDescription || rawType,
+        assetClass: normalizedAssetClass(row.AssetClass),
+        quantity: 0,
+        price: 0,
+        grossAmount: amount,
+        fees: 0,
+        netAmount: amount,
+        currency: (row.CurrencyPrimary || account.currency || 'USD').toUpperCase(),
+        account: row.ClientAccountID || account.clientAccountId,
+        accountType: accountById[row.ClientAccountID]?.accountType || account.accountType,
+        institution: 'Interactive Brokers',
+        costBasis: 0,
+        proceeds: 0,
+        realizedGL: 0,
+        notes: row.ActivityDescription || rawType,
+        sourceSection: 'STFU',
+      });
+    });
+
+  const transactions = [
+    ...tradeTransactions,
+    ...cashTransactions,
+    ...transferRows,
+    ...corporateActions,
+    ...optionEvents,
+    ...taxRows,
+    ...interestRows,
+    ...stfuRows,
+  ].filter(row => row.date);
   const purchaseHistoryByTicker = {};
   tradeTransactions
     .filter(row => row.type === 'Buy' && row.ticker && row.quantity > 0)
