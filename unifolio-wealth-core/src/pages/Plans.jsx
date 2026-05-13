@@ -426,7 +426,9 @@ export default function Plans() {
             <Gem className="w-3 h-3" />
             unifolio.pro
           </div>
-          <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-4 bg-gradient-to-br from-foreground via-foreground to-foreground/60 bg-clip-text text-transparent">
+          {/* leading + pb give descenders ("g", "p", "y") room — bg-clip-text
+              + a tight line-height was clipping the bottom of the "g". */}
+          <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-4 leading-[1.15] pb-2 bg-gradient-to-br from-foreground via-foreground to-foreground/60 bg-clip-text text-transparent">
             Plans & Pricing
           </h1>
           <p className="text-muted-foreground text-lg max-w-xl mx-auto leading-relaxed">
