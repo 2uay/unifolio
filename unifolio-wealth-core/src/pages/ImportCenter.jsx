@@ -757,11 +757,15 @@ function TransferContextStep({ parsed, onApply, onSkip, onBack }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3">
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 space-y-1.5">
         <p className="text-sm font-semibold text-foreground">We found asset/cash transfers</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Tell Unifolio where they came from or went. This helps explain account movement and tax context, but transfers will not create realized gains.
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Tell Unifolio where they came from or went. Transfers don't create realized gains, but the context here is load-bearing:
         </p>
+        <ul className="text-xs text-muted-foreground/85 leading-relaxed list-disc pl-5 space-y-0.5">
+          <li><strong className="text-foreground">For shares moving between brokers</strong> (e.g. ATON from Wealthsimple to IBKR), write <span className="font-mono text-cyan-400">"to IBKR"</span> in the destination column. When you later import the IBKR statement, Unifolio matches the two halves of the chain by ticker, quantity, and date — and carries your <em>original</em> purchase price/date through to the IBKR position. The XFR pill on the Holdings row will then show your real cost basis instead of being booked at the transfer-day value.</li>
+          <li><strong className="text-foreground">For cash deposits/withdrawals</strong>, source and destination just label the contribution context for tax tracking.</li>
+        </ul>
       </div>
 
       <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">

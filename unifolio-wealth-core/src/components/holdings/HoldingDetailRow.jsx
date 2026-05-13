@@ -79,6 +79,8 @@ export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal 
         price: l.clean_price ?? l.price,
         currency: holding.currency,
         isTransfer: !!l.is_transfer,
+        linkedSource: l.linked_source || null,
+        transferDate: l.transfer_date || null,
       }))
     : (holding.purchase_history ?? holding.purchaseHistory ?? []);
 
@@ -241,16 +243,28 @@ export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal 
                 {transfers.map((t, i) => {
                   const q = safeNumber(t.qty ?? t.quantity);
                   const px = safeNumber(t.price);
+                  const linked = t.linkedSource;
+                  const sourceBroker = linked?.sourceBroker;
+                  const tooltip = linked?.note
+                    || (sourceBroker
+                          ? `Transferred from ${sourceBroker} — cost basis carried from original buy.`
+                          : 'Shares received via security transfer.');
                   return (
                     <div
                       key={`xfr-${i}`}
-                      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border border-amber-500/40 text-[11px]"
-                      title="Shares received via security transfer — booked at broker-reported value"
+                      className={cn(
+                        'flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border text-[11px]',
+                        linked?.price ? 'border-emerald-500/40' : 'border-amber-500/40',
+                      )}
+                      title={tooltip}
                     >
-                      <span className="font-semibold text-[9px] text-amber-400">XFR</span>
+                      <span className={cn('font-semibold text-[9px]', linked?.price ? 'text-emerald-400' : 'text-amber-400')}>XFR</span>
                       {t.date && <span className="text-muted-foreground">{new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>}
                       <span className="font-mono text-emerald-400">+{q.toFixed(q < 100 ? 2 : 0)}</span>
                       {px > 0 && <span className="font-mono text-muted-foreground">@{privacyMode ? '••••' : formatCurrency(cvtPrice(px))}</span>}
+                      {sourceBroker && (
+                        <span className="text-[9px] text-muted-foreground/70 italic">from {sourceBroker.split(/[\s/]/)[0]}</span>
+                      )}
                     </div>
                   );
                 })}

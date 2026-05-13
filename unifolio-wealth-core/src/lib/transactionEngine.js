@@ -204,11 +204,28 @@ export function buildHoldingsFromTransactions({
         realizedNative -= fees;
         feesNative += fees;
       } else if (type === TX_TRANSFER_IN) {
-        // Shares received. The broker provides a transfer "value" but no
-        // per-share execution price; we book it as a lot at the broker's
-        // implied price (totalCash / qty) so cost basis is preserved.
-        const lotPrice = qty !== 0 ? Math.abs(totalCash) / Math.abs(qty) : 0;
-        lots.push({ qty: Math.abs(qty), price: lotPrice, clean_price: lotPrice, date, fees: 0, fx_to_base: fxToBase, is_transfer: true });
+        // Shares received. Prefer the linked source's original buy price
+        // (set by transferLinker.linkTransferTransactions when a matching
+        // transfer-out + buy chain exists in another broker). Fall back to
+        // the broker-implied price (totalCash / qty) if the chain isn't
+        // resolvable.
+        const linked = tx._linkedSource;
+        const linkedPrice = safeNumber(linked?.price);
+        const linkedDate = linked?.date || date;
+        const fallbackPrice = qty !== 0 ? Math.abs(totalCash) / Math.abs(qty) : 0;
+        const lotPrice = linkedPrice > 0 ? linkedPrice : fallbackPrice;
+        const lotDate = linkedPrice > 0 ? linkedDate : date;
+        lots.push({
+          qty: Math.abs(qty),
+          price: lotPrice,
+          clean_price: lotPrice,
+          date: lotDate,
+          fees: 0,
+          fx_to_base: fxToBase,
+          is_transfer: true,
+          linked_source: linked || null,
+          transfer_date: date, // when it landed in this account
+        });
       } else if (type === TX_TRANSFER_OUT) {
         // Shares delivered out — consume FIFO without realizing P/L (cost
         // basis travels with the security to the receiving account)

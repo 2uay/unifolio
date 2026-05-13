@@ -18,6 +18,7 @@ import { fetchValidatedPrices, fetchHistoricalPricesForTickers, fetchManyProfile
 import { getLocallyDeletedAccountIds, isLocalDeleteAllPending } from '@/lib/dataDeletion';
 import { displayTicker, securityKey } from '@/lib/securityIdentity';
 import { buildHoldingsFromTransactions } from '@/lib/transactionEngine';
+import { linkTransferTransactions } from '@/lib/transferLinker';
 
 const PortfolioDataContext = createContext(null);
 
@@ -36,7 +37,10 @@ function transactionEngineEnabled() {
 function mergeEngineRecomputation(holdings, transactions) {
   if (!transactionEngineEnabled()) return holdings;
   if (!Array.isArray(transactions) || transactions.length === 0) return holdings;
-  const engineRows = buildHoldingsFromTransactions({ transactions, baseCurrency: 'USD' });
+  // Link cross-broker transfer chains so the engine can carry original cost
+  // basis from the source-account BUY through to the destination's TX_TRANSFER_IN.
+  const linkedTransactions = linkTransferTransactions(transactions);
+  const engineRows = buildHoldingsFromTransactions({ transactions: linkedTransactions, baseCurrency: 'USD' });
   if (engineRows.length === 0) return holdings;
   // Index by (account_id, ticker_upper) — fall back to ticker-only when account
   // is missing on either side (rare).
