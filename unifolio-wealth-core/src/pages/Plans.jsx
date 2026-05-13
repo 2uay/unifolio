@@ -411,7 +411,7 @@ export default function Plans() {
         <div className="text-center">
           <p className="text-muted-foreground text-sm mb-3">
             Questions? Reach out at{' '}
-            <a href="mailto:dev@unifolio.ca" className="text-primary font-semibold hover:underline">dev@unifolio.ca</a>
+            <a href="mailto:support@unifolio.ca" className="text-primary font-semibold hover:underline">support@unifolio.ca</a>
           </p>
           <p className="text-xs text-muted-foreground/50">
             Stripe-secured checkout · Taxes may apply · No card required for Starter

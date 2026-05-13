@@ -66,7 +66,21 @@ export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal 
   const marketValue   = safeNumber(holding.market_value ?? holding.marketValue);
   const currentPrice  = safeNumber(holding.current_price ?? holding.lastPrice ?? 0);
 
-  const purchaseHistory = holding.purchase_history ?? holding.purchaseHistory ?? [];
+  // Prefer engine-reconstructed lots when present — they include transfer-in
+  // lots (flagged `is_transfer`) that the legacy `purchase_history` array
+  // misses. Falls back to the legacy field when the transaction engine is
+  // disabled or the row is from a pure-holdings-snapshot import.
+  const engineLots = Array.isArray(holding._engine_lots) ? holding._engine_lots : null;
+  const purchaseHistory = engineLots
+    ? engineLots.map(l => ({
+        date: l.date,
+        quantity: l.qty,
+        qty: l.qty,
+        price: l.clean_price ?? l.price,
+        currency: holding.currency,
+        isTransfer: !!l.is_transfer,
+      }))
+    : (holding.purchase_history ?? holding.purchaseHistory ?? []);
 
   const overlapRow = useMemo(() => {
     if (!allHoldings?.length || !portfolioTotal) return null;
@@ -167,16 +181,25 @@ export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal 
             if (totalQty <= 0) return null;
 
             const costBasis = safeNumber(holding.cost_basis ?? holding.costBasis);
+            // Split lots into purchases and transfers. Transfers have either an
+            // explicit `isTransfer` flag (from the engine) or come from rows
+            // that the legacy parser flagged with `sourceSection: 'TRFR'`.
+            const purchases = purchaseHistory.filter(p => !p.isTransfer);
+            const transfers = purchaseHistory.filter(p => p.isTransfer);
+
             // Trade-only weighted average using just buys (matches what the
             // user "remembers paying" — clean prices without commissions).
-            let lotQty = 0;
-            let lotCost = 0;
-            purchaseHistory.forEach(p => {
+            let buyQty = 0;
+            let buyCost = 0;
+            purchases.forEach(p => {
               const q = safeNumber(p.qty ?? p.quantity);
               const px = safeNumber(p.price);
-              if (q > 0 && px > 0) { lotQty += q; lotCost += q * px; }
+              if (q > 0 && px > 0) { buyQty += q; buyCost += q * px; }
             });
-            const cleanAvg = lotQty > 0 ? lotCost / lotQty : 0;
+            const cleanAvg = buyQty > 0 ? buyCost / buyQty : 0;
+
+            // Quantity actually represented by lots (buys + recorded transfers).
+            const recordedQty = buyQty + transfers.reduce((s, t) => s + safeNumber(t.qty ?? t.quantity), 0);
 
             // Cost-basis-true weighted average (includes commissions and
             // transferred-in cost). This is the accounting figure used for
@@ -185,40 +208,60 @@ export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal 
               ? costBasis / totalQty
               : (cleanAvg || safeNumber(holding.average_price ?? holding.avgPrice));
 
-            const transferQty = Math.max(0, totalQty - lotQty);
-            const hasFeeDelta = lotQty === totalQty && Math.abs(trueAvg - cleanAvg) > 0.005;
+            // Reconciliation gap: shares the broker says we have but no
+            // transaction or transfer record explains. Usually means a transfer
+            // happened before the IBKR statement window — user needs to upload
+            // the source-broker statement to fill the gap.
+            const reconcileQty = Math.max(0, totalQty - recordedQty);
+            const hasFeeDelta = recordedQty === totalQty && Math.abs(trueAvg - cleanAvg) > 0.005;
 
             // Convert every per-share/per-lot value into the active display
             // currency so all pills move together with the top-left selector.
             const cvtPrice = (px) => convert(px, nativeCurrency);
             const convertedTrueAvg = cvtPrice(trueAvg);
             const convertedCleanAvg = cvtPrice(cleanAvg);
-            const convertedFeeDelta = convert(costBasis - lotCost, nativeCurrency);
+            const convertedFeeDelta = convert(costBasis - buyCost, nativeCurrency);
 
             return (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-muted-foreground/60 uppercase tracking-wider text-[10px] font-medium shrink-0 mr-1">Lots</span>
-                {purchaseHistory.length === 0 && transferQty === 0 && (
+                {purchaseHistory.length === 0 && reconcileQty === 0 && (
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border border-dashed border-border/50 text-[11px] text-muted-foreground/60">
                     No buy/transfer history available
                   </div>
                 )}
-                {purchaseHistory.map((p, i) => (
-                  <div key={i} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border border-border text-[11px]">
+                {purchases.map((p, i) => (
+                  <div key={`buy-${i}`} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border border-border text-[11px]">
                     <span className="font-semibold text-[9px]" style={{ color: '#a78bfa' }}>L{i + 1}</span>
                     <span className="text-muted-foreground">{new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
                     <span className="font-mono text-emerald-400">+{safeNumber(p.qty ?? p.quantity)}</span>
                     <span className="font-mono text-muted-foreground">@{privacyMode ? '••••' : formatCurrency(cvtPrice(safeNumber(p.price)))}</span>
                   </div>
                 ))}
-                {transferQty > 0 && (
+                {transfers.map((t, i) => {
+                  const q = safeNumber(t.qty ?? t.quantity);
+                  const px = safeNumber(t.price);
+                  return (
+                    <div
+                      key={`xfr-${i}`}
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border border-amber-500/40 text-[11px]"
+                      title="Shares received via security transfer — booked at broker-reported value"
+                    >
+                      <span className="font-semibold text-[9px] text-amber-400">XFR</span>
+                      {t.date && <span className="text-muted-foreground">{new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>}
+                      <span className="font-mono text-emerald-400">+{q.toFixed(q < 100 ? 2 : 0)}</span>
+                      {px > 0 && <span className="font-mono text-muted-foreground">@{privacyMode ? '••••' : formatCurrency(cvtPrice(px))}</span>}
+                    </div>
+                  );
+                })}
+                {reconcileQty > 0 && (
                   <div
-                    className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card border border-amber-500/30 text-[11px]"
-                    title="Shares received via security transfer (not a buy trade — no execution price)"
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/40 text-[11px]"
+                    title={`Broker reports ${totalQty.toFixed(2)} shares but we only have ${recordedQty.toFixed(2)} accounted for. The remaining ${reconcileQty.toFixed(2)} likely came from a transfer-in that predates this statement. Upload the source-broker statement (e.g. Wealthsimple history covering the transfer date) to fill the gap.`}
                   >
-                    <span className="font-semibold text-[9px] text-amber-400">XFR</span>
-                    <span className="font-mono text-emerald-400">+{transferQty.toFixed(transferQty < 100 ? 2 : 0)}</span>
-                    <span className="text-muted-foreground/60 text-[10px]">transferred in</span>
+                    <span className="font-semibold text-[9px] text-amber-400">⚠ GAP</span>
+                    <span className="font-mono text-amber-300">+{reconcileQty.toFixed(reconcileQty < 100 ? 2 : 0)}</span>
+                    <span className="text-amber-400/80 text-[10px]">untracked — likely transferred in</span>
                   </div>
                 )}
                 <div

@@ -52,6 +52,35 @@ function mergeEngineRecomputation(holdings, transactions) {
     const acct = h.account_id || h.accountId || '';
     const eng = byKey.get(`${acct}::${tk}`) || byKey.get(`::${tk}`);
     if (!eng) return h;
+
+    // The broker statement is the source of truth for current quantity & cost
+    // basis (its POST section is reconciled with the actual position). The
+    // engine is the source of truth for *flow* (realized gains, dividends, lot
+    // history). When the engine's reconstructed quantity disagrees with the
+    // broker (most commonly because TRFR transfer-in rows are missing from the
+    // statement window), we keep broker fields and just attach the engine lots
+    // so the UI can show what we DO know plus surface the reconciliation gap.
+    const brokerQty = safeNumber(h.quantity ?? h.position);
+    const engineQty = safeNumber(eng.quantity);
+    const reconciles = brokerQty > 0 && Math.abs(engineQty - brokerQty) < 0.0001;
+
+    if (!reconciles && brokerQty > 0) {
+      return {
+        ...h,
+        // Keep broker quantity + cost basis verbatim.
+        realized_gain_loss_amount: eng.realized_gain_loss_amount,
+        realizedAmt: eng.realized_gain_loss_amount,
+        dividends_received: eng.dividends_native,
+        dividends_native: eng.dividends_native,
+        dividends_base: eng.dividends_base,
+        total_fees: eng.fees,
+        _engine_lots: eng.lots,
+        _engine_computed: true,
+        _engine_quantity: engineQty,
+        _engine_quantity_gap: brokerQty - engineQty,
+      };
+    }
+
     return {
       ...h,
       quantity: eng.quantity,

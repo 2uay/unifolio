@@ -10,8 +10,6 @@ import { cn } from '@/lib/utils';
 import {
   parseFile, parseRows, parseHoldingsRows, composeParsedImports, verifyParsedSecurities, BROKER_LABELS, FIELD_LABELS,
 } from '@/lib/csvParser';
-import { applySecurityChoice, buildSecurityAmbiguities, buildDualListingGroups, reassignRowIdentity } from '@/lib/securityIdentity';
-import { setManualListing } from '@/lib/listingResolver';
 import { bankExportInstructions, downloadInstructionAsset } from '@/lib/bankExportInstructions';
 import { saveParsedImport } from '@/lib/importPersistence';
 import { COLUMN_DEFINITIONS } from '@/lib/columnConfig';
@@ -182,12 +180,10 @@ function saveHistory(entry) {
 
 // ─── STEP INDICATOR ──────────────────────────────────────────
 
-function StepIndicator({ step, hasTransfers, hasSecurityReview }) {
-  const steps = ['Upload', 'Map & Preview', ...(hasSecurityReview ? ['Securities'] : []), 'Accounts', ...(hasTransfers ? ['Transfers'] : []), 'Confirm'];
+function StepIndicator({ step, hasTransfers }) {
+  const steps = ['Upload', 'Map & Preview', 'Accounts', ...(hasTransfers ? ['Transfers'] : []), 'Confirm'];
   const activeLabel = step === 1 ? 'Upload'
     : step === 2 ? 'Map & Preview'
-    : step === 3 && hasSecurityReview ? 'Securities'
-    : (step === 3 || step === 4) && !hasSecurityReview ? 'Accounts'
     : step === 4 ? 'Accounts'
     : step === 5 && hasTransfers ? 'Transfers'
     : 'Confirm';
@@ -511,343 +507,6 @@ function applyAccountResolutions(parsed, resolutions) {
   };
 }
 
-function getAllParsedRows(parsed) {
-  const bundle = parsed?.importBundle || {};
-  return [
-    ...(bundle.positions || parsed?.valid || []),
-    ...(bundle.transactions || []),
-    ...(bundle.realizedPositions || []),
-  ];
-}
-
-function getSecurityAmbiguities(parsed) {
-  const bundle = parsed?.importBundle || {};
-  return bundle.securityAmbiguities || buildSecurityAmbiguities(getAllParsedRows(parsed));
-}
-
-function getDualListingGroups(parsed) {
-  return buildDualListingGroups(getAllParsedRows(parsed));
-}
-
-function applyDualListingOverrides(parsed, rowOverrides) {
-  // rowOverrides: { [rowId]: targetIdentity ('cdr' | 'us' | 'tsx') }
-  if (!rowOverrides || Object.keys(rowOverrides).length === 0) return parsed;
-  const patch = (rows) => (rows || []).map(row => {
-    const id = row.id || row.tradeId || row.transaction_id;
-    const target = rowOverrides[id];
-    return target ? reassignRowIdentity(row, target) : row;
-  });
-  const bundle = parsed.importBundle || {};
-  const positions = patch(bundle.positions || parsed.valid || []);
-  const transactions = patch(bundle.transactions || []);
-  const realizedPositions = patch(bundle.realizedPositions || []);
-  return {
-    ...parsed,
-    valid: parsed.isHoldings ? positions : transactions,
-    importBundle: {
-      ...bundle,
-      positions,
-      openHoldings: positions,
-      transactions,
-      realizedPositions,
-    },
-  };
-}
-
-function applySecurityChoices(parsed, choices) {
-  const patchRows = rows => (rows || []).map(row => {
-    const ambiguity = getSecurityAmbiguities(parsed).find(item => item.rows?.includes(row.id || row.tradeId)
-      || `${row.account || row.account_id || row.accountId || ''}::${row.underlying_ticker || row.raw_ticker || row.ticker}` === item.id);
-    const choice = ambiguity ? choices[ambiguity.id] : null;
-    return choice ? applySecurityChoice(row, choice) : row;
-  });
-  const bundle = parsed.importBundle || {};
-  const positions = patchRows(bundle.positions || parsed.valid || []);
-  const transactions = patchRows(bundle.transactions || []);
-  const realizedPositions = patchRows(bundle.realizedPositions || []);
-  return {
-    ...parsed,
-    valid: parsed.isHoldings ? positions : transactions,
-    importBundle: {
-      ...bundle,
-      positions,
-      openHoldings: positions,
-      transactions,
-      realizedPositions,
-      securityAmbiguities: [],
-      securityChoices: choices,
-    },
-  };
-}
-
-function ManualListingForm({ underlying, value, onChange }) {
-  const update = (patch) => onChange({ ...value, ...patch });
-  return (
-    <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 space-y-2">
-      <p className="text-[10px] uppercase tracking-wide text-amber-400/90">Manual entry — Finnhub had no match</p>
-      <div className="grid grid-cols-3 gap-2">
-        <label className="text-[10px] text-muted-foreground">
-          Quote symbol
-          <input
-            type="text" value={value.quote_symbol || ''}
-            onChange={e => update({ quote_symbol: e.target.value.toUpperCase() })}
-            placeholder={`${underlying} or ${underlying}.NE`}
-            className="mt-0.5 w-full rounded border border-border/40 bg-background px-2 py-1 text-xs text-foreground"
-          />
-        </label>
-        <label className="text-[10px] text-muted-foreground">
-          Exchange
-          <select
-            value={value.listing_exchange || ''}
-            onChange={e => update({ listing_exchange: e.target.value })}
-            className="mt-0.5 w-full rounded border border-border/40 bg-background px-2 py-1 text-xs text-foreground"
-          >
-            <option value="">—</option>
-            <option value="NYSE">NYSE</option>
-            <option value="NASDAQ">NASDAQ</option>
-            <option value="TSX">TSX (Toronto)</option>
-            <option value="NEO">Cboe Canada (NEO)</option>
-            <option value="TSXV">TSXV</option>
-            <option value="CSE">CSE</option>
-          </select>
-        </label>
-        <label className="text-[10px] text-muted-foreground">
-          Currency
-          <select
-            value={value.listing_currency || ''}
-            onChange={e => update({ listing_currency: e.target.value })}
-            className="mt-0.5 w-full rounded border border-border/40 bg-background px-2 py-1 text-xs text-foreground"
-          >
-            <option value="">—</option>
-            <option value="USD">USD</option>
-            <option value="CAD">CAD</option>
-          </select>
-        </label>
-      </div>
-    </div>
-  );
-}
-
-function manualToCandidate(underlying, manual) {
-  const isCdr = /\.(NE|NEO)$/i.test(manual.quote_symbol || '') || (manual.listing_currency === 'CAD' && manual.listing_exchange === 'NEO');
-  const identity = isCdr ? 'cdr' : (manual.listing_currency === 'CAD' ? 'tsx' : 'us');
-  const display = isCdr ? `${underlying} CDR` : (manual.quote_symbol || underlying);
-  return {
-    security_key: `${underlying}@${manual.listing_exchange || 'UNKNOWN'}:${manual.listing_currency || 'UNKNOWN'}`,
-    display_ticker: display,
-    quote_symbol: manual.quote_symbol || underlying,
-    listing_exchange: manual.listing_exchange || '',
-    listing_currency: manual.listing_currency || '',
-    security_identity: identity,
-    confidence: 'manual',
-    reason: 'Manually entered during import',
-  };
-}
-
-function DualListingPanel({ groups, rowOverrides, setRowOverrides }) {
-  if (!groups || groups.length === 0) return null;
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">Dual-listed holdings detected</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          We found {groups.length} stock{groups.length === 1 ? '' : 's'} with both the US listing AND the Canadian (CDR / TSX) version in your file. They have been auto-classified by name and will be saved as separate holdings. If any individual transaction is mis-classified, override it below.
-        </p>
-      </div>
-      {groups.map(group => (
-        <div key={group.id} className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border/30 bg-secondary/20">
-            <span className="text-sm font-bold text-foreground">{group.underlying}</span>
-            <span className="text-[11px] text-muted-foreground">{group.totalRows} transactions across {group.buckets.length} listings</span>
-            <div className="ml-auto flex flex-wrap gap-1.5">
-              {group.buckets.map(b => (
-                <span key={b.identity} className="rounded-full bg-secondary border border-border/30 px-2 py-0.5 text-[10px] font-mono">
-                  {b.display_ticker} · {b.listing_currency} · {b.rowCount}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-[11px]">
-              <thead className="bg-secondary/30 sticky top-0">
-                <tr>
-                  <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Date</th>
-                  <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Type</th>
-                  <th className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
-                  <th className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Qty</th>
-                  <th className="px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Listing</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.buckets.flatMap(b => b.rows).sort((a, b) => String(a.date).localeCompare(String(b.date))).map(r => {
-                  const current = rowOverrides[r.id] || r.security_identity;
-                  return (
-                    <tr key={r.id || `${r.date}-${r.ticker}-${r.quantity}`} className="border-t border-border/10">
-                      <td className="px-3 py-1 font-mono text-muted-foreground">{r.date}</td>
-                      <td className="px-3 py-1 text-muted-foreground">{r.type}</td>
-                      <td className="px-3 py-1 text-muted-foreground truncate max-w-[200px]">{r.name}</td>
-                      <td className="px-3 py-1 text-right font-mono text-muted-foreground">{r.quantity}</td>
-                      <td className="px-3 py-1">
-                        <div className="flex justify-center gap-1">
-                          {['us', 'cdr', 'tsx'].map(opt => (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => setRowOverrides(prev => ({ ...prev, [r.id]: opt }))}
-                              className={cn(
-                                'rounded px-1.5 py-0.5 text-[9px] font-mono uppercase font-semibold transition-colors',
-                                current === opt
-                                  ? (opt === 'cdr' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                     : opt === 'tsx' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-                                     : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40')
-                                  : 'bg-secondary border border-border/30 text-muted-foreground hover:text-foreground'
-                              )}
-                            >
-                              {opt}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SecurityReviewStep({ parsed, onApply, onBack }) {
-  const ambiguities = useMemo(() => getSecurityAmbiguities(parsed), [parsed]);
-  const dualGroups = useMemo(() => getDualListingGroups(parsed), [parsed]);
-  const [choices, setChoices] = useState(() => Object.fromEntries(
-    ambiguities.map(item => [item.id, item.candidates[0] || null])
-  ));
-  const [manualEntries, setManualEntries] = useState({});
-  const [rowOverrides, setRowOverrides] = useState({});
-
-  const apply = () => {
-    // Persist manual entries to listingResolver cache so future imports skip the prompt.
-    Object.entries(manualEntries).forEach(([groupId, manual]) => {
-      const item = ambiguities.find(a => a.id === groupId);
-      if (!item || !manual.quote_symbol) return;
-      const isCdr = /\.(NE|NEO|TO|TSX)$/i.test(manual.quote_symbol);
-      setManualListing(item.underlying, {
-        us: manual.listing_currency === 'USD' ? { symbol: manual.quote_symbol, displaySymbol: manual.quote_symbol, exchange: manual.listing_exchange, description: '', currency: 'USD' } : null,
-        tsx: manual.listing_currency === 'CAD' && manual.listing_exchange === 'TSX' && !isCdr ? { symbol: manual.quote_symbol, displaySymbol: manual.quote_symbol, exchange: 'TSX', description: '', currency: 'CAD' } : null,
-        cdr: manual.listing_currency === 'CAD' && (manual.listing_exchange === 'NEO' || isCdr) ? { symbol: manual.quote_symbol, displaySymbol: manual.quote_symbol, exchange: manual.listing_exchange || 'NEO', description: '', currency: 'CAD' } : null,
-      });
-    });
-    const afterChoices = applySecurityChoices(parsed, choices);
-    const afterDual = applyDualListingOverrides(afterChoices, rowOverrides);
-    onApply(afterDual);
-  };
-
-  if (ambiguities.length === 0 && dualGroups.length === 0) {
-    return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-          <p className="text-sm font-semibold text-foreground">All securities verified</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Every imported row was resolved against Finnhub. No manual review needed.
-          </p>
-        </div>
-        <div className="flex items-center justify-between pt-1">
-          <Button variant="outline" size="sm" onClick={onBack}><ChevronLeft className="h-3.5 w-3.5 mr-1" />Back</Button>
-          <Button size="sm" onClick={() => onApply(parsed)}>Continue <ChevronRight className="h-3.5 w-3.5 ml-1" /></Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (ambiguities.length === 0 && dualGroups.length > 0) {
-    return (
-      <div className="space-y-4">
-        <DualListingPanel groups={dualGroups} rowOverrides={rowOverrides} setRowOverrides={setRowOverrides} />
-        <div className="flex items-center justify-between pt-1">
-          <Button variant="outline" size="sm" onClick={onBack}><ChevronLeft className="h-3.5 w-3.5 mr-1" />Back</Button>
-          <Button size="sm" onClick={apply}>Continue <ChevronRight className="h-3.5 w-3.5 ml-1" /></Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <DualListingPanel groups={dualGroups} rowOverrides={rowOverrides} setRowOverrides={setRowOverrides} />
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">Confirm ambiguous listings</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          We verified what we could against Finnhub. These rows still need a human to decide. CDR (CAD) and the US-listed share are distinct securities — they will be saved as separate holdings so lots, realized gains, and live prices stay correct.
-        </p>
-      </div>
-      <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
-        <div className="divide-y divide-border/20">
-          {ambiguities.map(item => {
-            const manualVal = manualEntries[item.id] || { quote_symbol: '', listing_exchange: '', listing_currency: '' };
-            const isManualSelected = choices[item.id]?.confidence === 'manual';
-            return (
-              <div key={item.id} className="grid gap-3 px-4 py-3 md:grid-cols-[180px_1fr]">
-                <div>
-                  <p className="text-xs font-semibold text-foreground">{item.rawTicker}</p>
-                  <p className="text-[10px] text-muted-foreground">{item.account || 'Imported account'} · {item.rows?.length || 0} row refs</p>
-                  {item.requiresManualEntry && (
-                    <p className="mt-1 text-[10px] text-amber-400/90">No verified match — enter manually</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {item.candidates.map(candidate => {
-                      const selected = choices[item.id]?.security_key === candidate.security_key;
-                      return (
-                        <button
-                          key={candidate.security_key}
-                          type="button"
-                          onClick={() => setChoices(prev => ({ ...prev, [item.id]: candidate }))}
-                          className={cn(
-                            'rounded-lg border px-3 py-2 text-left transition-colors',
-                            selected ? 'border-primary bg-primary/10' : 'border-border/40 bg-secondary/20 hover:border-primary/40'
-                          )}
-                        >
-                          <p className="text-xs font-semibold text-foreground">{candidate.display_ticker}</p>
-                          <p className="text-[10px] text-muted-foreground">{candidate.quote_symbol} · {candidate.listing_exchange || 'Exchange unknown'} · {candidate.listing_currency}</p>
-                          <p className="mt-1 text-[10px] text-muted-foreground">{candidate.reason || candidate.confidence}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <ManualListingForm
-                    underlying={item.underlying || item.rawTicker}
-                    value={manualVal}
-                    onChange={(next) => {
-                      setManualEntries(prev => ({ ...prev, [item.id]: next }));
-                      if (next.quote_symbol && next.listing_exchange && next.listing_currency) {
-                        const candidate = manualToCandidate(item.underlying || item.rawTicker, next);
-                        setChoices(prev => ({ ...prev, [item.id]: candidate }));
-                      }
-                    }}
-                  />
-                  {isManualSelected && (
-                    <p className="text-[10px] text-emerald-400/90">Using manual entry · {choices[item.id].quote_symbol} on {choices[item.id].listing_exchange}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="flex items-center justify-between pt-1">
-        <Button variant="outline" size="sm" onClick={onBack}><ChevronLeft className="h-3.5 w-3.5 mr-1" />Back</Button>
-        <Button size="sm" onClick={apply} disabled={ambiguities.some(a => !choices[a.id])}>
-          Confirm securities <ChevronRight className="h-3.5 w-3.5 ml-1" />
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 function MapPreviewStep({ parsed, onUpdateMap, onNext, onBack }) {
   const { broker, headers, columnMap, valid, errors, isHoldings, filename, isSectioned, importBundle } = parsed;
@@ -1569,7 +1228,9 @@ export default function ImportCenter() {
   const [completedSession, setCompletedSession] = useState([]);
   const { accounts: existingAccounts = [], institutions = [] } = usePortfolioData();
   const hasTransfers = useMemo(() => buildTransferGroups(parsed).length > 0, [parsed]);
-  const hasSecurityReview = useMemo(() => getSecurityAmbiguities(parsed).length > 0 || getDualListingGroups(parsed).length > 0, [parsed]);
+  // Securities Review step is gone — verifyParsedSecurities silently auto-resolves
+  // via Finnhub during composeParsedImports. If a row is ever mis-classified, the
+  // user can fix it inline from the Holdings page (Edit security button).
 
   const handleParsed = (bundles) => {
     const queue = Array.isArray(bundles) ? bundles : [bundles].filter(Boolean);
@@ -1594,7 +1255,7 @@ export default function ImportCenter() {
   const handleBack = () => {
     if (step === 2) { setParsed(null); setStep(1); }
     else if (step === 3) setStep(2);
-    else if (step === 4) setStep(hasSecurityReview ? 3 : 2);
+    else if (step === 4) setStep(2);
     else if (step === 5) setStep(4);
     else if (step === 6) setStep(hasTransfers ? 5 : 4);
     else setStep(null);
@@ -1642,7 +1303,7 @@ export default function ImportCenter() {
 
       {step !== null && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/30 bg-card/40 px-4 py-3">
-          <StepIndicator step={step} hasTransfers={hasTransfers} hasSecurityReview={hasSecurityReview} />
+          <StepIndicator step={step} hasTransfers={hasTransfers} />
           {importQueue.length > 1 && (
             <span className="text-[11px] text-muted-foreground">
               Group {queueIndex + 1} of {importQueue.length}
@@ -1679,15 +1340,7 @@ export default function ImportCenter() {
         <MapPreviewStep
           parsed={parsed}
           onUpdateMap={handleUpdateMap}
-          onNext={() => setStep(hasSecurityReview ? 3 : 4)}
-          onBack={handleBack}
-        />
-      )}
-
-      {step === 3 && parsed && hasSecurityReview && (
-        <SecurityReviewStep
-          parsed={parsed}
-          onApply={(nextParsed) => { setParsed(nextParsed); setStep(4); }}
+          onNext={() => setStep(4)}
           onBack={handleBack}
         />
       )}

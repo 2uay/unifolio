@@ -1461,19 +1461,27 @@ function parseIBKRSectionedReport(allRows, filename) {
     ...stfuRows,
   ].filter(row => row.date);
   const purchaseHistoryByTicker = {};
-  tradeTransactions
-    .filter(row => row.type === 'Buy' && row.ticker && row.quantity > 0)
-    .forEach(row => {
-      purchaseHistoryByTicker[row.ticker] = purchaseHistoryByTicker[row.ticker] || [];
-      purchaseHistoryByTicker[row.ticker].push({
-        date: row.date,
-        quantity: row.quantity,
-        price: row.price,
-        fees: row.fees,
-        currency: row.currency,
-        tradeId: row.tradeId,
-      });
+  // Include both Buys AND inbound transfers so the lot strip on the Holdings
+  // page reflects every share that contributes to the position. Transfer-in
+  // rows get flagged `isTransfer: true` so the UI can render an XFR pill.
+  const inboundTransfers = transferRows.filter(row => row.type === 'Transfer In' && row.ticker && row.quantity > 0);
+  const buys = tradeTransactions.filter(row => row.type === 'Buy' && row.ticker && row.quantity > 0);
+  [...buys, ...inboundTransfers].forEach(row => {
+    const isTransfer = row.sourceSection === 'TRFR' || row.type === 'Transfer In';
+    const impliedPrice = row.price
+      || (row.grossAmount && row.quantity ? Math.abs(row.grossAmount / row.quantity) : 0)
+      || (row.costBasis && row.quantity ? Math.abs(row.costBasis / row.quantity) : 0);
+    purchaseHistoryByTicker[row.ticker] = purchaseHistoryByTicker[row.ticker] || [];
+    purchaseHistoryByTicker[row.ticker].push({
+      date: row.date,
+      quantity: row.quantity,
+      price: impliedPrice,
+      fees: row.fees || 0,
+      currency: row.currency,
+      tradeId: row.tradeId || row.id,
+      isTransfer,
     });
+  });
 
   positions.forEach(position => {
     position.purchase_history = purchaseHistoryByTicker[position.ticker] || [];
@@ -1691,22 +1699,86 @@ export async function verifyParsedSecurities(parsed) {
   // duplicate underlyings across slices only hit Finnhub once.
   const verifiedAll = await verifyIdentities(allRows);
 
+  // Silent auto-resolution: rows still flagged `_unresolvable` get a
+  // deterministic auto-pick so the wizard never surfaces a review step. The
+  // user can always fix mis-classifications via the inline Edit-security
+  // panel on the Holdings page.
+  const autoResolved = verifiedAll.map(row => {
+    if (!row?._unresolvable) return row;
+    const underlying = String(row.underlying_ticker || row.ticker || '').toUpperCase().replace(/\s+CDR$/i, '');
+    const currency = String(row.listing_currency || row.currency || '').toUpperCase();
+    const v = row._verification || {};
+    const text = `${row.name || ''} ${row.notes || ''} ${row.description || ''}`;
+    const cdrText = /\bCDR\b|CANADIAN DEPOSITARY RECEIPT|CIBC\s+(CANADIAN\s+)?DEPOSITARY|\(CAD\s*HEDGED\)|HEDGED\s*CDR/i.test(text);
+
+    let pick = null;
+    let identity = 'us';
+    if (currency === 'USD') {
+      pick = v.us;
+      identity = 'us';
+    } else if (currency === 'CAD') {
+      if (cdrText) {
+        pick = v.cdr || v.tsx;
+        identity = pick === v.cdr ? 'cdr' : 'tsx';
+      } else {
+        pick = v.tsx || v.cdr;
+        identity = pick === v.cdr ? 'cdr' : 'tsx';
+      }
+    } else {
+      pick = v.us || v.tsx || v.cdr;
+      identity = pick === v.cdr ? 'cdr' : pick === v.tsx ? 'tsx' : 'us';
+    }
+
+    if (pick) {
+      const display = identity === 'cdr' ? `${underlying} CDR` : (pick.displaySymbol || pick.symbol);
+      return {
+        ...row,
+        security_key: `${underlying}@${pick.exchange || 'UNKNOWN'}:${currency || pick.currency || 'USD'}`,
+        display_ticker: display,
+        ticker: display,
+        quote_symbol: pick.symbol,
+        listing_exchange: pick.exchange,
+        listing_currency: currency || pick.currency,
+        underlying_ticker: underlying,
+        security_identity: identity,
+        identity_confidence: 'auto_resolved',
+        identity_reason: 'Auto-picked from Finnhub by currency + CDR signal',
+        _needs_verification: false,
+        _unresolvable: false,
+      };
+    }
+
+    // No Finnhub match at all — synthetic fallback to the underlying as US listing.
+    return {
+      ...row,
+      security_key: `${underlying}@NASDAQ/NYSE:${currency || 'USD'}`,
+      display_ticker: underlying,
+      ticker: underlying,
+      quote_symbol: underlying,
+      listing_exchange: 'NASDAQ/NYSE',
+      listing_currency: currency || 'USD',
+      underlying_ticker: underlying,
+      security_identity: 'us',
+      identity_confidence: 'auto_fallback',
+      identity_reason: 'No Finnhub match — defaulted to US listing (editable from Holdings)',
+      _needs_verification: false,
+      _unresolvable: false,
+    };
+  });
+
   // Map original-row identity → verified row, then re-distribute back into
   // each named slice. Use object identity to match (verifyIdentities preserves
   // input order and either returns the same row or a spread copy).
   const indexMap = new Map();
   let cursor = 0;
   Object.entries(slices).forEach(([key, rows]) => {
-    indexMap.set(key, rows.map(() => verifiedAll[cursor++]));
+    indexMap.set(key, rows.map(() => autoResolved[cursor++]));
   });
 
   const newBundle = { ...bundle };
   sliceKeys.forEach(key => { if (slices[key]) newBundle[key] = indexMap.get(key); });
-  newBundle.securityAmbiguities = buildSecurityAmbiguities([
-    ...(newBundle.positions || []),
-    ...(newBundle.transactions || []),
-    ...(newBundle.realizedPositions || []),
-  ]);
+  // securityAmbiguities is now always empty — auto-resolution handles every row.
+  newBundle.securityAmbiguities = [];
 
   return {
     ...parsed,
