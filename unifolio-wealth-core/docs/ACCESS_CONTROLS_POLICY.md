@@ -54,7 +54,7 @@ Every Postgres table containing Class A or Class B data has **Row-Level Security
 - The user can sign out from any device via Settings → Session → Sign Out.
 
 ### 3.4 Multi-factor authentication for end users
-TOTP-based MFA is **on the product roadmap (target: Q3 2026)** via Supabase Auth's built-in `auth.mfa.enroll()` flow. As of 2026-05-13, MFA is not deployed for end users. The compensating controls are: (a) mandatory email-verification gating before any sensitive action, (b) breach-list password rejection at signup, (c) the read-only nature of Unifolio (no money movement is possible through the app). See **CONSUMER_MFA_RATIONALE.md** for the formal compensating-controls statement.
+TOTP-based MFA is **on the product roadmap (target: Q3 2026)** via Supabase Auth's built-in `auth.mfa.enroll()` flow. As of 2026-05-13, MFA is not deployed for end users. The compensating controls are: (a) mandatory email-verification gating before any sensitive action, (b) password length minimum and rate-limited authentication attempts (per §3.1 above), (c) Postgres Row-Level Security on all sensitive tables (per §3.2 above), (d) the read-only nature of Unifolio (no money movement is possible through the app). See **CONSUMER_MFA_RATIONALE.md** for the formal compensating-controls statement.
 
 ---
 

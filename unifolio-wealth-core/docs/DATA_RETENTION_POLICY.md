@@ -17,11 +17,11 @@ This policy defines how long Unifolio retains each category of user data, when a
 
 | Data class | Examples | Retained while account active? | Retention after deletion request | Backup retention |
 |---|---|---|---|---|
-| **Account identity** | Email, name, password hash, profile photo | Yes | Hard-deleted within **24 hours** | Cycled out of nightly backups within **30 days** |
-| **Portfolio data** | Holdings, transactions, realized positions, custom assets, ACB history | Yes | Hard-deleted within **24 hours** | 30 days |
-| **Plaid connection data** | `item_id`, `access_token`, institution metadata | Yes | Database record hard-deleted within **24 hours**. Active `access_token` revocation via Plaid `/item/remove` happens immediately when the user explicitly disconnects an Item from Settings; cascading revocation on full-account deletion is a Q3 2026 roadmap item (currently the user is prompted to disconnect Items prior to account deletion). | 30 days |
+| **Account identity** | Email, name, password hash, profile photo | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
+| **Portfolio data** | Holdings, transactions, realized positions, custom assets, ACB history | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
+| **Plaid connection data** | `item_id`, `access_token`, institution metadata | Yes | Database record hard-deleted within **24 hours**. Active `access_token` revocation via Plaid `/item/remove` happens immediately when the user explicitly disconnects an Item from Settings; cascading revocation on full-account deletion is a Q3 2026 roadmap item (currently the user is prompted to disconnect Items prior to account deletion). | Per Supabase tier (currently 7 days on Free) |
 | **Imported broker files** | Raw CSV/Flex/PDF uploads | **Never stored** — only parsed positions/transactions are saved | N/A | N/A |
-| **Profile picture asset** | Image file in Supabase Storage | Yes | Deleted from Storage immediately on account deletion | 30 days |
+| **Profile picture asset** | Image file in Supabase Storage | Yes | Deleted from Storage immediately on account deletion | Per Supabase tier (currently 7 days on Free) |
 | **Transient session data** | Auth tokens, session cookies | Until user signs out or 7-day session timeout | Cleared immediately on sign-out | N/A |
 | **Audit logs** | Sign-ins, deletion timestamps, security events | Yes | Retained **90 days** post-deletion (security obligation), then permanent purge | 90 days |
 | **Email correspondence** | Support emails, password reset emails | Stored in Microsoft 365 mailbox | Anonymized or deleted on user request | Per Microsoft 365 policy |
