@@ -1,13 +1,29 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
 
 const SIZE = 12;
 const HALF = SIZE / 2;
+const CURSOR_PREF_KEY = 'unifolio_custom_cursor_enabled';
+
+function readCursorPref() {
+  if (typeof window === 'undefined') return true;
+  const v = localStorage.getItem(CURSOR_PREF_KEY);
+  return v === null ? true : v === 'true';
+}
 
 export default function CustomCursor() {
   const cursorRef = useRef(null);
+  const [enabled, setEnabled] = useState(readCursorPref);
 
   useEffect(() => {
+    const onPrefChange = () => setEnabled(readCursorPref());
+    window.addEventListener('unifolio:cursor-pref-changed', onPrefChange);
+    window.addEventListener('storage', (e) => { if (e.key === CURSOR_PREF_KEY) onPrefChange(); });
+    return () => window.removeEventListener('unifolio:cursor-pref-changed', onPrefChange);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
     if (typeof window === 'undefined') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     if (window.matchMedia('(pointer: coarse)').matches) return;
@@ -75,7 +91,9 @@ export default function CustomCursor() {
       document.removeEventListener('pointerdown', onDown);
       window.removeEventListener('blur', onLeave);
     };
-  }, []);
+  }, [enabled]);
+
+  if (!enabled) return null;
 
   return (
     <div

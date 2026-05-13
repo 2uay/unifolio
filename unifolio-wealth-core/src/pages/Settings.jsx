@@ -30,6 +30,12 @@ export default function Settings() {
   const [priceAlerts, setPriceAlerts] = useState(true);
   const [twoFactor, setTwoFactor] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
+  const [customCursorEnabled, setCustomCursorEnabled] = useState(() => {
+    try {
+      const v = localStorage.getItem('unifolio_custom_cursor_enabled');
+      return v === null ? true : v === 'true';
+    } catch { return true; }
+  });
 
   const toggleAccount = (id) => {
     setExcludedAccounts(prev =>
@@ -117,6 +123,20 @@ export default function Settings() {
              <p className="text-xs text-muted-foreground">Theme-aware accent lines around the app shell.</p>
            </div>
            <ThemedSwitch checked={accentBarsEnabled} onCheckedChange={toggleAccentBars} />
+         </div>
+         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
+           <div>
+             <p className="text-sm font-medium">Custom Cursor</p>
+             <p className="text-xs text-muted-foreground">Use the Unifolio wheel cursor in-app. Turn off to use your normal system cursor.</p>
+           </div>
+           <ThemedSwitch
+             checked={customCursorEnabled}
+             onCheckedChange={(v) => {
+               setCustomCursorEnabled(v);
+               try { localStorage.setItem('unifolio_custom_cursor_enabled', String(v)); } catch {}
+               window.dispatchEvent(new CustomEvent('unifolio:cursor-pref-changed'));
+             }}
+           />
          </div>
        </div>
 

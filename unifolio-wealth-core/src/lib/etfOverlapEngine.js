@@ -93,3 +93,51 @@ export function getHeldETFs(holdings) {
     name: ETF_HOLDINGS[normalizeTicker(h.ticker)].name,
   }));
 }
+
+/**
+ * X-Ray view: build one rich record per held ETF with weighted underlyings
+ * marked when the user also holds them directly. Used by Insights to render
+ * the per-ETF panel + heatmap.
+ */
+export function buildEtfXRay(holdings, portfolioTotal, convert) {
+  if (!holdings || holdings.length === 0) return [];
+
+  const directTickers = new Set();
+  holdings.forEach(h => {
+    const t = normalizeTicker(h.ticker);
+    if (!ETF_HOLDINGS[t]) directTickers.add(t);
+  });
+
+  const records = [];
+  holdings.forEach(h => {
+    const ticker = normalizeTicker(h.ticker);
+    const meta = ETF_HOLDINGS[ticker];
+    if (!meta) return;
+    const qty = h.position ?? h.quantity ?? 0;
+    const px = h.lastPrice ?? h.last_price ?? h.price ?? 0;
+    let mv = convert(qty * px, h.currency || 'USD');
+    if (!mv) mv = convert(h.market_value || 0, h.currency || 'USD');
+    const portfolioPct = portfolioTotal > 0 ? (mv / portfolioTotal) * 100 : 0;
+
+    const underlyings = (meta.holdings || []).map(u => ({
+      ticker: u.ticker,
+      weight: u.weight,
+      weightPct: u.weight * 100,
+      indirectValue: mv * u.weight,
+      overlapDirect: directTickers.has(u.ticker),
+    }));
+
+    records.push({
+      ticker,
+      name: meta.name || ticker,
+      type: meta.type || 'ETF',
+      marketValue: mv,
+      portfolioPct,
+      underlyings,
+      overlapTickers: underlyings.filter(u => u.overlapDirect).map(u => u.ticker),
+      coveragePct: underlyings.reduce((s, u) => s + u.weight, 0) * 100,
+    });
+  });
+
+  return records.sort((a, b) => b.marketValue - a.marketValue);
+}
