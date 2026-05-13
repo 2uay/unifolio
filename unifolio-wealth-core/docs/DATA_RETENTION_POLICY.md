@@ -19,7 +19,7 @@ This policy defines how long Unifolio retains each category of user data, when a
 |---|---|---|---|---|
 | **Account identity** | Email, name, password hash, profile photo | Yes | Hard-deleted within **24 hours** | Cycled out of nightly backups within **30 days** |
 | **Portfolio data** | Holdings, transactions, realized positions, custom assets, ACB history | Yes | Hard-deleted within **24 hours** | 30 days |
-| **Plaid connection data** | `item_id`, `access_token`, institution metadata | Yes | `access_token` revoked via Plaid `/item/remove` immediately; database record hard-deleted within **24 hours** | 30 days |
+| **Plaid connection data** | `item_id`, `access_token`, institution metadata | Yes | Database record hard-deleted within **24 hours**. Active `access_token` revocation via Plaid `/item/remove` happens immediately when the user explicitly disconnects an Item from Settings; cascading revocation on full-account deletion is a Q3 2026 roadmap item (currently the user is prompted to disconnect Items prior to account deletion). | 30 days |
 | **Imported broker files** | Raw CSV/Flex/PDF uploads | **Never stored** — only parsed positions/transactions are saved | N/A | N/A |
 | **Profile picture asset** | Image file in Supabase Storage | Yes | Deleted from Storage immediately on account deletion | 30 days |
 | **Transient session data** | Auth tokens, session cookies | Until user signs out or 7-day session timeout | Cleared immediately on sign-out | N/A |
@@ -38,13 +38,13 @@ Users can permanently delete all their data via:
 
 The flow:
 1. User confirms deletion via a 2-step modal (`DeleteConfirmModal` in `src/pages/PrivacyAndData.jsx`) with a checkbox confirming the action is irreversible.
-2. The frontend calls the `delete_unifolio_account` Postgres RPC (defined in `supabase/schema.sql`), which executes inside a single transaction:
-   - Plaid `access_token` revocation via `/item/remove` for each connected `plaid_items` row.
-   - Hard-delete from: `holdings`, `transactions`, `realized_positions`, `custom_assets`, `import_batches`, `accounts`, `plaid_items`, `institutions` (those orphaned), `user_profiles`.
+2. The frontend calls the `delete_unifolio_user_data` Postgres RPC (defined in `supabase/schema.sql`), which executes inside a single transaction:
+   - Hard-delete from: `holdings`, `transactions`, `realized_positions`, `custom_assets`, `import_batches`, `watchlist`, `accounts`, `plaid_items`, `institutions` (those orphaned), `user_profiles`.
    - Auth user record deletion via `auth.users` cascade.
    - Profile picture asset deletion from Supabase Storage `avatars` bucket.
-3. Local browser caches (theme, currency, watchlist, profile picture cache) are cleared by the frontend.
-4. A deletion audit row is written to `audit_log` (see §3.4) with the user ID and timestamp; **no other PII** is logged.
+3. **Plaid `access_token` revocation:** when a user explicitly disconnects a Plaid Item from Settings, Unifolio calls Plaid's `/item/remove` immediately, terminating the connection at both the Unifolio and the bank end. On full-account deletion (the path above), the database record holding the access token is hard-deleted within 24 hours, but the active token revocation against Plaid's API on full-account-delete is a roadmap item targeted for Q3 2026. Until then, users are prompted to disconnect Plaid Items prior to triggering account deletion.
+4. Local browser caches (theme, currency, watchlist, profile picture cache) are cleared by the frontend.
+5. A deletion audit row is written to `audit_log` (see §3.4) with the user ID and timestamp; **no other PII** is logged.
 
 ### 3.2 Account-level deletion (Accounts page)
 
@@ -86,8 +86,9 @@ If a user explicitly requests their data be removed from backups before the 30-d
 ## 5. Plaid-specific retention
 
 Per the Plaid Production Customer Agreement:
-- Plaid `access_token` values are **immediately revoked** via Plaid's `/item/remove` API on user deletion request OR when the user unlinks the institution from Settings.
-- Plaid `item_id` and institution metadata are deleted from our database within 24 hours.
+- Plaid `access_token` revocation via `/item/remove` is performed immediately when the user explicitly disconnects an Item from Settings.
+- On full account deletion, the database row containing the access token is hard-deleted within 24 hours. Calling `/item/remove` against Plaid's API as part of the cascade is a roadmap item (Q3 2026) — currently the user-facing flow prompts the user to disconnect Plaid Items prior to triggering account deletion.
+- Plaid `item_id` and institution metadata are deleted from our database within 24 hours of any deletion request.
 - Cached Plaid account/transaction data is deleted alongside the rest of the user's portfolio data.
 - Unifolio retains no Plaid Link credentials at any point — Plaid handles all underlying broker authentication.
 
