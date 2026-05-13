@@ -83,13 +83,17 @@ const LoginBackgroundWheel = forwardRef(function LoginBackgroundWheel({ hovered 
   return (
     <div
       aria-hidden="true"
-      // `fixed` so the wheel anchors to the viewport, not the parent page. On
-      // long pages (e.g. /plans) `position: absolute` made the wheel center
-      // at half the full page height — its top edge then clipped just below
-      // the hero logo. Fixed keeps it viewport-centered as the user scrolls.
-      style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 1 }}
+      // Constrain the wheel container to exactly one viewport height anchored
+      // at the top of the parent. On a tall page like /plans, `inset: 0` would
+      // stretch this to the full page height — moving the wheel's center far
+      // below the viewport and clipping its top edge just under the hero logo.
+      // Pinning to 100vh at the top keeps the circle's center on the first
+      // visible screen, so all edges of the 180vw circle fall outside the
+      // viewport (haziness extends past every border, no clipping visible).
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '100vh', pointerEvents: 'none', overflow: 'hidden', zIndex: 1 }}
     >
-      {/* Background rotating ring — 180vw decorative element */}
+      {/* Background rotating ring — 180vw decorative element, centered on
+          the 100vh container so its center sits at viewport center. */}
       <div
         style={{
           position: 'absolute',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, X, Gem, Sparkles, Crown, Zap, ArrowRight, Lock } from 'lucide-react';
+import { Check, X, Gem, Sparkles, Crown, Zap, ArrowRight, Lock, X as CloseIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/ThemeContext';
 import { useCurrency } from '@/lib/CurrencyContext';
@@ -80,11 +80,132 @@ const WHY_ITEMS = [
 
 const APP_URL = 'https://unifolio.ca';
 
-function PlanCard({ title, badge, badgeColor, price, priceSub, description, features, cta, ctaStyle, ctaHref, icon: Icon, highlighted }) {
+// Long-form descriptions surfaced in the plan-detail modal (when the user
+// clicks the card body, not the CTA button).
+const PLAN_DETAILS = {
+  starter: {
+    headline: 'Free forever — perfect for trying Unifolio',
+    body: `Starter is for people testing the waters. You get one connected brokerage account, basic holdings + P&L tracking, a small watchlist, and full access to demo mode (which loads a fictional but realistic portfolio so you can see what Pro looks like before paying).
+
+What you don't get: real-time prices (delayed quotes only), CSV/IBKR Flex import (you'll have to add positions manually), the tax report, AI insights, and the 48 themes — those are Pro features.
+
+Starter never expires and never asks for a card. If you decide you want more, upgrade to Pro at any time and your existing data carries over.`,
+    bestFor: 'Curious investors with a single account who want to see if portfolio tracking is for them.',
+    nextStep: 'Click "Open unifolio.ca" to start using the free tier. No card required.',
+  },
+  pro: {
+    headline: 'The full Unifolio experience for daily use',
+    body: `Pro is what most users land on. Unlimited brokerage accounts, full IBKR Flex Query and CSV imports, real-time price feeds across every position and watchlist ticker, tax-ready exports (T5008 in Canada, etc.), the ETF X-Ray for true exposure analysis, all 48 themes, and priority support.
+
+The Pro subscription includes every feature shipped to Unifolio, plus early access to new ones. We ship features weekly and Pro users get them first.
+
+Annual billing is 10% cheaper than monthly. You can switch billing modes at any time from your profile.
+
+Pro includes a 7-day free trial — no card charged until day 8 — so you can import your real portfolio and see the value before committing.`,
+    bestFor: 'Active investors with multiple accounts (TFSA + RRSP + non-reg + IBKR), or anyone who wants tax exports and real-time data.',
+    nextStep: 'Click "Start 7-Day Free Trial" to begin. We never charge you during the trial — you have to actively renew on day 8.',
+  },
+  lifetime: {
+    headline: 'Pay once. Own Unifolio forever.',
+    body: `Lifetime gets you everything in Pro, locked in for the lifetime of the product, with zero recurring charges.
+
+The price is set at exactly two years of annual Pro billing minus a 20% loyalty discount. After ~24 months you start saving money vs. continuing on annual Pro. After 5 years you've saved roughly 60%. After 10 years you've saved 80%+.
+
+Lifetime members also get:
+• Founding-member badge in the app and on the public Unifolio Discord
+• Dedicated support channel with direct line to the founder
+• Private beta access to features before they ship to Pro
+• Feature-request priority — your requests get triaged first
+• Free access to any new product Unifolio launches in the next 24 months (e.g. mobile app, advisor mode)
+
+Lifetime is capped at 500 members. We're at #${42} as of today. Once we hit 500, the Lifetime tier closes permanently — Pro will remain available.`,
+    bestFor: "People who plan to use Unifolio long-term, want to support a solo founder, and don't want to think about subscriptions.",
+    nextStep: 'Click "Buy Lifetime Access" to start the one-time purchase flow. Email support@unifolio.ca if you want to discuss the founding-member badge.',
+  },
+};
+
+function PlanDetailModal({ plan, onClose, onCheckout }) {
+  if (!plan) return null;
+  const detail = PLAN_DETAILS[plan.id];
   return (
     <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative max-w-2xl w-full max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <CloseIcon className="w-4 h-4" />
+        </button>
+
+        <div className="p-6 sm:p-8 space-y-5">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              'w-10 h-10 rounded-xl flex items-center justify-center',
+              plan.highlighted ? 'bg-primary/15' : 'bg-secondary'
+            )}>
+              <plan.icon className={cn('w-5 h-5', plan.highlighted ? 'text-primary' : 'text-muted-foreground')} />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.08em] font-semibold text-muted-foreground">{plan.title} plan</p>
+              <p className="text-lg font-bold text-foreground">{plan.price}{plan.priceSub && <span className="text-xs text-muted-foreground ml-1.5 font-normal">{plan.priceSub}</span>}</p>
+            </div>
+          </div>
+
+          <h2 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">{detail.headline}</h2>
+
+          <div className="prose-tight text-[13px] text-foreground/85 leading-relaxed whitespace-pre-line">
+            {detail.body}
+          </div>
+
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-primary mb-1">Best for</p>
+            <p className="text-xs text-foreground/85 leading-relaxed">{detail.bestFor}</p>
+          </div>
+
+          <div className="rounded-xl border border-border/50 bg-secondary/30 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.08em] font-semibold text-muted-foreground mb-1">Next step</p>
+            <p className="text-xs text-foreground/85 leading-relaxed">{detail.nextStep}</p>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row items-stretch gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-border text-foreground hover:bg-secondary/80 transition-colors"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => onCheckout(plan)}
+              className={cn('flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all', plan.ctaStyle)}
+            >
+              {plan.cta}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlanCard({ title, badge, badgeColor, price, priceSub, description, features, cta, ctaStyle, ctaHref, icon: Icon, highlighted, onCardClick, onCheckout }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onCardClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick?.(); } }}
       className={cn(
-        'group relative flex flex-col rounded-2xl backdrop-blur-xl transition-all duration-300',
+        'group relative flex flex-col rounded-2xl backdrop-blur-xl transition-all duration-300 cursor-pointer text-left',
         highlighted
           ? 'border-2 border-primary/50 bg-gradient-to-b from-card/95 to-card/70 shadow-[0_0_60px_hsl(var(--primary)/0.25),0_20px_50px_-20px_hsl(var(--primary)/0.4)] scale-[1.03] hover:scale-[1.05] hover:shadow-[0_0_80px_hsl(var(--primary)/0.35),0_25px_60px_-20px_hsl(var(--primary)/0.5)]'
           : 'border border-border/50 bg-card/80 hover:border-primary/30 hover:shadow-[0_0_40px_hsl(var(--primary)/0.12)] hover:bg-card/90'
@@ -132,16 +253,21 @@ function PlanCard({ title, badge, badgeColor, price, priceSub, description, feat
           <p className="text-xs text-muted-foreground mt-2 leading-relaxed min-h-[2.5em]">{description}</p>
         </div>
 
-        {/* CTA */}
-        <a
-          href={ctaHref || APP_URL}
+        {/* CTA — stops propagation so a card-body click opens the detail
+            modal while the CTA goes straight to checkout. */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onCheckout?.(); }}
           className={cn(
             'w-full py-3 rounded-xl text-sm font-semibold transition-all active:scale-95 text-center block',
             ctaStyle,
           )}
         >
           {cta}
-        </a>
+        </button>
+        <p className="text-[10px] text-center text-muted-foreground/60 mt-1">
+          Click anywhere else on the card for plan details
+        </p>
       </div>
 
       {/* Divider */}
@@ -174,8 +300,18 @@ const isOnProDomain = typeof window !== 'undefined' &&
 
 export default function Plans() {
   const [billing, setBilling] = useState('annual');
+  const [openPlanId, setOpenPlanId] = useState(null);
   const { chartColors } = useTheme();
   const { displayCurrency } = useCurrency();
+
+  const goToCheckout = (plan) => {
+    const url = `/checkout?plan=${plan.id}&billing=${billing}&currency=${displayCurrency}`;
+    if (isOnProDomain) {
+      window.location.href = `${APP_URL}${url}`;
+    } else {
+      window.location.assign(url);
+    }
+  };
 
   const currency = PRICES[displayCurrency] ? displayCurrency : 'USD';
   const { monthly: MONTHLY_PRICE, annual: ANNUAL_PRICE, lifetime: LIFETIME_PRICE } = PRICES[currency];
@@ -259,8 +395,11 @@ export default function Plans() {
           style={{ background: 'radial-gradient(ellipse, hsl(var(--primary)) 0%, transparent 70%)' }} />
       </div>
 
-      {/* Content */}
-      <div className="relative z-10 px-4 py-10 md:py-16 max-w-5xl mx-auto">
+      {/* Content. Top padding accounts for the 56px global topbar PLUS a
+          ~28px breathing gap (matching the mb-7 below the spinning logo)
+          so the logo sits visually balanced between the topbar above and
+          the unifolio.pro badge below it. */}
+      <div className="relative z-10 px-4 pt-20 pb-10 md:pt-20 md:pb-16 max-w-5xl mx-auto">
         {/* Sign-in link when standalone on unifolio.pro */}
         {isOnProDomain && (
           <div className="flex justify-end mb-4">
@@ -336,7 +475,12 @@ export default function Plans() {
         {/* Plan cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start mb-20 pt-4">
           {plans.map(plan => (
-            <PlanCard key={plan.id} {...plan} />
+            <PlanCard
+              key={plan.id}
+              {...plan}
+              onCardClick={() => setOpenPlanId(plan.id)}
+              onCheckout={() => goToCheckout(plan)}
+            />
           ))}
         </div>
 
@@ -418,6 +562,13 @@ export default function Plans() {
           </p>
         </div>
       </div>
+
+      {/* Plan-detail modal */}
+      <PlanDetailModal
+        plan={openPlanId ? plans.find(p => p.id === openPlanId) : null}
+        onClose={() => setOpenPlanId(null)}
+        onCheckout={(plan) => { setOpenPlanId(null); goToCheckout(plan); }}
+      />
     </div>
   );
 }

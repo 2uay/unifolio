@@ -41,6 +41,7 @@ import ResetPassword from '@/pages/ResetPassword';
 import Welcome from '@/pages/Welcome';
 import Community from '@/pages/Community';
 import Learn from '@/pages/Learn';
+import Checkout from '@/pages/Checkout';
 
 const isProDomain = typeof window !== 'undefined' &&
   (window.location.hostname === 'unifolio.pro' || window.location.hostname === 'www.unifolio.pro');
@@ -49,9 +50,10 @@ const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, isDemoMode } = useAuth();
   const location = useLocation();
 
-  // unifolio.pro always shows the Plans/pricing page regardless of auth state
+  // unifolio.pro shows the Plans/pricing page (or the Checkout flow when
+  // the CTA was clicked) regardless of auth state.
   if (isProDomain) {
-    return <Plans />;
+    return location.pathname === '/checkout' ? <Checkout /> : <Plans />;
   }
 
   // Password reset link — must be reachable without auth
@@ -88,6 +90,7 @@ const AuthenticatedApp = () => {
         <Route path="/community" element={<Community />} />
         <Route path="/learn" element={<Learn />} />
         <Route path="/plans" element={<Plans />} />
+        <Route path="/checkout" element={<Checkout />} />
         <Route path="/import" element={<ImportCenter />} />
         <Route path="/tax" element={<TaxReport />} />
         <Route path="/settings" element={<Settings />} />
