@@ -2803,6 +2803,57 @@ export const themes = {
     swatches: ['#22d3ee','#e879f9','#eab308','#06b6d4'],
     colors: { '--background':'180 10% 3%', '--foreground':'180 6% 92%', '--card':'180 8% 6%', '--card-foreground':'180 6% 92%', '--popover':'180 8% 6%', '--popover-foreground':'180 6% 92%', '--primary':'180 100% 58%', '--primary-foreground':'0 0% 0%', '--secondary':'180 8% 11%', '--secondary-foreground':'180 6% 80%', '--muted':'180 8% 11%', '--muted-foreground':'180 6% 50%', '--accent':'300 100% 58%', '--accent-foreground':'0 0% 100%', '--destructive':'0 72% 51%', '--destructive-foreground':'0 0% 100%', '--border':'180 8% 15%', '--input':'180 8% 15%', '--ring':'300 100% 58%', '--gain':'142 71% 45%', '--loss':'0 72% 51%', '--sidebar-background':'180 10% 2%', '--sidebar-foreground':'180 6% 80%' },
   },
+  glass: {
+    name: "Liquid Glass",
+    description: "Apple-style frosted glass with a hazy aurora light show — Lifetime members only",
+    pro: true,
+    lifetime: true,
+    isLiving: true,
+    logoEnergy: 'low',
+    auroraGlass: true, // hint to background renderer to swap in the soft aurora gradient
+    living: {
+      // Wide oscillation across pastel hues so the aurora drifts through
+      // soft pinks, blues, mints, and lavenders without ever saturating.
+      primaryBaseHue: 220, shiftSpeed: 4, saturation: 38, lightness: 78,
+      chartHueOffsets: [0, 40, 80, 160, 200, 240, 300, 340],
+      chartSat: 50, chartLight: 70,
+      ringOffset: 60, accentOffset: 180, oscillateRange: 70,
+    },
+    chartColors: ['#a5b4fc', '#fda4af', '#86efac', '#fcd34d', '#7dd3fc', '#c4b5fd', '#f9a8d4', '#fde68a'],
+    swatches: ['#e2e8f0', '#a5b4fc', '#fda4af', '#86efac'],
+    colors: {
+      // Frosted ultra-light surfaces with a hint of cool blue, like
+      // looking through a thin sheet of bevelled glass at a sunset.
+      "--background": "220 30% 96%",
+      "--foreground": "220 25% 18%",
+      "--card": "220 40% 98%",
+      "--card-foreground": "220 25% 18%",
+      "--popover": "220 40% 99%",
+      "--popover-foreground": "220 25% 18%",
+      "--primary": "220 60% 55%",
+      "--primary-foreground": "0 0% 100%",
+      "--secondary": "220 30% 92%",
+      "--secondary-foreground": "220 25% 30%",
+      "--muted": "220 25% 90%",
+      "--muted-foreground": "220 18% 45%",
+      "--accent": "330 70% 75%",
+      "--accent-foreground": "330 50% 15%",
+      "--destructive": "0 65% 55%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "220 30% 86%",
+      "--input": "220 30% 88%",
+      "--ring": "220 60% 65%",
+      "--chart-1": "220 60% 65%",
+      "--chart-2": "340 65% 70%",
+      "--chart-3": "150 50% 60%",
+      "--chart-4": "45 80% 65%",
+      "--chart-5": "200 65% 65%",
+      "--gain": "150 55% 45%",
+      "--loss": "350 60% 55%",
+      "--sidebar-background": "220 35% 94%",
+      "--sidebar-foreground": "220 25% 25%",
+    },
+  },
   unifoliopro: {
     name: "Unifolio Pro",
     description: "Black & gold — exclusive to Pro members",
@@ -2928,6 +2979,25 @@ export function getAllThemes() {
     id, ...theme,
     tags: theme.tags || THEME_TAGS_MAP[id] || [],
   }));
+}
+
+// Pick a random theme id. Used for first-load and unauthenticated visitors so
+// every fresh session gets a different look. Honors the user's saved
+// preference elsewhere — this is only called when there is no saved theme.
+//   excludePro       — skip ALL Pro/living themes for free users
+//   excludeLifetime  — skip Lifetime-gated themes for Pro (non-Lifetime) users
+//   excludeId        — never re-pick the same theme back-to-back
+//   excludeMono      — skip the custom-monochrome slot (it requires a hex color)
+export function getRandomTheme({ excludePro = false, excludeLifetime = true, excludeId = null, excludeMono = true } = {}) {
+  const ids = Object.keys(themes).filter(id => {
+    if (excludeMono && id === 'custom-monochrome') return false;
+    if (excludeId && id === excludeId) return false;
+    if (excludePro && themes[id]?.pro) return false;
+    if (excludeLifetime && themes[id]?.lifetime) return false;
+    return true;
+  });
+  if (!ids.length) return DEFAULT_THEME;
+  return ids[Math.floor(Math.random() * ids.length)];
 }
 
 // Returns the chart color palette for the currently active theme

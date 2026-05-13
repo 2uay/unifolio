@@ -27,7 +27,8 @@ import Accounts from '@/pages/Accounts';
 import Performance from '@/pages/Performance';
 import Transactions from '@/pages/Transactions';
 import Insights from '@/pages/Insights';
-import Institutions from '@/pages/Institutions';
+// Institutions page removed — connection management lives in Import Center now.
+// import Institutions from '@/pages/Institutions';
 import Instructions from '@/pages/Instructions';
 import PrivacyAndData from '@/pages/PrivacyAndData';
 import ImportCenter from '@/pages/ImportCenter';
@@ -80,7 +81,7 @@ const AuthenticatedApp = () => {
         <Route path="/performance" element={<Performance />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/insights" element={<Insights />} />
-        <Route path="/institutions" element={<Institutions />} />
+        {/* /institutions removed — use /import for connection management */}
         <Route path="/instructions" element={<Instructions />} />
         <Route path="/privacy" element={<PrivacyAndData />} />
         <Route path="/community" element={<Community />} />

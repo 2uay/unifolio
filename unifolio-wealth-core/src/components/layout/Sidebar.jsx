@@ -25,7 +25,6 @@ const navItems = [
   { path: '/performance', label: 'Performance', icon: TrendingUp },
   { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { path: '/insights', label: 'Insights', icon: Lightbulb },
-  { path: '/institutions', label: 'Institutions', icon: Link2 },
   { path: '/import', label: 'Import Center', icon: Upload },
   { path: '/tax', label: 'Tax Report', icon: Receipt },
 ];

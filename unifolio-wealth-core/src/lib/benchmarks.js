@@ -1,5 +1,6 @@
 import { safeNumber } from '@/lib/safeNum';
 import { fetchBenchmarkViaFinnhub } from '@/lib/stockApi';
+import { fetchInflationSeries, isInflationKey } from '@/lib/inflationApi';
 
 export const BENCHMARKS = [
   { id: 'sp500',    label: 'S&P 500',        symbol: '^GSPC',    finnhubSymbol: 'SPY',             finnhubType: 'stock',  color: '#f59e0b', base: 5200,  seed: 111 },
@@ -11,9 +12,14 @@ export const BENCHMARKS = [
   { id: 'usmarket', label: 'US Total Mkt',   symbol: 'VTI',      finnhubSymbol: 'VTI',             finnhubType: 'stock',  color: '#22d3ee', base: 220,   seed: 777 },
   { id: 'camarket', label: 'CA Total Mkt',   symbol: 'XIC.TO',   finnhubSymbol: 'XIC:TSX',         finnhubType: 'stock',  color: '#fb7185', base: 180,   seed: 888 },
   { id: 'dxy',      label: 'US Dollar (DXY)',symbol: 'DX-Y.NYB', finnhubSymbol: 'UUP',             finnhubType: 'stock',  color: '#94a3b8', base: 104,   seed: 999 },
+  // Inflation benchmarks — fetched from Bank of Canada Valet (CA) and FRED (US).
+  // Monthly index series, not daily quotes — alignBenchmarkSeriesToDates handles
+  // the forward-fill so the chart line stays smooth between releases.
+  { id: 'cpi_ca',   label: 'Canadian CPI',   symbol: 'CPI-CA',   finnhubSymbol: null, finnhubType: 'inflation', country: 'CA', color: '#10b981', base: 158, seed: 1010 },
+  { id: 'cpi_us',   label: 'US CPI',         symbol: 'CPI-US',   finnhubSymbol: null, finnhubType: 'inflation', country: 'US', color: '#ef4444', base: 310, seed: 1111 },
 ];
 
-export const COMMON_BENCHMARKS = ['sp500', 'nasdaq', 'dow', 'btc', 'dxy'];
+export const COMMON_BENCHMARKS = ['sp500', 'nasdaq', 'dow', 'btc', 'cpi_ca', 'cpi_us'];
 
 const BENCHMARK_CACHE_KEY = 'unifolio_benchmark_series_v2';
 const BENCHMARK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -86,15 +92,38 @@ export async function fetchBenchmarkSeries(benchmarkIds, days = 365) {
     return { series, status };
   }
 
+  // Inflation series — Bank of Canada Valet / FRED. These don't go through
+  // Finnhub or Yahoo, so we route them here first and remove from later steps.
+  const inflationIds = needsFetch.filter(isInflationKey);
+  await Promise.all(inflationIds.map(async (id) => {
+    const benchmark = getBenchmarkById(id);
+    if (!benchmark?.country) return;
+    try {
+      const data = await fetchInflationSeries(benchmark.country);
+      if (Array.isArray(data) && data.length >= 2) {
+        series[id] = data;
+        status[id] = 'live';
+        const cacheKey = `${benchmark.symbol}_${range}`;
+        cache[cacheKey] = { data, ts: Date.now() };
+      } else {
+        status[id] = 'fallback';
+      }
+    } catch (err) {
+      console.warn(`[benchmarks] inflation series failed for ${id}:`, err?.message || err);
+      status[id] = 'fallback';
+    }
+  }));
+  const remainingNeeds = needsFetch.filter(id => !isInflationKey(id));
+
   // Primary: Finnhub (authenticated, reliable)
-  const finnhubBenchmarks = needsFetch
+  const finnhubBenchmarks = remainingNeeds
     .map(id => getBenchmarkById(id))
     .filter(b => b?.finnhubSymbol);
 
   const finnhubResults = await fetchBenchmarkViaFinnhub(finnhubBenchmarks, Math.max(days + 30, 60));
 
   const stillNeed = [];
-  needsFetch.forEach(id => {
+  remainingNeeds.forEach(id => {
     const benchmark = getBenchmarkById(id);
     if (!benchmark) return;
     const data = finnhubResults[id];

@@ -3,31 +3,33 @@ import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/ThemeContext';
 
 // ── Login page bumper-car floater seed ────────────────────────────────────
+// Opacity halved from the original spec so the floaters feel like a lit
+// snowglobe rather than competing with foreground content.
 const LOGIN_FLOATERS = [
-  { x:  8, y: 18, size:  28, speed: 28, phase: 0.0, baseOp: 0.22, breathPeriod:  7200 },
-  { x: 18, y: 72, size:  56, speed: 14, phase: 1.1, baseOp: 0.18, breathPeriod: 10400 },
-  { x: 28, y: 35, size:  90, speed:  8, phase: 2.3, baseOp: 0.15, breathPeriod: 14000 },
-  { x: 38, y: 82, size:  38, speed: 22, phase: 0.6, baseOp: 0.21, breathPeriod:  8600 },
-  { x: 50, y: 22, size:  70, speed: 11, phase: 3.0, baseOp: 0.17, breathPeriod: 12200 },
-  { x: 62, y: 65, size:  44, speed: 19, phase: 1.7, baseOp: 0.22, breathPeriod:  9000 },
-  { x: 72, y: 12, size: 110, speed:  6, phase: 0.4, baseOp: 0.13, breathPeriod: 16000 },
-  { x: 80, y: 55, size:  32, speed: 32, phase: 2.1, baseOp: 0.25, breathPeriod:  6800 },
-  { x: 90, y: 30, size:  62, speed: 15, phase: 1.4, baseOp: 0.18, breathPeriod: 11600 },
-  { x: 14, y: 50, size:  48, speed: 20, phase: 3.4, baseOp: 0.20, breathPeriod:  9800 },
-  { x: 45, y: 45, size:  88, speed:  9, phase: 0.9, baseOp: 0.14, breathPeriod: 15000 },
-  { x: 85, y: 78, size:  24, speed: 36, phase: 2.6, baseOp: 0.27, breathPeriod:  6000 },
-  { x: 55, y: 88, size:  74, speed: 12, phase: 1.2, baseOp: 0.16, breathPeriod: 13400 },
-  { x: 25, y: 60, size:  36, speed: 26, phase: 3.8, baseOp: 0.24, breathPeriod:  7600 },
-  { x: 70, y: 42, size:  52, speed: 17, phase: 0.2, baseOp: 0.19, breathPeriod: 10800 },
-  { x:  4, y: 85, size: 120, speed:  5, phase: 2.8, baseOp: 0.12, breathPeriod: 18000 },
-  { x: 92, y: 62, size:  40, speed: 24, phase: 1.5, baseOp: 0.23, breathPeriod:  8000 },
-  { x: 34, y: 15, size:  66, speed: 13, phase: 0.8, baseOp: 0.17, breathPeriod: 12800 },
-  { x: 58, y: 72, size:  80, speed: 10, phase: 3.2, baseOp: 0.15, breathPeriod: 14600 },
-  { x: 78, y: 90, size:  30, speed: 30, phase: 1.9, baseOp: 0.26, breathPeriod:  6400 },
-  { x: 10, y: 38, size: 100, speed:  7, phase: 0.5, baseOp: 0.13, breathPeriod: 16800 },
-  { x: 48, y: 62, size:  46, speed: 21, phase: 2.4, baseOp: 0.21, breathPeriod:  9400 },
-  { x: 22, y: 90, size:  58, speed: 16, phase: 3.6, baseOp: 0.18, breathPeriod: 11200 },
-  { x: 65, y: 25, size:  34, speed: 28, phase: 0.7, baseOp: 0.24, breathPeriod:  7400 },
+  { x:  8, y: 18, size:  28, speed: 28, phase: 0.0, baseOp: 0.11, breathPeriod:  7200 },
+  { x: 18, y: 72, size:  56, speed: 14, phase: 1.1, baseOp: 0.09, breathPeriod: 10400 },
+  { x: 28, y: 35, size:  90, speed:  8, phase: 2.3, baseOp: 0.075, breathPeriod: 14000 },
+  { x: 38, y: 82, size:  38, speed: 22, phase: 0.6, baseOp: 0.105, breathPeriod:  8600 },
+  { x: 50, y: 22, size:  70, speed: 11, phase: 3.0, baseOp: 0.085, breathPeriod: 12200 },
+  { x: 62, y: 65, size:  44, speed: 19, phase: 1.7, baseOp: 0.11, breathPeriod:  9000 },
+  { x: 72, y: 12, size: 110, speed:  6, phase: 0.4, baseOp: 0.065, breathPeriod: 16000 },
+  { x: 80, y: 55, size:  32, speed: 32, phase: 2.1, baseOp: 0.125, breathPeriod:  6800 },
+  { x: 90, y: 30, size:  62, speed: 15, phase: 1.4, baseOp: 0.09, breathPeriod: 11600 },
+  { x: 14, y: 50, size:  48, speed: 20, phase: 3.4, baseOp: 0.10, breathPeriod:  9800 },
+  { x: 45, y: 45, size:  88, speed:  9, phase: 0.9, baseOp: 0.07, breathPeriod: 15000 },
+  { x: 85, y: 78, size:  24, speed: 36, phase: 2.6, baseOp: 0.135, breathPeriod:  6000 },
+  { x: 55, y: 88, size:  74, speed: 12, phase: 1.2, baseOp: 0.08, breathPeriod: 13400 },
+  { x: 25, y: 60, size:  36, speed: 26, phase: 3.8, baseOp: 0.12, breathPeriod:  7600 },
+  { x: 70, y: 42, size:  52, speed: 17, phase: 0.2, baseOp: 0.095, breathPeriod: 10800 },
+  { x:  4, y: 85, size: 120, speed:  5, phase: 2.8, baseOp: 0.06, breathPeriod: 18000 },
+  { x: 92, y: 62, size:  40, speed: 24, phase: 1.5, baseOp: 0.115, breathPeriod:  8000 },
+  { x: 34, y: 15, size:  66, speed: 13, phase: 0.8, baseOp: 0.085, breathPeriod: 12800 },
+  { x: 58, y: 72, size:  80, speed: 10, phase: 3.2, baseOp: 0.075, breathPeriod: 14600 },
+  { x: 78, y: 90, size:  30, speed: 30, phase: 1.9, baseOp: 0.13, breathPeriod:  6400 },
+  { x: 10, y: 38, size: 100, speed:  7, phase: 0.5, baseOp: 0.065, breathPeriod: 16800 },
+  { x: 48, y: 62, size:  46, speed: 21, phase: 2.4, baseOp: 0.105, breathPeriod:  9400 },
+  { x: 22, y: 90, size:  58, speed: 16, phase: 3.6, baseOp: 0.09, breathPeriod: 11200 },
+  { x: 65, y: 25, size:  34, speed: 28, phase: 0.7, baseOp: 0.12, breathPeriod:  7400 },
 ];
 
 // ── Dot-ring helpers (existing wave mode) ──────────────────────────────────
@@ -102,7 +104,71 @@ const WHEEL_DOTS = Array.from({ length: N_W }, (_, i) => {
   return { x: CX_W + R_W * Math.cos(a), y: CY_W + R_W * Math.sin(a) };
 });
 
-function FloatingWheels({ chartColors, cursorRef }) {
+// Snowglobe preset — even denser than login, tuned for the Plans page
+// marketing surface where the user explicitly asked for "more circles
+// spinning and floating, more interaction". 60 floaters across the full
+// size range (16px → 160px), with extra wide opacity range so big slow
+// orbs anchor the composition while small fast ones add zip.
+const SNOWGLOBE_FLOATERS = [
+  { x:  6, y: 12, size:  20, speed: 32, phase: 0.0, baseOp: 0.13, breathPeriod:  6800 },
+  { x: 14, y: 28, size:  44, speed: 18, phase: 1.2, baseOp: 0.10, breathPeriod:  9400 },
+  { x: 22, y: 60, size:  72, speed: 11, phase: 2.4, baseOp: 0.08, breathPeriod: 12800 },
+  { x: 28, y: 18, size:  28, speed: 26, phase: 0.6, baseOp: 0.12, breathPeriod:  7600 },
+  { x: 36, y: 78, size:  56, speed: 14, phase: 3.0, baseOp: 0.09, breathPeriod: 10800 },
+  { x: 42, y: 38, size: 110, speed:  7, phase: 1.7, baseOp: 0.06, breathPeriod: 16000 },
+  { x: 48, y: 88, size:  32, speed: 28, phase: 0.4, baseOp: 0.13, breathPeriod:  7000 },
+  { x: 54, y: 22, size:  60, speed: 13, phase: 2.1, baseOp: 0.09, breathPeriod: 11600 },
+  { x: 60, y: 62, size:  88, speed:  9, phase: 1.4, baseOp: 0.07, breathPeriod: 13800 },
+  { x: 66, y: 30, size:  40, speed: 21, phase: 3.4, baseOp: 0.11, breathPeriod:  8400 },
+  { x: 72, y: 84, size:  52, speed: 16, phase: 0.9, baseOp: 0.10, breathPeriod: 10400 },
+  { x: 78, y: 14, size: 100, speed:  6, phase: 2.6, baseOp: 0.06, breathPeriod: 17400 },
+  { x: 84, y: 70, size:  24, speed: 34, phase: 1.2, baseOp: 0.14, breathPeriod:  6400 },
+  { x: 90, y: 40, size:  68, speed: 12, phase: 3.8, baseOp: 0.08, breathPeriod: 12200 },
+  { x: 94, y: 88, size:  36, speed: 24, phase: 0.2, baseOp: 0.12, breathPeriod:  7800 },
+  { x:  4, y: 50, size: 140, speed:  5, phase: 2.8, baseOp: 0.05, breathPeriod: 19000 },
+  { x: 10, y: 92, size:  46, speed: 19, phase: 1.5, baseOp: 0.10, breathPeriod:  9600 },
+  { x: 18, y: 44, size:  32, speed: 27, phase: 0.8, baseOp: 0.13, breathPeriod:  7200 },
+  { x: 24, y: 76, size:  84, speed:  9, phase: 3.2, baseOp: 0.07, breathPeriod: 14000 },
+  { x: 32, y: 8,  size:  48, speed: 17, phase: 1.9, baseOp: 0.11, breathPeriod:  9000 },
+  { x: 38, y: 48, size:  64, speed: 12, phase: 0.5, baseOp: 0.09, breathPeriod: 11200 },
+  { x: 44, y: 12, size: 120, speed:  6, phase: 3.5, baseOp: 0.05, breathPeriod: 17800 },
+  { x: 50, y: 56, size:  28, speed: 29, phase: 2.1, baseOp: 0.13, breathPeriod:  6600 },
+  { x: 56, y: 86, size:  76, speed: 10, phase: 1.0, baseOp: 0.08, breathPeriod: 13400 },
+  { x: 62, y: 8,  size:  38, speed: 23, phase: 0.3, baseOp: 0.12, breathPeriod:  8000 },
+  { x: 68, y: 52, size:  92, speed:  8, phase: 2.7, baseOp: 0.06, breathPeriod: 15400 },
+  { x: 74, y: 32, size:  44, speed: 20, phase: 1.3, baseOp: 0.10, breathPeriod:  9200 },
+  { x: 80, y: 88, size:  56, speed: 14, phase: 3.6, baseOp: 0.09, breathPeriod: 10800 },
+  { x: 86, y: 22, size: 104, speed:  7, phase: 0.6, baseOp: 0.06, breathPeriod: 16400 },
+  { x: 92, y: 54, size:  30, speed: 31, phase: 2.4, baseOp: 0.13, breathPeriod:  6800 },
+  { x:  8, y: 70, size:  80, speed: 11, phase: 1.7, baseOp: 0.07, breathPeriod: 12000 },
+  { x: 16, y: 4,  size:  16, speed: 38, phase: 0.0, baseOp: 0.15, breathPeriod:  5600 },
+  { x: 26, y: 50, size:  58, speed: 13, phase: 2.9, baseOp: 0.09, breathPeriod: 11000 },
+  { x: 34, y: 26, size: 132, speed:  5, phase: 1.1, baseOp: 0.05, breathPeriod: 18400 },
+  { x: 40, y: 68, size:  24, speed: 33, phase: 3.3, baseOp: 0.14, breathPeriod:  6200 },
+  { x: 46, y: 32, size:  52, speed: 16, phase: 0.7, baseOp: 0.10, breathPeriod: 10000 },
+  { x: 52, y: 78, size:  44, speed: 22, phase: 2.0, baseOp: 0.12, breathPeriod:  8600 },
+  { x: 58, y: 14, size:  96, speed:  7, phase: 1.6, baseOp: 0.06, breathPeriod: 16800 },
+  { x: 64, y: 74, size:  34, speed: 25, phase: 0.4, baseOp: 0.13, breathPeriod:  7600 },
+  { x: 70, y: 18, size:  60, speed: 12, phase: 3.1, baseOp: 0.09, breathPeriod: 11400 },
+  { x: 76, y: 60, size:  88, speed:  8, phase: 1.8, baseOp: 0.07, breathPeriod: 14600 },
+  { x: 82, y: 8,  size:  20, speed: 36, phase: 2.3, baseOp: 0.14, breathPeriod:  5800 },
+  { x: 88, y: 80, size:  72, speed: 10, phase: 0.9, baseOp: 0.08, breathPeriod: 12600 },
+  { x: 96, y: 14, size:  48, speed: 18, phase: 3.0, baseOp: 0.11, breathPeriod:  9000 },
+  { x: 12, y: 64, size:  36, speed: 24, phase: 1.4, baseOp: 0.12, breathPeriod:  7800 },
+  { x: 20, y: 84, size: 116, speed:  6, phase: 2.5, baseOp: 0.06, breathPeriod: 17200 },
+  { x: 30, y: 42, size:  26, speed: 30, phase: 0.1, baseOp: 0.13, breathPeriod:  6800 },
+  { x: 42, y: 92, size:  64, speed: 11, phase: 3.7, baseOp: 0.09, breathPeriod: 11800 },
+  { x: 54, y: 6,  size:  40, speed: 20, phase: 1.0, baseOp: 0.11, breathPeriod:  8800 },
+  { x: 66, y: 96, size:  84, speed:  9, phase: 2.8, baseOp: 0.07, breathPeriod: 13200 },
+  { x: 78, y: 46, size:  32, speed: 26, phase: 0.5, baseOp: 0.12, breathPeriod:  7400 },
+];
+
+// Density presets — `app` is the lightweight ambient set, `login` reuses the
+// denser bumper-car seed, `snowglobe` is the maximum-density Plans-page set.
+const FLOATER_PRESETS = { app: FLOATER_SEED, login: LOGIN_FLOATERS, snowglobe: SNOWGLOBE_FLOATERS };
+
+function FloatingWheels({ chartColors, cursorRef, density = 'app' }) {
+  const seed = FLOATER_PRESETS[density] || FLOATER_SEED;
   const floaterRefs = useRef([]);
   const groupRefs = useRef([]);
   const physicsRef = useRef(null);
@@ -113,7 +179,7 @@ function FloatingWheels({ chartColors, cursorRef }) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    physicsRef.current = FLOATER_SEED.map((f, i) => ({
+    physicsRef.current = seed.map((f, i) => ({
       ...f,
       px: (f.x / 100) * vw,
       py: (f.y / 100) * vh,
@@ -224,7 +290,7 @@ function FloatingWheels({ chartColors, cursorRef }) {
 
   return (
     <>
-      {FLOATER_SEED.map((f, i) => (
+      {seed.map((f, i) => (
         <div
           key={i}
           ref={el => { floaterRefs.current[i] = el; }}
@@ -269,6 +335,11 @@ function RibbonBackground({ className }) {
   const groupRefs = useRef([]);
   const physicsRef = useRef(null);
   const cursorRef = useRef({ x: -999, y: -999 });
+  const containerRef = useRef(null);
+  // Virtual cursor — auto-drifts when the real cursor is idle so the glow
+  // blob bounces around the login screen on its own. Real pointer events
+  // immediately take over.
+  const virtualCursor = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -314,8 +385,32 @@ function RibbonBackground({ className }) {
       const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
 
-      const cx = cursorRef.current.x;
-      const cy = cursorRef.current.y;
+      // Virtual cursor: when the real pointer hasn't moved, drive a slow
+      // Lissajous wander across the viewport so the floaters and the glow
+      // overlay both animate before the user touches anything. As soon as
+      // the real cursor enters, snap to its position and stop wandering.
+      const realCx = cursorRef.current.x;
+      const realCy = cursorRef.current.y;
+      const realCursorActive = realCx > -990;
+      if (realCursorActive) {
+        virtualCursor.current.x = realCx;
+        virtualCursor.current.y = realCy;
+      } else {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        virtualCursor.current.x = w * (0.5 + 0.38 * Math.sin(now / 5800) + 0.07 * Math.cos(now / 9700));
+        virtualCursor.current.y = h * (0.5 + 0.32 * Math.cos(now / 6900) + 0.08 * Math.sin(now / 11800));
+      }
+      const cx = virtualCursor.current.x;
+      const cy = virtualCursor.current.y;
+
+      // Push the virtual cursor position to CSS vars so the overlay glow
+      // div tracks the same point the floater physics use.
+      const container = containerRef.current;
+      if (container) {
+        container.style.setProperty('--cursor-x', `${cx.toFixed(0)}px`);
+        container.style.setProperty('--cursor-y', `${cy.toFixed(0)}px`);
+      }
 
       if (lastCx > -990) {
         cursorVel.x = (cx - lastCx) / dt;
@@ -430,10 +525,46 @@ function RibbonBackground({ className }) {
 
   return (
     <div
+      ref={containerRef}
       className={cn('pointer-events-none fixed inset-0 overflow-hidden', className)}
-      style={{ background: 'hsl(var(--background))' }}
+      style={{
+        background: 'hsl(var(--background))',
+        '--cursor-x': '50vw',
+        '--cursor-y': '50vh',
+      }}
       aria-hidden="true"
     >
+      {/* Cursor follow blob — large soft glow that tracks the virtual cursor.
+          When no real pointer is active the virtual cursor wanders the
+          viewport autonomously, so this blob is always alive. */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          left: 'var(--cursor-x)',
+          top: 'var(--cursor-y)',
+          width: '500px',
+          height: '500px',
+          transform: 'translate(-50%, -50%)',
+          background: 'radial-gradient(circle, hsl(var(--primary) / 0.18) 0%, hsl(var(--accent, var(--primary)) / 0.10) 40%, transparent 70%)',
+          mixBlendMode: 'screen',
+          willChange: 'left, top',
+        }}
+      />
+      {/* Tighter inner highlight at the same position for extra depth */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          left: 'var(--cursor-x)',
+          top: 'var(--cursor-y)',
+          width: '180px',
+          height: '180px',
+          transform: 'translate(-50%, -50%)',
+          background: 'radial-gradient(circle, hsl(var(--primary) / 0.30) 0%, transparent 70%)',
+          mixBlendMode: 'screen',
+          filter: 'blur(20px)',
+          willChange: 'left, top',
+        }}
+      />
       {LOGIN_FLOATERS.map((f, i) => (
         <div
           key={i}
@@ -479,7 +610,7 @@ function RibbonBackground({ className }) {
 }
 
 // ── Main export ────────────────────────────────────────────────────────────
-export default function ThemedWaveBackground({ className = '', intensity = 'default', variant = 'waves' }) {
+export default function ThemedWaveBackground({ className = '', intensity = 'default', variant = 'waves', density = 'app' }) {
   const { selectedTheme, chartColors } = useTheme();
   const isRainbow = selectedTheme === 'rainbow';
   const strong = intensity === 'strong';
@@ -540,11 +671,26 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
 
     const tick = () => {
       const s = animState.current;
+      const now = performance.now();
+
+      // If the user hasn't moved their cursor yet, the wave wanders the full
+      // viewport autonomously instead of sitting still at the seed point.
+      // First mouse move switches to follow-mode and stays there.
+      const cursorIdle = cursorPx.current.x < -990;
+      if (cursorIdle) {
+        // Two superimposed sine waves at different periods and amplitudes
+        // produce a Lissajous figure that traces most of the viewport over
+        // ~30 seconds. Centered around 50/50 with ±35% amplitude on each
+        // axis so the wave never quite touches the edges.
+        s.targetX = 50 + Math.sin(now / 6500) * 30 + Math.cos(now / 11000) * 8;
+        s.targetY = 55 + Math.cos(now / 7300) * 25 + Math.sin(now / 13700) * 7;
+      }
+
       s.currentX += (s.targetX - s.currentX) * 0.09;
       s.currentY += (s.targetY - s.currentY) * 0.09;
 
-      // Autonomous sinusoidal drift (works even without cursor movement)
-      const now = performance.now();
+      // Autonomous sinusoidal drift adds organic wobble on top of the lerp,
+      // keeping the wave alive even when the user IS actively pointing.
       const driftX = Math.sin(now / 9000) * 6;
       const driftY = Math.cos(now / 11000) * 4;
 
@@ -625,7 +771,7 @@ export default function ThemedWaveBackground({ className = '', intensity = 'defa
       <div className="twb-bw absolute inset-0" />
 
       {/* Floating wheel logos */}
-      <FloatingWheels chartColors={chartColors} cursorRef={cursorPx} />
+      <FloatingWheels chartColors={chartColors} cursorRef={cursorPx} density={density} />
 
       <style>{`
         .twb-field {

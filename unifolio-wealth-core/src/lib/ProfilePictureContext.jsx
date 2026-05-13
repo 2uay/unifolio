@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthContext';
 
@@ -31,18 +31,64 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([buf], { type: mime });
 }
 
+// localStorage cache key — persists per-user picture URL so the avatar shows
+// instantly on next sign-in / page reload without waiting for the Supabase
+// fetch. Survives re-renders / re-mounts within a session too. Cleared only
+// on explicit sign-out or removeProfilePicture.
+const PIC_CACHE_KEY = 'unifolio_profile_picture_cache_v1';
+
+function readPictureCache() {
+  try { return JSON.parse(localStorage.getItem(PIC_CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function writePictureCache(userId, url, animated) {
+  if (!userId) return;
+  try {
+    const cache = readPictureCache();
+    if (url) cache[userId] = { url, animated, ts: Date.now() };
+    else delete cache[userId];
+    localStorage.setItem(PIC_CACHE_KEY, JSON.stringify(cache));
+  } catch { /* ignore quota errors */ }
+}
+
 export function ProfilePictureProvider({ children }) {
   const { user, isAuthenticated, isLoadingAuth } = useAuth();
-  const [profilePicture, setProfilePicture] = useState(null);
-  const [isAnimated, setIsAnimated] = useState(false);
+  // Seed initial state from localStorage so the avatar shows immediately on
+  // mount instead of flashing initials → picture → initials → picture as
+  // auth settles and the network fetch completes.
+  const initialFromCache = (() => {
+    if (!user?.id) return { url: null, animated: false };
+    const cache = readPictureCache();
+    const entry = cache[user.id];
+    return entry ? { url: entry.url, animated: !!entry.animated } : { url: null, animated: false };
+  })();
+  const [profilePicture, setProfilePicture] = useState(initialFromCache.url);
+  const [isAnimated, setIsAnimated] = useState(initialFromCache.animated);
   const [loading, setLoading] = useState(true);
+  // Track which user's picture we've actually loaded so transient
+  // re-renders (e.g. portfolio data settling, USER_UPDATED events) don't
+  // wipe the picture between fetches. Only clear on a confirmed sign-out.
+  const loadedForUserRef = useRef(initialFromCache.url ? user?.id : null);
 
   useEffect(() => {
     if (isLoadingAuth) return;
 
     if (!isAuthenticated || !user?.id) {
-      setProfilePicture(null);
-      setIsAnimated(false);
+      // Only clear if we previously had a user — protects against transient
+      // unauthenticated states during session refresh.
+      if (loadedForUserRef.current) {
+        writePictureCache(loadedForUserRef.current, null);
+        setProfilePicture(null);
+        setIsAnimated(false);
+        loadedForUserRef.current = null;
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Same user as before — no need to refetch and risk clobbering with stale null
+    if (loadedForUserRef.current === user.id) {
       setLoading(false);
       return;
     }
@@ -60,7 +106,11 @@ export function ProfilePictureProvider({ children }) {
         if (data?.profile_picture_url) {
           setProfilePicture(data.profile_picture_url);
           setIsAnimated(data.profile_picture_type === 'animated_gif');
+          writePictureCache(user.id, data.profile_picture_url, data.profile_picture_type === 'animated_gif');
         }
+        // Mark as loaded for this user even if no picture — prevents
+        // re-fetch loops on every effect rerun with the same user.
+        loadedForUserRef.current = user.id;
       } catch {
         // no profile row yet — fine
       } finally {
@@ -104,6 +154,8 @@ export function ProfilePictureProvider({ children }) {
 
     setProfilePicture(versionedUrl);
     setIsAnimated(animated);
+    writePictureCache(user.id, versionedUrl, animated);
+    loadedForUserRef.current = user.id;
   };
 
   const removeProfilePicture = async () => {
@@ -126,6 +178,8 @@ export function ProfilePictureProvider({ children }) {
 
     setProfilePicture(null);
     setIsAnimated(false);
+    writePictureCache(user.id, null);
+    loadedForUserRef.current = user.id;
   };
 
   return (

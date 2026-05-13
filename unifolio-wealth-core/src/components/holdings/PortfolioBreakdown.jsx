@@ -17,8 +17,11 @@ import {
 } from '@/lib/portfolioBreakdownPrefs';
 import { safeNumber } from '@/lib/safeNum';
 import { cn } from '@/lib/utils';
+import { classifyRisk } from '@/lib/riskClassifier';
+import { classifyIncome } from '@/lib/incomeClassifier';
+import { getEtfBasket } from '@/lib/etfManifest';
 
-const DEFAULT_VISIBLE_CHART_IDS = ['sector', 'assetClass', 'currencyExposure', 'accountType', 'institution', 'holdingConcentration'];
+const DEFAULT_VISIBLE_CHART_IDS = ['sector', 'assetClass', 'currencyExposure', 'accountType', 'institution', 'etfLookthrough'];
 const ALL_CHART_IDS = [
   'sector',
   'assetClass',
@@ -40,6 +43,9 @@ const ALL_CHART_IDS = [
   'stocksEtfsCashOther',
   'regionBucket',
   'accountSizeTier',
+  'riskCategory',
+  'incomeBucket',
+  'etfLookthrough',
 ];
 
 function toRows(map) {
@@ -313,6 +319,38 @@ export default function PortfolioBreakdown() {
         return country ? 'International' : 'Unknown';
       }),
       accountSizeTier: toRows(accountSizeTierMap),
+      riskCategory: buildAlloc(classifyRisk),
+      incomeBucket: buildAlloc(classifyIncome),
+      etfLookthrough: (() => {
+        // Explode ETF positions into their underlying constituents so the
+        // chart shows TRUE exposure: a portfolio holding VOO + AAPL directly
+        // shows AAPL's combined weight from both sources.
+        const exposureMap = {};
+        activeHoldings.forEach(h => {
+          const value = convert(h.market_value ?? h.marketValue ?? 0, h.currency || 'USD');
+          if (!value) return;
+          const basket = getEtfBasket(h.underlying_ticker || h.ticker);
+          if (basket) {
+            // Top10 entries cover ~25-60% of fund; remainder bucketed as "Other (<ETF>)"
+            let coveredWeight = 0;
+            basket.top10.forEach(({ symbol, weight }) => {
+              const exposure = value * (weight / 100);
+              exposureMap[symbol] = (exposureMap[symbol] || 0) + exposure;
+              coveredWeight += weight;
+            });
+            const remaining = Math.max(0, 100 - coveredWeight);
+            if (remaining > 0) {
+              const otherKey = `Other (${(h.underlying_ticker || h.ticker || '').toUpperCase()})`;
+              exposureMap[otherKey] = (exposureMap[otherKey] || 0) + value * (remaining / 100);
+            }
+          } else {
+            // Direct holding — counts as itself
+            const sym = String(h.underlying_ticker || h.ticker || 'Unknown').toUpperCase();
+            exposureMap[sym] = (exposureMap[sym] || 0) + value;
+          }
+        });
+        return toRows(exposureMap);
+      })(),
     };
   }, [activeHoldings, activeAccountIds, accounts, accountValueMap, convert, getAccount, getInstitution, getInstitutionForAccount]);
 
@@ -337,6 +375,9 @@ export default function PortfolioBreakdown() {
     { id: 'stocksEtfsCashOther', title: 'Stocks / ETFs / Cash / Other' },
     { id: 'regionBucket', title: 'Canada / US / International' },
     { id: 'accountSizeTier', title: 'Account Size Tiers' },
+    { id: 'riskCategory', title: 'By Risk Category' },
+    { id: 'incomeBucket', title: 'Dividend / Growth / Speculative' },
+    { id: 'etfLookthrough', title: 'True Exposure (ETF Look-through)' },
   ]), []);
 
   const visibleChartDefs = prefs.orderedChartIds

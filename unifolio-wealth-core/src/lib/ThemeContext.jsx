@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { applyTheme, applyThemePaletteVariables, getChartColors, generateMonochromeTheme, themes } from './themes';
+import { applyTheme, applyThemePaletteVariables, getChartColors, generateMonochromeTheme, getRandomTheme, themes } from './themes';
 import { supabase } from '@/lib/supabaseClient';
 
 const ThemeContext = createContext(null);
@@ -10,10 +10,31 @@ const LEGACY_DEFAULT_THEME = 'redblackwhiteaccent';
 const PREVIOUS_DEFAULT_THEME = 'royalpurple';
 const LS_KEY = 'unifolio_default_theme';
 const LS_MONO_KEY = 'unifolio_mono_color';
+const SESSION_RANDOM_KEY = 'unifolio_session_random_theme';
+const LAST_RANDOM_KEY = 'unifolio_last_random_theme';
 
 function persistDefaultTheme() {
   localStorage.setItem(LS_KEY, DEFAULT_THEME);
   localStorage.removeItem(LS_MONO_KEY);
+}
+
+// Pick a fresh random theme for this session, never re-picking the previous
+// one. Stored in sessionStorage so within-session re-renders don't reroll;
+// `localStorage[LAST_RANDOM_KEY]` tracks the cross-session previous pick so
+// reloads also avoid the same theme twice in a row.
+function pickSessionRandomTheme() {
+  try {
+    const cached = sessionStorage.getItem(SESSION_RANDOM_KEY);
+    if (cached && themes[cached]) return cached;
+  } catch { /* ignore */ }
+  let lastPick = null;
+  try { lastPick = localStorage.getItem(LAST_RANDOM_KEY); } catch { /* ignore */ }
+  const pick = getRandomTheme({ excludeId: lastPick });
+  try {
+    sessionStorage.setItem(SESSION_RANDOM_KEY, pick);
+    localStorage.setItem(LAST_RANDOM_KEY, pick);
+  } catch { /* ignore */ }
+  return pick;
 }
 
 async function saveToSupabase(userId, themeId, monoColor) {
@@ -66,14 +87,15 @@ export function ThemeProvider({ children }) {
   };
 
   useEffect(() => {
-    // Step 1: apply the public/default theme immediately.
-    // Signed-in users get their saved theme after auth resolves; logged-out/demo
-    // visitors should always see the royal purple Unifolio default.
+    // Step 1: apply a random theme immediately for the optimistic first paint.
+    // Signed-in users with a saved preference will have it applied below once
+    // auth resolves; unauthenticated visitors keep the random pick. The legacy
+    // default migration is preserved so old localStorage values get cleaned up.
     const storedTheme = localStorage.getItem(LS_KEY);
     if (storedTheme === LEGACY_DEFAULT_THEME || storedTheme === PREVIOUS_DEFAULT_THEME) {
       persistDefaultTheme();
     }
-    applyById(DEFAULT_THEME);
+    applyById(pickSessionRandomTheme());
 
     // Step 2: subscribe to auth state — load Supabase preference on sign-in
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -81,36 +103,50 @@ export function ThemeProvider({ children }) {
         try {
           const { data } = await supabase
             .from('user_profiles')
-            .select('theme_id, custom_monochrome_color')
+            .select('theme_id, custom_monochrome_color, plan')
             .eq('user_id', session.user.id)
             .single();
 
-          const plan = session.user.app_metadata?.plan;
-          const isPro = plan === 'pro' || plan === 'lifetime';
+          // Plan resolution prefers user_profiles.plan (admin override path)
+          // over auth.users.app_metadata.plan, so an admin can grant
+          // Lifetime/Pro via a simple SQL update on user_profiles.
+          const profilePlan = data?.plan;
+          const metaPlan = session.user.app_metadata?.plan;
+          const plan = profilePlan && profilePlan !== 'free' ? profilePlan : metaPlan;
+          const isLifetime = plan === 'lifetime';
+          const isPro = plan === 'pro' || isLifetime;
           const savedTheme = data?.theme_id;
           const monoColor = data?.custom_monochrome_color || null;
+          // System-default themes are treated as "no real preference" for ALL
+          // users — random session pick wins. This avoids the regression where
+          // users who logged in once when malachite was the default get
+          // permanently stuck on malachite even after we switched to random.
           const systemDefaults = new Set([DEFAULT_THEME, LEGACY_DEFAULT_THEME, PREVIOUS_DEFAULT_THEME, 'malachite']);
+          // Reject a saved Lifetime-only theme if the user isn't on a
+          // Lifetime plan any more (downgrade case). Falls through to the
+          // random/Pro/default branches below.
+          const savedThemeMeta = savedTheme ? themes[savedTheme] : null;
+          const lifetimeBlocked = Boolean(savedThemeMeta?.lifetime) && !isLifetime;
+          const hasRealUserChoice = Boolean(savedTheme) && !systemDefaults.has(savedTheme) && !lifetimeBlocked;
 
-          if (savedTheme && !(isPro && systemDefaults.has(savedTheme))) {
-            // User has an explicit non-default theme — honour it
+          if (hasRealUserChoice) {
+            // Signed-in user has an explicit theme — honour it (overrides any random)
             applyById(savedTheme, monoColor);
             localStorage.setItem(LS_KEY, savedTheme);
             if (monoColor) localStorage.setItem(LS_MONO_KEY, monoColor);
           } else if (isPro) {
-            // Pro user with no saved theme or still on a system default → upgrade to Pro theme
+            // Pro user with no real saved theme → upgrade to Pro theme
             applyById('unifoliopro');
             localStorage.setItem(LS_KEY, 'unifoliopro');
           } else {
-            applyById(DEFAULT_THEME);
-            localStorage.setItem(LS_KEY, DEFAULT_THEME);
+            // Signed-in non-Pro user with no real saved theme → keep the
+            // random session pick (stable per session via sessionStorage)
+            applyById(pickSessionRandomTheme());
           }
         } catch { /* silent — keep current theme */ }
       } else {
-        // Guests/demo users always start on the public Unifolio default.
-        const SESSION_KEY = 'unifolio_guest_theme';
-        applyById(DEFAULT_THEME);
-        sessionStorage.setItem(SESSION_KEY, DEFAULT_THEME);
-        localStorage.setItem(LS_KEY, DEFAULT_THEME);
+        // Guests/demo users get a fresh random theme each session.
+        applyById(pickSessionRandomTheme());
       }
       setIsLoading(false);
     });
@@ -212,6 +248,20 @@ export function ThemeProvider({ children }) {
     applyById(DEFAULT_THEME);
   };
 
+  // Pick a fresh random theme right now and apply it. Clears the per-session
+  // cache so the next `pickSessionRandomTheme()` rolls anew.
+  const setRandomTheme = ({ excludePro = false } = {}) => {
+    let lastPick = null;
+    try { lastPick = localStorage.getItem(LAST_RANDOM_KEY); } catch { /* ignore */ }
+    const pick = getRandomTheme({ excludeId: lastPick, excludePro });
+    try {
+      sessionStorage.setItem(SESSION_RANDOM_KEY, pick);
+      localStorage.setItem(LAST_RANDOM_KEY, pick);
+    } catch { /* ignore */ }
+    applyById(pick);
+    return pick;
+  };
+
   const previewTheme = (themeId, customColor = null) => {
     const color = themeId === 'custom-monochrome' ? (customColor || customMonochromeColor) : null;
     applyById(themeId, color, { commit: false });
@@ -230,6 +280,7 @@ export function ThemeProvider({ children }) {
       previewTheme,
       clearThemePreview,
       resetToDefaultTheme,
+      setRandomTheme,
       defaultTheme: DEFAULT_THEME,
       chartColors,
       isLoading,

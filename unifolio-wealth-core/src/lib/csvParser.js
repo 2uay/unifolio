@@ -4,7 +4,7 @@
 // auto-maps columns, validates rows, and returns normalized data.
 // ============================================================
 
-import { buildSecurityAmbiguities, resolveSecurityIdentity, securityKey } from '@/lib/securityIdentity';
+import { buildSecurityAmbiguities, resolveSecurityIdentity, securityKey, verifyIdentities } from '@/lib/securityIdentity';
 
 // ─── RAW CSV PARSING ──────────────────────────────────────────
 
@@ -171,7 +171,17 @@ export function autoMapColumns(headers, broker) {
       quantity: find('quantity', 'qty', 'shares'),
       price: find('current_price', 'market price', 'price', 'unit_price'),
       marketValue: find('market_value', 'market value', 'current_value', 'current value', 'value'),
-      currency: find('currency', 'account currency'),
+      // Wealthsimple holdings exports both an "account currency" (always CAD
+      // for a TFSA) and a "Market Price Currency" / "Market Value Currency"
+      // (the security's native trading currency, e.g. USD for VOO held in a
+      // CAD TFSA via WS's FX conversion). The latter is the source of truth
+      // for security identity; the former is just the account's home cash.
+      currency: find('market price currency', 'market value currency', 'currency', 'account currency'),
+      // Real exchange + MIC are present in WS holdings exports — capture them
+      // so we don't have to guess from the name field.
+      exchange: find('exchange', 'listing exchange', 'mic'),
+      listingExchange: find('exchange', 'listing exchange'),
+      mic: find('mic'),
       costBasis: find('book_value', 'book value', 'cost basis', 'cost'),
       avgPrice: find('average_price', 'average price', 'avg price', 'book price'),
     },
@@ -471,9 +481,23 @@ function buildRealizedPositionsFromTrades(trades, account, securityBySymbol = {}
       if (lot.quantity <= 0.000001) lotsByTicker[ticker].shift();
     }
 
-    const quantityClosed = matchedLots.reduce((sum, lot) => sum + lot.quantity, 0) || Math.abs(trade.quantity);
-    const totalCostBasis = matchedLots.reduce((sum, lot) => sum + lot.cost, 0) || Math.abs(trade.costBasis || 0);
-    const totalSaleValue = Math.abs(trade.proceeds || trade.grossAmount || (quantityClosed * trade.price));
+    // The TRADE's reported quantity is the source of truth for the avg_sell_price
+    // denominator. matchedLots may be SHORTER than the trade qty when the
+    // import file's date range cuts off prior buys (e.g. you sold 15 NVO on
+    // 2026-02-02 but the file only contains 3 unmatched FIFO shares because
+    // the original purchases were before the file's start date). Using the
+    // matched qty as the divisor produced wrong per-share prices like
+    // 868.35/3 = $289 for what was actually a $57.89 sale.
+    const actualSellQty = Math.abs(trade.quantity);
+    const matchedQty = matchedLots.reduce((sum, lot) => sum + lot.quantity, 0);
+    const quantityClosed = actualSellQty || matchedQty;
+    const matchedCostBasis = matchedLots.reduce((sum, lot) => sum + lot.cost, 0);
+    const totalSaleValue = Math.abs(trade.proceeds || trade.grossAmount || (actualSellQty * trade.price));
+    // For unmatched portion (no prior buy in this file), fall back to broker's
+    // own CostBasis if present so cost-basis math still reconciles.
+    const totalCostBasis = matchedQty < actualSellQty && trade.costBasis
+      ? Math.abs(trade.costBasis)
+      : (matchedCostBasis || Math.abs(trade.costBasis || 0));
     const realizedGL = trade.realizedGL || (totalSaleValue - totalCostBasis);
     const openDate = matchedLots[0]?.openDate || trade.date;
     const sec = securityBySymbol[ticker] || {};
@@ -502,6 +526,9 @@ function buildRealizedPositionsFromTrades(trades, account, securityBySymbol = {}
       exchange: sec.ListingExchange || '',
       currency: trade.currency || account.currency || 'USD',
       quantity: quantityClosed,
+      // avg_buy_price and avg_sell_price both use actualSellQty as the
+      // denominator so the displayed per-share prices match what the user
+      // actually executed at, even when only a partial FIFO match was found.
       average_buy_price: quantityClosed ? totalCostBasis / quantityClosed : 0,
       average_sell_price: quantityClosed ? totalSaleValue / quantityClosed : trade.price,
       total_cost_basis: totalCostBasis,
@@ -902,7 +929,16 @@ function parseWealthsimpleHoldingsReport(dataRows, headers, filename) {
   const columnMap = autoMapColumns(headers, 'wealthsimple_holdings');
   const { valid, errors } = parseHoldingsRows(dataRows, headers, columnMap);
   const positions = valid.map(row => {
-    const resolved = resolveSecurityIdentity(row);
+    // The WS holdings export gives us the actual exchange (TSX/NYSE/etc.) and
+    // the security's native currency. Pass them through to the resolver so it
+    // takes the high-confidence "broker provided full identity" path instead
+    // of guessing from the name.
+    const enrichedRow = {
+      ...row,
+      listing_exchange: row.exchange || row.listingExchange || row.mic || row.listing_exchange,
+      listing_currency: row.currency || row.listing_currency,
+    };
+    const resolved = resolveSecurityIdentity(enrichedRow);
     const accountId = row.account || 'wealthsimple-account';
     return {
       ...resolved,
@@ -919,6 +955,7 @@ function parseWealthsimpleHoldingsReport(dataRows, headers, filename) {
       average_price: row.avgPrice,
       market_value: row.marketValue,
       cost_basis: row.costBasis,
+      exchange: enrichedRow.listing_exchange,
       sourceSection: 'WEALTHSIMPLE_HOLDINGS',
       valuation_status: 'holdings_snapshot',
       price_source: 'broker_snapshot',
@@ -1007,13 +1044,41 @@ function parseIBKRSectionedReport(allRows, filename) {
     }
   }
 
+  // IBKR account-type resolution.
+  //   AccountType  → broad classification (Individual, Joint, Org, ...)
+  //   CustomerType → registration status (Tax-Free Savings Account, RRSP, ...)
+  // CustomerType is what users actually care about (TFSA vs RRSP vs Cash) and
+  // is included only when the user enables it in their Flex Query config. We
+  // prefer CustomerType when present and map common labels to short names.
+  const CUSTOMER_TYPE_MAP = {
+    'tax-free savings account':           'TFSA',
+    'registered retirement savings plan': 'RRSP',
+    'registered education savings plan':  'RESP',
+    'registered disability savings plan': 'RDSP',
+    'first home savings account':         'FHSA',
+    'locked-in retirement account':       'LIRA',
+    'tax-free first home savings account':'FHSA',
+    'roth ira':                           'Roth IRA',
+    'traditional ira':                    'IRA',
+    '401(k)':                             '401(k)',
+  };
+  function resolveAccountType(row) {
+    const ct = String(row.CustomerType || '').trim().toLowerCase();
+    if (ct && CUSTOMER_TYPE_MAP[ct]) return CUSTOMER_TYPE_MAP[ct];
+    if (ct) {
+      // Unknown customer type — preserve the original casing
+      return String(row.CustomerType).trim();
+    }
+    return row.AccountType || 'Brokerage';
+  }
+
   const accountRows = getSectionRows(sections, 'ACCT');
   const accountRow = accountRows[0] || {};
   const account = {
     clientAccountId: accountRow.ClientAccountID || report.accountId,
     currency: accountRow.CurrencyPrimary || 'USD',
     name: accountRow.Name || 'Interactive Brokers',
-    accountType: accountRow.AccountType || 'Brokerage',
+    accountType: resolveAccountType(accountRow),
     dateOpened: accountRow.DateOpened || null,
     country: accountRow.Country || null,
     email: accountRow.PrimaryEmail || null,
@@ -1031,7 +1096,7 @@ function parseIBKRSectionedReport(allRows, filename) {
       clientAccountId: id,
       currency: row.CurrencyPrimary || account.currency || 'USD',
       name: row.Name || 'Interactive Brokers',
-      accountType: row.AccountType || account.accountType || 'Brokerage',
+      accountType: resolveAccountType(row) || account.accountType || 'Brokerage',
       dateOpened: row.DateOpened || null,
       country: row.Country || account.country || null,
       email: row.PrimaryEmail || account.email || null,
@@ -1383,6 +1448,61 @@ export function composeParsedImports(parsedFiles) {
       },
     })),
   ];
+}
+
+// ─── PHASE 2: LIVE LISTING VERIFICATION ──────────────────────
+//
+// After Phase 1 (per-row sync `resolveSecurityIdentity`), some rows are tagged
+// `_needs_verification: true` (typically Wealthsimple bare tickers where the
+// exchange isn't given). This walks every row collection in a parsed bundle
+// and replaces those rows with verified identities from Finnhub.
+//
+// Caller pattern:
+//   const parsed = await composeParsedImports(files.map(parseFile));
+//   const verified = await Promise.all(parsed.map(verifyParsedSecurities));
+//
+// After this runs, `importBundle.securityAmbiguities` reflects only the rows
+// that genuinely need user input (Finnhub returned no listing, or the
+// resolver was offline). The Securities Review step is empty otherwise.
+
+export async function verifyParsedSecurities(parsed) {
+  if (!parsed || parsed.error) return parsed;
+
+  const bundle = parsed.importBundle || {};
+  const sliceKeys = ['positions', 'openHoldings', 'transactions', 'realizedPositions'];
+  const slices = {};
+  sliceKeys.forEach(key => { if (Array.isArray(bundle[key])) slices[key] = bundle[key]; });
+  if (Array.isArray(parsed.valid)) slices.valid = parsed.valid;
+
+  const allRows = Object.values(slices).flat();
+  if (allRows.length === 0) return parsed;
+
+  // Single batched verification — listingResolver caches per-underlying so
+  // duplicate underlyings across slices only hit Finnhub once.
+  const verifiedAll = await verifyIdentities(allRows);
+
+  // Map original-row identity → verified row, then re-distribute back into
+  // each named slice. Use object identity to match (verifyIdentities preserves
+  // input order and either returns the same row or a spread copy).
+  const indexMap = new Map();
+  let cursor = 0;
+  Object.entries(slices).forEach(([key, rows]) => {
+    indexMap.set(key, rows.map(() => verifiedAll[cursor++]));
+  });
+
+  const newBundle = { ...bundle };
+  sliceKeys.forEach(key => { if (slices[key]) newBundle[key] = indexMap.get(key); });
+  newBundle.securityAmbiguities = buildSecurityAmbiguities([
+    ...(newBundle.positions || []),
+    ...(newBundle.transactions || []),
+    ...(newBundle.realizedPositions || []),
+  ]);
+
+  return {
+    ...parsed,
+    valid: slices.valid ? indexMap.get('valid') : parsed.valid,
+    importBundle: newBundle,
+  };
 }
 
 // ─── FULL PARSE PIPELINE ──────────────────────────────────────

@@ -1,16 +1,17 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   Upload, ChevronRight, ChevronLeft, Check, AlertTriangle,
-  X, Download, BookOpen, RefreshCw, Database, FileSpreadsheet,
+  X, Download, BookOpen, RefreshCw, Database, FileSpreadsheet, RotateCcw,
   Link2, Loader2, Zap, Trash2, Lock, Building2,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
-  parseFile, parseRows, parseHoldingsRows, composeParsedImports, BROKER_LABELS, FIELD_LABELS,
+  parseFile, parseRows, parseHoldingsRows, composeParsedImports, verifyParsedSecurities, BROKER_LABELS, FIELD_LABELS,
 } from '@/lib/csvParser';
 import { applySecurityChoice, buildSecurityAmbiguities } from '@/lib/securityIdentity';
+import { setManualListing } from '@/lib/listingResolver';
 import { bankExportInstructions, downloadInstructionAsset } from '@/lib/bankExportInstructions';
 import { saveParsedImport } from '@/lib/importPersistence';
 import { COLUMN_DEFINITIONS } from '@/lib/columnConfig';
@@ -242,7 +243,9 @@ function UploadStep({ onParsed }) {
         setError(`${failed.filename}: ${failed.error}`);
         return;
       }
-      onParsed(composeParsedImports(parsedFiles), parsedFiles);
+      const composed = composeParsedImports(parsedFiles);
+      const verified = await Promise.all(composed.map(verifyParsedSecurities));
+      onParsed(verified, parsedFiles);
     } catch (err) {
       setError('Failed to read files. Make sure they are valid CSVs.');
     } finally {
@@ -544,56 +547,177 @@ function applySecurityChoices(parsed, choices) {
   };
 }
 
+function ManualListingForm({ underlying, value, onChange }) {
+  const update = (patch) => onChange({ ...value, ...patch });
+  return (
+    <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 space-y-2">
+      <p className="text-[10px] uppercase tracking-wide text-amber-400/90">Manual entry — Finnhub had no match</p>
+      <div className="grid grid-cols-3 gap-2">
+        <label className="text-[10px] text-muted-foreground">
+          Quote symbol
+          <input
+            type="text" value={value.quote_symbol || ''}
+            onChange={e => update({ quote_symbol: e.target.value.toUpperCase() })}
+            placeholder={`${underlying} or ${underlying}.NE`}
+            className="mt-0.5 w-full rounded border border-border/40 bg-background px-2 py-1 text-xs text-foreground"
+          />
+        </label>
+        <label className="text-[10px] text-muted-foreground">
+          Exchange
+          <select
+            value={value.listing_exchange || ''}
+            onChange={e => update({ listing_exchange: e.target.value })}
+            className="mt-0.5 w-full rounded border border-border/40 bg-background px-2 py-1 text-xs text-foreground"
+          >
+            <option value="">—</option>
+            <option value="NYSE">NYSE</option>
+            <option value="NASDAQ">NASDAQ</option>
+            <option value="TSX">TSX (Toronto)</option>
+            <option value="NEO">Cboe Canada (NEO)</option>
+            <option value="TSXV">TSXV</option>
+            <option value="CSE">CSE</option>
+          </select>
+        </label>
+        <label className="text-[10px] text-muted-foreground">
+          Currency
+          <select
+            value={value.listing_currency || ''}
+            onChange={e => update({ listing_currency: e.target.value })}
+            className="mt-0.5 w-full rounded border border-border/40 bg-background px-2 py-1 text-xs text-foreground"
+          >
+            <option value="">—</option>
+            <option value="USD">USD</option>
+            <option value="CAD">CAD</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function manualToCandidate(underlying, manual) {
+  const isCdr = /\.(NE|NEO)$/i.test(manual.quote_symbol || '') || (manual.listing_currency === 'CAD' && manual.listing_exchange === 'NEO');
+  const identity = isCdr ? 'cdr' : (manual.listing_currency === 'CAD' ? 'tsx' : 'us');
+  const display = isCdr ? `${underlying} CDR` : (manual.quote_symbol || underlying);
+  return {
+    security_key: `${underlying}@${manual.listing_exchange || 'UNKNOWN'}:${manual.listing_currency || 'UNKNOWN'}`,
+    display_ticker: display,
+    quote_symbol: manual.quote_symbol || underlying,
+    listing_exchange: manual.listing_exchange || '',
+    listing_currency: manual.listing_currency || '',
+    security_identity: identity,
+    confidence: 'manual',
+    reason: 'Manually entered during import',
+  };
+}
+
 function SecurityReviewStep({ parsed, onApply, onBack }) {
   const ambiguities = useMemo(() => getSecurityAmbiguities(parsed), [parsed]);
   const [choices, setChoices] = useState(() => Object.fromEntries(
-    ambiguities.map(item => [item.id, item.candidates[0]])
+    ambiguities.map(item => [item.id, item.candidates[0] || null])
   ));
-  const apply = () => onApply(applySecurityChoices(parsed, choices));
+  const [manualEntries, setManualEntries] = useState({});
+
+  const apply = () => {
+    // Persist manual entries to listingResolver cache so future imports skip the prompt.
+    Object.entries(manualEntries).forEach(([groupId, manual]) => {
+      const item = ambiguities.find(a => a.id === groupId);
+      if (!item || !manual.quote_symbol) return;
+      const isCdr = /\.(NE|NEO|TO|TSX)$/i.test(manual.quote_symbol);
+      setManualListing(item.underlying, {
+        us: manual.listing_currency === 'USD' ? { symbol: manual.quote_symbol, displaySymbol: manual.quote_symbol, exchange: manual.listing_exchange, description: '', currency: 'USD' } : null,
+        tsx: manual.listing_currency === 'CAD' && manual.listing_exchange === 'TSX' && !isCdr ? { symbol: manual.quote_symbol, displaySymbol: manual.quote_symbol, exchange: 'TSX', description: '', currency: 'CAD' } : null,
+        cdr: manual.listing_currency === 'CAD' && (manual.listing_exchange === 'NEO' || isCdr) ? { symbol: manual.quote_symbol, displaySymbol: manual.quote_symbol, exchange: manual.listing_exchange || 'NEO', description: '', currency: 'CAD' } : null,
+      });
+    });
+    onApply(applySecurityChoices(parsed, choices));
+  };
+
+  if (ambiguities.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+          <p className="text-sm font-semibold text-foreground">All securities verified</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Every imported row was resolved against Finnhub. No manual review needed.
+          </p>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <Button variant="outline" size="sm" onClick={onBack}><ChevronLeft className="h-3.5 w-3.5 mr-1" />Back</Button>
+          <Button size="sm" onClick={() => onApply(parsed)}>Continue <ChevronRight className="h-3.5 w-3.5 ml-1" /></Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
         <p className="text-sm font-semibold text-foreground">Confirm ambiguous listings</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          These rows could represent different listings or CDRs. Choose the traded security so lots, realized gains, and live prices stay separate.
+          We verified what we could against Finnhub. These rows still need a human to decide. CDR (CAD) and the US-listed share are distinct securities — they will be saved as separate holdings so lots, realized gains, and live prices stay correct.
         </p>
       </div>
       <div className="rounded-xl border border-border/40 bg-card/50 overflow-hidden">
         <div className="divide-y divide-border/20">
-          {ambiguities.map(item => (
-            <div key={item.id} className="grid gap-3 px-4 py-3 md:grid-cols-[180px_1fr]">
-              <div>
-                <p className="text-xs font-semibold text-foreground">{item.rawTicker}</p>
-                <p className="text-[10px] text-muted-foreground">{item.account || 'Imported account'} · {item.rows?.length || 0} row refs</p>
+          {ambiguities.map(item => {
+            const manualVal = manualEntries[item.id] || { quote_symbol: '', listing_exchange: '', listing_currency: '' };
+            const isManualSelected = choices[item.id]?.confidence === 'manual';
+            return (
+              <div key={item.id} className="grid gap-3 px-4 py-3 md:grid-cols-[180px_1fr]">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">{item.rawTicker}</p>
+                  <p className="text-[10px] text-muted-foreground">{item.account || 'Imported account'} · {item.rows?.length || 0} row refs</p>
+                  {item.requiresManualEntry && (
+                    <p className="mt-1 text-[10px] text-amber-400/90">No verified match — enter manually</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {item.candidates.map(candidate => {
+                      const selected = choices[item.id]?.security_key === candidate.security_key;
+                      return (
+                        <button
+                          key={candidate.security_key}
+                          type="button"
+                          onClick={() => setChoices(prev => ({ ...prev, [item.id]: candidate }))}
+                          className={cn(
+                            'rounded-lg border px-3 py-2 text-left transition-colors',
+                            selected ? 'border-primary bg-primary/10' : 'border-border/40 bg-secondary/20 hover:border-primary/40'
+                          )}
+                        >
+                          <p className="text-xs font-semibold text-foreground">{candidate.display_ticker}</p>
+                          <p className="text-[10px] text-muted-foreground">{candidate.quote_symbol} · {candidate.listing_exchange || 'Exchange unknown'} · {candidate.listing_currency}</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground">{candidate.reason || candidate.confidence}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <ManualListingForm
+                    underlying={item.underlying || item.rawTicker}
+                    value={manualVal}
+                    onChange={(next) => {
+                      setManualEntries(prev => ({ ...prev, [item.id]: next }));
+                      if (next.quote_symbol && next.listing_exchange && next.listing_currency) {
+                        const candidate = manualToCandidate(item.underlying || item.rawTicker, next);
+                        setChoices(prev => ({ ...prev, [item.id]: candidate }));
+                      }
+                    }}
+                  />
+                  {isManualSelected && (
+                    <p className="text-[10px] text-emerald-400/90">Using manual entry · {choices[item.id].quote_symbol} on {choices[item.id].listing_exchange}</p>
+                  )}
+                </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {item.candidates.map(candidate => {
-                  const selected = choices[item.id]?.security_key === candidate.security_key;
-                  return (
-                    <button
-                      key={candidate.security_key}
-                      type="button"
-                      onClick={() => setChoices(prev => ({ ...prev, [item.id]: candidate }))}
-                      className={cn(
-                        'rounded-lg border px-3 py-2 text-left transition-colors',
-                        selected ? 'border-primary bg-primary/10' : 'border-border/40 bg-secondary/20 hover:border-primary/40'
-                      )}
-                    >
-                      <p className="text-xs font-semibold text-foreground">{candidate.display_ticker}</p>
-                      <p className="text-[10px] text-muted-foreground">{candidate.quote_symbol} · {candidate.listing_exchange || 'Exchange unknown'} · {candidate.listing_currency}</p>
-                      <p className="mt-1 text-[10px] text-muted-foreground">{candidate.reason || candidate.confidence}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       <div className="flex items-center justify-between pt-1">
         <Button variant="outline" size="sm" onClick={onBack}><ChevronLeft className="h-3.5 w-3.5 mr-1" />Back</Button>
-        <Button size="sm" onClick={apply}>Confirm securities <ChevronRight className="h-3.5 w-3.5 ml-1" /></Button>
+        <Button size="sm" onClick={apply} disabled={ambiguities.some(a => !choices[a.id])}>
+          Confirm securities <ChevronRight className="h-3.5 w-3.5 ml-1" />
+        </Button>
       </div>
     </div>
   );
@@ -1056,6 +1180,27 @@ function ConfirmStep({ parsed, onDone, onBack }) {
     setSaveError(null);
     try {
       const result = await saveParsedImport(parsed);
+      // Persist a re-importable snapshot to history so users can recover the
+      // data after accidentally deleting an account.
+      try {
+        const positions = parsed?.importBundle?.positions || parsed?.valid || [];
+        const transactions = parsed?.importBundle?.transactions || (!parsed?.isHoldings ? parsed?.valid : []) || [];
+        saveHistory({
+          id: `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          importedAt: new Date().toISOString(),
+          filename: parsed?.filename || 'imported.csv',
+          broker: parsed?.broker || 'generic',
+          brokerName: (BROKER_LABELS[parsed?.broker]?.name) || parsed?.broker || 'Unknown broker',
+          rowCount: (positions.length || 0) + (transactions.length || 0),
+          isHoldings: Boolean(parsed?.isHoldings),
+          data: parsed?.valid || [],
+          // Snapshot the whole parsed bundle so re-import can re-run
+          // `saveParsedImport(parsed)` verbatim.
+          parsedSnapshot: parsed,
+        });
+      } catch (histErr) {
+        console.warn('[ImportCenter] history snapshot failed (continuing):', histErr?.message || histErr);
+      }
       setImportResult(result);
       setImported(true);
       setTimeout(() => onDone(result), 1800);
@@ -1167,11 +1312,42 @@ function ConfirmStep({ parsed, onDone, onBack }) {
 
 function ImportHistory({ onNewImport }) {
   const [history, setHistory] = useState(loadHistory);
+  const [reimportingId, setReimportingId] = useState(null);
 
   const handleDelete = (id) => {
     const updated = history.filter(h => h.id !== id);
     localStorage.setItem(IMPORT_HISTORY_KEY, JSON.stringify(updated));
     setHistory(updated);
+  };
+
+  const handleReimport = async (entry) => {
+    if (reimportingId) return;
+    setReimportingId(entry.id);
+    try {
+      // Prefer the full parsedSnapshot when available (preserves realized
+      // positions, FX rates, account metadata, etc.). Fall back to a minimal
+      // bundle reconstructed from the history row's flattened `data` so older
+      // entries (logged before parsedSnapshot was added) can still re-import.
+      const parsed = entry.parsedSnapshot || {
+        valid: entry.data || [],
+        errors: [],
+        isHoldings: Boolean(entry.isHoldings),
+        broker: entry.broker || 'generic',
+        filename: entry.filename || 'imported.csv',
+        importBundle: entry.isHoldings
+          ? { positions: entry.data || [], transactions: [], realizedPositions: [] }
+          : { positions: [], transactions: entry.data || [], realizedPositions: [] },
+      };
+      const result = await saveParsedImport(parsed);
+      window.dispatchEvent(new CustomEvent('unifolio:portfolio-imported'));
+      const summary = `Re-imported ${entry.filename}. ${result?.holdingsSaved ?? 0} holdings, ${result?.transactionsSaved ?? 0} transactions${result?.duplicatesSkipped ? ` · ${result.duplicatesSkipped} duplicates skipped` : ''}.`;
+      alert(summary);
+    } catch (err) {
+      console.error('[ImportCenter] re-import failed:', err);
+      alert(err?.message || 'Re-import failed. Please try uploading the original file again.');
+    } finally {
+      setReimportingId(null);
+    }
   };
 
   const handleExport = (entry) => {
@@ -1230,6 +1406,18 @@ function ImportHistory({ onNewImport }) {
               </p>
             </div>
             <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 w-7 p-0 text-primary hover:text-primary/90 border-primary/30 hover:bg-primary/10 disabled:opacity-40"
+                title="Re-import this data (useful if you deleted the account and want to restore it)"
+                disabled={reimportingId === entry.id}
+                onClick={() => handleReimport(entry)}
+              >
+                {reimportingId === entry.id
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <RotateCcw className="h-3 w-3" />}
+              </Button>
               <Button size="sm" variant="outline" className="h-7 w-7 p-0" title="Export as CSV" onClick={() => handleExport(entry)}>
                 <Download className="h-3 w-3" />
               </Button>

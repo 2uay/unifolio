@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthContext';
 import { safeNumber, safeDivide } from '@/lib/safeNum';
 import { IMPORT_PORTFOLIO_KEY } from '@/lib/importPersistence';
-import { fetchValidatedPrices, fetchHistoricalPricesForTickers } from '@/lib/stockApi';
+import { fetchValidatedPrices, fetchHistoricalPricesForTickers, fetchManyProfiles } from '@/lib/stockApi';
 import { getLocallyDeletedAccountIds, isLocalDeleteAllPending } from '@/lib/dataDeletion';
 import { displayTicker, securityKey } from '@/lib/securityIdentity';
 
@@ -78,6 +78,7 @@ function withAliases(holding, accountMap = {}) {
     asset_class: holding.asset_class ?? holding.assetClass ?? 'Stock',
     assetClass: holding.asset_class ?? holding.assetClass ?? 'Stock',
     sector: holding.sector ?? 'Unknown',
+    industry: holding.industry ?? 'Unknown',
     country: holding.country ?? 'Unknown',
     exchange: holding.exchange ?? holding.listingExchange ?? '',
     purchase_history: Array.isArray(holding.purchase_history) ? holding.purchase_history : [],
@@ -307,12 +308,31 @@ async function enrichHoldingsWithMarketData(holdings) {
 
   if (activeTickers.length === 0) return holdings;
 
+  // Profile lookups use the underlying US ticker (LLY, not LLY.NE) so a CDR
+  // and the underlying share resolve to the same Finnhub profile. Cached 30
+  // days, so this is essentially free after the first import.
+  const profileTickers = [...new Set(holdings
+    .filter(h => safeNumber(h.quantity) > 0)
+    .map(h => h.underlying_ticker || h.ticker)
+    .filter(Boolean))];
+
   let quotes = {};
+  let profiles = {};
   try {
-    quotes = await withTimeout(fetchValidatedPrices(activeTickers, holdings), 9000, 'Quote enrichment');
+    [quotes, profiles] = await Promise.all([
+      withTimeout(fetchValidatedPrices(activeTickers, holdings), 9000, 'Quote enrichment'),
+      withTimeout(fetchManyProfiles(profileTickers), 9000, 'Profile enrichment').catch(err => {
+        console.warn('[PortfolioData] Profile enrichment unavailable:', err?.message || err);
+        return {};
+      }),
+    ]);
   } catch (error) {
     console.warn('[PortfolioData] Quote enrichment unavailable:', error?.message || error);
   }
+
+  // Helper: only apply profile fields when the broker didn't supply real data.
+  // IBKR provides sector/country in the SECU section; we shouldn't overwrite it.
+  const isMissing = (v) => !v || v === 'Unknown' || v === '';
 
   return holdings.map(holding => {
     const quoteKey = holding.quote_symbol || holding.ticker;
@@ -329,6 +349,14 @@ async function enrichHoldingsWithMarketData(holdings) {
     const dailyPnl = quote?.previous_close ? (currentPrice - previousClose) * qty : safeNumber(holding.daily_pnl_amount ?? holding.dailyPnl);
     const priceSource = quote?.price_source || (brokerPrice ? 'broker' : 'unavailable');
     const valuationStatus = quote?.valuation_status || (brokerPrice ? 'broker_fallback' : 'unavailable');
+
+    const profile = profiles[String(holding.underlying_ticker || holding.ticker || '').toUpperCase()];
+    const enrichedSector = isMissing(holding.sector) && profile?.finnhubIndustry ? profile.finnhubIndustry : holding.sector;
+    const enrichedIndustry = isMissing(holding.industry) && profile?.finnhubIndustry ? profile.finnhubIndustry : holding.industry;
+    const enrichedCountry = isMissing(holding.country) && profile?.country ? profile.country : holding.country;
+    const enrichedLogo = holding.logo || profile?.logo || null;
+    const enrichedMarketCap = holding.market_cap ?? profile?.marketCapitalization ?? null;
+    const enrichedExchange = holding.exchange || profile?.exchange || holding.listing_exchange || '';
 
     return {
       ...holding,
@@ -349,6 +377,12 @@ async function enrichHoldingsWithMarketData(holdings) {
       price_source: priceSource,
       valuation_status: valuationStatus,
       quote_rejected: quote?.rejected_quote || null,
+      sector: enrichedSector,
+      industry: enrichedIndustry,
+      country: enrichedCountry,
+      exchange: enrichedExchange,
+      logo: enrichedLogo,
+      market_cap: enrichedMarketCap,
     };
   });
 }
@@ -504,11 +538,16 @@ async function enrichImportedBundle(bundle) {
 }
 
 export function PortfolioDataProvider({ children }) {
-  const { isAuthenticated, isDemoMode, user } = useAuth();
+  const { isAuthenticated, isDemoMode, isLoadingAuth, user } = useAuth();
   const [bundle, setBundle] = useState(emptyBundle);
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
 
   const refreshPortfolioData = useCallback(async () => {
+    // Don't flicker sample data while auth is still resolving — caused the
+    // dashboard to render with 4 sample dots until a tab switch forced a
+    // remount once real data arrived.
+    if (isLoadingAuth) return;
+
     if (!isAuthenticated || isDemoMode || !user?.id) {
       setBundle(sampleBundle());
       return;
@@ -555,6 +594,16 @@ export function PortfolioDataProvider({ children }) {
       const realizedPositions = realizedRes.error ? [] : (realizedRes.data || []).filter(keepAccount).map(normalizeRealized);
       const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
 
+      // Drop institutions that no longer have any (non-tombstoned) accounts.
+      // Keeps the Accounts/Institutions pages clean immediately after a delete,
+      // even if the server-side institution row is still being pruned.
+      const referencedInstitutionIds = new Set(
+        accounts.map(a => a.institution_id ?? a.institutionId).filter(Boolean),
+      );
+      const filteredInstitutions = (institutionsRes.data || []).filter(
+        inst => referencedInstitutionIds.has(inst.id),
+      );
+
       setBundle({
         source: 'supabase',
         isSample: false,
@@ -563,7 +612,7 @@ export function PortfolioDataProvider({ children }) {
         isEmptyPortfolio: false,
         accounts,
         holdings,
-        institutions: institutionsRes.data || [],
+        institutions: filteredInstitutions,
         transactions,
         realizedPositions,
         portfolioSnapshots: await buildHistoricalSnapshots(holdings, accounts, transactions),
@@ -575,7 +624,7 @@ export function PortfolioDataProvider({ children }) {
     } finally {
       setIsLoadingPortfolio(false);
     }
-  }, [isAuthenticated, isDemoMode, user?.id]);
+  }, [isAuthenticated, isDemoMode, isLoadingAuth, user?.id]);
 
   useEffect(() => {
     refreshPortfolioData();

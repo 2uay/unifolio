@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, BarChart3, PieChart, Zap } from 'lucide-react';
+import { Shield, Zap } from 'lucide-react';
 import UnifolioWheelLogo from '@/components/shared/UnifolioWheelLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,7 +17,7 @@ const REMEMBERED_EMAIL_KEY = 'unifolio_remembered_email';
 export default function Welcome() {
   const navigate = useNavigate();
   const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice, sendPasswordReset } = useAuth();
-  const { resetToDefaultTheme, chartColors } = useTheme();
+  const { setRandomTheme, chartColors } = useTheme();
 
   const [tab, setTab] = useState('signin'); // 'signin' | 'signup' | 'forgot'
   const [forgotSent, setForgotSent] = useState(false);
@@ -43,7 +43,7 @@ export default function Welcome() {
   }, [authNotice]);
 
   const handleEnterDemo = () => {
-    resetToDefaultTheme();
+    setRandomTheme();
     clearAuthNotice?.();
     enterDemoMode();
     navigate('/holdings');
@@ -363,19 +363,6 @@ export default function Welcome() {
           )}
         </div>
 
-        {/* Feature highlights */}
-        <div className="grid grid-cols-3 gap-3 mt-5">
-          {[
-            { icon: BarChart3, label: 'Multi-account tracking' },
-            { icon: Shield, label: 'Bank-level security' },
-            { icon: PieChart, label: 'Portfolio breakdown' },
-          ].map(({ icon: Icon, label }) => (
-            <div key={label} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-card/55 border border-border/60 text-center backdrop-blur-md">
-              <Icon className="w-4 h-4 text-primary" />
-              <span className="text-[10px] text-muted-foreground leading-tight">{label}</span>
-            </div>
-          ))}
-        </div>
       </div>
 
     </div>

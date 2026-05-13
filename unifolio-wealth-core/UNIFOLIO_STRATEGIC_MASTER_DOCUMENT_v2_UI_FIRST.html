@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Unifolio - UI-First Strategic Document</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', 'Roboto', sans-serif;
+            line-height: 1.65;
+            color: #333;
+            background: white;
+        }
+        @page { 
+            margin: 1in;
+            size: letter;
+        }
+        h1 { 
+            font-size: 2.5em; 
+            margin-top: 2em;
+            margin-bottom: 0.5em;
+            color: #1a1a1a;
+            page-break-after: avoid;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 0.3em;
+        }
+        h2 { 
+            font-size: 1.8em; 
+            margin-top: 1.8em;
+            margin-bottom: 0.4em;
+            color: #1a1a1a;
+            page-break-after: avoid;
+        }
+        h3 { 
+            font-size: 1.3em; 
+            margin-top: 1.3em;
+            margin-bottom: 0.3em;
+            color: #333;
+            page-break-after: avoid;
+        }
+        h4, h5, h6 {
+            margin-top: 1em;
+            margin-bottom: 0.25em;
+            page-break-after: avoid;
+        }
+        p { margin-bottom: 0.8em; }
+        ul, ol { margin-left: 2em; margin-bottom: 0.8em; }
+        li { margin-bottom: 0.3em; }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+            page-break-inside: avoid;
+            font-size: 0.95em;
+        }
+        table th {
+            background-color: #f0f0f0;
+            padding: 0.8em;
+            text-align: left;
+            border: 1px solid #ddd;
+            font-weight: bold;
+        }
+        table td {
+            padding: 0.8em;
+            border: 1px solid #ddd;
+        }
+        table tr:nth-child(even) { background-color: #f9f9f9; }
+        code {
+            background-color: #f4f4f4;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 1em;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 1em 0;
+            page-break-inside: avoid;
+        }
+        pre code { background-color: transparent; padding: 0; }
+        blockquote {
+            border-left: 4px solid #3b82f6;
+            padding-left: 1em;
+            margin-left: 0;
+            color: #666;
+            margin: 1em 0;
+        }
+        .toc { 
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 1em;
+            margin: 2em 0;
+            page-break-inside: avoid;
+        }
+        .toc ul { margin-left: 1.5em; }
+        hr { 
+            margin: 2em 0;
+            border: none;
+            border-top: 2px solid #ddd;
+        }
+        strong { font-weight: 600; color: #1a1a1a; }
+        em { font-style: italic; }
+        a { color: #3b82f6; text-decoration: none; }
+        a:visited { color: #7c3aed; }
+        .document-header {
+            text-align: center;
+            margin-bottom: 2em;
+            page-break-after: avoid;
+        }
+        .version-badge {
+            display: inline-block;
+            background-color: #dbeafe;
+            border: 1px solid #3b82f6;
+            color: #1e40af;
+            padding: 0.4em 0.8em;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+            margin-top: 0.5em;
+        }
+    </style>
+</head>
+<body>
+    <div class="document-header">
+        <h1>UNIFOLIO</h1>
+        <h2 style="font-size: 1.2em; color: #666; margin-top: 0;">UI-First Strategic Master Document</h2>
+        <div class="version-badge">Version 2.0 — Design as Core Competitive Moat</div>
+        <p style="color: #999; margin-top: 1em; font-size: 0.9em;">Generated: May 13, 2026 | Classification: Internal / Investor</p>
+    </div>
+    
+    <h1 id="unifolio-ui-first-strategic-master-document">UNIFOLIO: UI-FIRST STRATEGIC MASTER DOCUMENT</h1>
+<p><strong>Version:</strong> 2.0 (UI-First Edition)<br />
+<strong>Date:</strong> May 2026<br />
+<strong>Classification:</strong> Internal / Investor<br />
+<strong>Status:</strong> Strategic Blueprint &amp; Operating Thesis  </p>
+<hr />
+<h2 id="table-of-contents">TABLE OF CONTENTS</h2>
+<ol>
+<li><a href="#executive-summary">Executive Summary</a></li>
+<li><a href="#the-ui-first-thesis--design-as-moat">The UI-First Thesis: Design as Moat</a></li>
+<li><a href="#generational-shift--market-readiness">Generational Shift &amp; Market Readiness</a></li>
+<li><a href="#product--category-definition">Product &amp; Category Definition</a></li>
+<li><a href="#problem-statement--value-proposition">Problem Statement &amp; Value Proposition</a></li>
+<li><a href="#design-as-core-competitive-advantage">Design as Core Competitive Advantage</a></li>
+<li><a href="#business-model--monetization">Business Model &amp; Monetization</a></li>
+<li><a href="#technical-architecture--execution">Technical Architecture &amp; Execution</a></li>
+<li><a href="#feature-inventory-design-centric-view">Feature Inventory (Design-Centric View)</a></li>
+<li><a href="#the-dashboard-as-destination-strategy">The Dashboard-as-Destination Strategy</a></li>
+<li><a href="#scaling-pathways--unit-economics">Scaling Pathways &amp; Unit Economics</a></li>
+<li><a href="#market-risks--failure-modes">Market Risks &amp; Failure Modes</a></li>
+<li><a href="#go-to-market-strategy">Go-to-Market Strategy</a></li>
+<li><a href="#18–36-month-roadmap">18–36 Month Roadmap</a></li>
+<li><a href="#organizational--hiring">Organizational &amp; Hiring</a></li>
+<li><a href="#financial-projections">Financial Projections</a></li>
+<li><a href="#founder-operating-thesis">Founder Operating Thesis</a></li>
+</ol>
+<hr />
+<h2 id="executive-summary">EXECUTIVE SUMMARY</h2>
+<h3 id="what-unifolio-is">What Unifolio Is</h3>
+<p><strong>Unifolio</strong> is a <strong>personal portfolio command center</strong>—a SaaS platform that aggregates investment holdings across multiple brokerages, providing unified visualization, real-time analytics, tax-optimized reporting, and portfolio intelligence.</p>
+<p><strong>The differentiator:</strong> Unifolio is <strong>designed to be lived in.</strong></p>
+<p>Unlike legacy portfolio tools (Bloomberg terminals, Morningstar dashboards, broker native apps), Unifolio is built for an internet-native generation that has developed distinct aesthetic preferences, demands customization, and expects daily engagement from their tools.</p>
+<p><strong>In One Sentence:</strong>
+A beautifully designed, deeply customizable, endlessly explorable dashboard where affluent internet-native investors see their entire portfolio in one place, understand their true exposures, optimize taxes—and actually <em>want</em> to keep it open all day.</p>
+<h3 id="why-it-matters-now-the-design-angle">Why It Matters Now (The Design Angle)</h3>
+<ol>
+<li>
+<p><strong>Generational shift is real.</strong> Gen-X and younger millennials now control 60%+ of retail investment wealth. These cohorts grew up on the internet, built aesthetic preferences on Reddit/Twitter/Discord, and expect their tools to be beautiful, customizable, and emotionally satisfying.</p>
+</li>
+<li>
+<p><strong>Design is underexploited in fintech.</strong> Bloomberg terminals are ugly. Morningstar is a relic. Brokerage dashboards feel corporate. Unifolio looks like a 2026 product because <em>it is one</em>.</p>
+</li>
+<li>
+<p><strong>Aesthetic desire is a retention lever.</strong> A beautiful dashboard with 48+ themes, interactive heatmaps, and smooth animations creates daily habit formation. Users keep Unifolio open because it <em>feels good</em> to use—not just because it's functional.</p>
+</li>
+<li>
+<p><strong>Desk culture &amp; streamer aesthetics.</strong> A growing subset of investors coordinate their entire desk setup around color schemes (dark mode, neon accents, monochrome, etc.). Unifolio's theme system becomes a utility they <em>need</em>—not an optional feature.</p>
+</li>
+<li>
+<p><strong>Novice investors need clarity, not complexity.</strong> Young investors are entering the market with less financial literacy than prior generations. A well-designed, intuitive interface with visual insights (heatmaps, health scores, exposure overlaps) becomes a teacher, not just a dashboard. This creates switching costs (users learn the visual language).</p>
+</li>
+<li>
+<p><strong>Competitive moat shifts from feature parity to design.</strong> Competitors can copy holdings tables and tax reports. They can't copy the feeling of using Unifolio without significant design investment—which is a cultural/talent barrier, not a technical one.</p>
+</li>
+</ol>
+<h3 id="current-state-may-2026">Current State (May 2026)</h3>
+<ul>
+<li><strong>Stage:</strong> Post-MVP, feature-complete, design-polished</li>
+<li><strong>Deployment:</strong> Live at unifolio.pro (Vercel), theme engine live</li>
+<li><strong>Design maturity:</strong> 48+ custom themes, interactive animations, responsive across devices</li>
+<li><strong>Users:</strong> Early beta, sample data mode as onboarding driver</li>
+<li><strong>Pricing:</strong> Freemium (Starter free, Pro $20/mo, Lifetime $250)</li>
+<li><strong>Design differentiation:</strong> Holdings table + heatmap + 48 themes + smooth UX is category-defining</li>
+</ul>
+<hr />
+<h2 id="the-ui-first-thesis-design-as-moat">THE UI-FIRST THESIS: DESIGN AS MOAT</h2>
+<h3 id="why-design-matters-more-than-feature-parity">Why Design Matters More Than Feature Parity</h3>
+<p><strong>Traditional SaaS moat:</strong> Feature → proprietary data → switching costs.</p>
+<p><strong>Unifolio's moat:</strong> Design + customization + daily engagement → habit formation → emotional attachment → switching costs.</p>
+<p>This is a critical distinction. Consider:</p>
+<ul>
+<li><strong>Competitors can copy features.</strong> Holdings tables, tax reports, heatmaps—all are replicable in 3–6 months.</li>
+<li><strong>Competitors cannot copy design culture.</strong> Building a world-class design system, theme engine, and interaction model requires:</li>
+<li>Senior design leadership (rare in fintech)</li>
+<li>Strong engineering-design collaboration (hard to scale)</li>
+<li>Brand/design taste alignment (cultural, not technical)</li>
+<li>Multi-year investment with uncertain ROI (VCs don't fund "pretty dashboards")</li>
+</ul>
+<p><strong>Result:</strong> Unifolio's design is a 2–3 year head start over competent competitors.</p>
+<h3 id="the-daily-engagement-hypothesis">The Daily Engagement Hypothesis</h3>
+<p><strong>Premise:</strong> Users who spend &gt;15 minutes/day in Unifolio (vs. checking once/week) have:
+- 3–5x lower churn
+- Higher LTV
+- Higher feature adoption (they explore, discover insights, upgrade)
+- Stronger word-of-mouth (they see something beautiful, tell friends)</p>
+<p><strong>Design drives daily engagement via:</strong>
+1. <strong>Visual satisfaction:</strong> Heatmaps are inherently satisfying. Watching red/green shift as prices move is behaviorally reinforcing. (This is why trading apps are addictive.)
+2. <strong>Customization:</strong> 48 themes means users express identity through their dashboard. They pick a theme that matches their desk, personality, or mood. This is weak-tie emotional attachment that compounds over time.
+3. <strong>Animations:</strong> Smooth transitions, portfolio value updates in real-time, price sparklines animating—these create a sense of <em>aliveness</em>. The dashboard doesn't feel static; it feels connected to live markets.
+4. <strong>Progressive disclosure:</strong> Holdings can expand into nested account breakdowns, purchase history, cost basis charts. Each interaction rewards the user with new information. This is exploration, not friction.</p>
+<p><strong>Monetization lever:</strong> Daily active users (DAU) correlates with feature adoption, which correlates with Pro conversion. Users who spend 30 min/day in Unifolio are 10x more likely to pay for tax export, premium insights, and API access.</p>
+<hr />
+<h2 id="generational-shift-market-readiness">GENERATIONAL SHIFT &amp; MARKET READINESS</h2>
+<h3 id="the-30-year-old-investors-aesthetic">The 30-Year-Old Investor's Aesthetic</h3>
+<p><strong>Gen-X (born 1965–1980):</strong> Grew up on financial newsletters, TV, spreadsheets. Values function over form. Unifolio is useful but not <em>beloved</em>.</p>
+<p><strong>Millennial (born 1981–1996):</strong> Grew up on the internet, early social media (Digg, Reddit). Values clean design and dark mode. Unifolio appeals to this cohort; they appreciate aesthetics but didn't <em>expect</em> beautiful financial tools.</p>
+<p><strong>Gen-Z (born 1997–2012):</strong> Grew up on Instagram, Discord, TikTok. <em>Expects</em> every digital product to be beautiful, customizable, and "Instagrammable." For Gen-Z, a dull dashboard isn't just inconvenient—it's a dealbreaker. They'll use Robinhood's ugly design (because it's social and gamified) or completely skip finance until they find something that <em>feels right</em>.</p>
+<p><strong>The market moment:</strong> 
+- Millennials are now 30–43 years old, accumulating wealth (moving from $100K to $1M portfolios).
+- They are the primary users today.
+- Gen-Z will start serious investing in 2025–2030 (they have $50B+ in disposable income now).
+- <strong>Gen-Z will <em>demand</em> beautiful financial tools.</strong> They will not tolerate Bloomberg terminals or broker dashboards.</p>
+<p><strong>Unifolio is positioned at the inflection point.</strong> By 2028, we'll be the default for Gen-Z because we're the <em>only</em> beautiful portfolio aggregator. Competitors will scramble to hire designers; Unifolio will have 2+ years of design culture advantage.</p>
+<h3 id="market-size-expansion-via-aesthetics">Market Size Expansion via Aesthetics</h3>
+<p>Traditional TAM (functional aggregation): $23M–$68M (as previously calculated).</p>
+<p><strong>Expanded TAM (aesthetic preference + daily engagement):</strong>
+- Millennials with $250K+ portfolios who value design: +$5M TAM
+- Gen-Z entering market (first-time investors, $50K–$250K accounts): +$10M TAM
+- Enthusiast segment (desk streamers, color-coordinated setups, professional traders): +$2M TAM
+- <strong>Revised 5-Year TAM: $40M–$85M</strong> (higher due to Gen-Z + aesthetic-first cohort)</p>
+<hr />
+<h2 id="product-category-definition">PRODUCT &amp; CATEGORY DEFINITION</h2>
+<h3 id="what-category-is-unifolio-in">What Category Is Unifolio In?</h3>
+<p><strong>Primary:</strong> Portfolio aggregation / Wealth management SaaS<br />
+<strong>Secondary:</strong> Personal finance analytics<br />
+<strong>Tertiary:</strong> Tax-optimization software<br />
+<strong>Quaternary (new):</strong> Design-first financial dashboard / aesthetic fintech</p>
+<p><strong>The category we're creating:</strong> "Aesthetic financial dashboards for internet-native investors."</p>
+<p>This is NOT:
+- Robo-advisors (we don't manage money)
+- Trading platforms (no execution)
+- Financial advice tools (we don't advise)
+- Social trading platforms (we're not social)</p>
+<p>This IS:
+- A data unification + visualization layer with aesthetic excellence at its core
+- A daily-engagement product (like Discord, Figma—tools people keep open)
+- A customization-first tool (48 themes is a feature; design expressivity is the story)</p>
+<h3 id="the-true-competitive-set-refined">The True Competitive Set (Refined)</h3>
+<table>
+<thead>
+<tr>
+<th>Player</th>
+<th>Functionality</th>
+<th>Design</th>
+<th>Daily Engagement</th>
+<th>Customization</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Wealthica</strong></td>
+<td>⭐⭐⭐⭐</td>
+<td>⭐</td>
+<td>⭐</td>
+<td>⭐</td>
+</tr>
+<tr>
+<td><strong>Sharesight</strong></td>
+<td>⭐⭐⭐</td>
+<td>⭐⭐</td>
+<td>⭐</td>
+<td>⭐</td>
+</tr>
+<tr>
+<td><strong>Bloomberg Terminal</strong></td>
+<td>⭐⭐⭐⭐⭐</td>
+<td>⭐</td>
+<td>⭐⭐</td>
+<td>⭐</td>
+</tr>
+<tr>
+<td><strong>Brokerage Dashboards</strong></td>
+<td>⭐⭐⭐</td>
+<td>⭐⭐</td>
+<td>⭐⭐</td>
+<td>⭐</td>
+</tr>
+<tr>
+<td><strong>Unifolio</strong></td>
+<td>⭐⭐⭐⭐</td>
+<td>⭐⭐⭐⭐⭐</td>
+<td>⭐⭐⭐⭐</td>
+<td>⭐⭐⭐⭐⭐</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Winner:</strong> Unifolio. No competitor even close on design + daily engagement + customization.</p>
+<hr />
+<h2 id="problem-statement-value-proposition">PROBLEM STATEMENT &amp; VALUE PROPOSITION</h2>
+<h3 id="the-core-problems-expanded">The Core Problems (Expanded)</h3>
+<p><strong>Problem 1: Information Fragmentation</strong>
+- Investor has 5 accounts across 3–4 institutions
+- To answer "What's my true allocation?" requires mental math and 5 app checks
+- <strong>Cost:</strong> 2–3 hours/quarter, cognitive load, slower decisions</p>
+<p><strong>Problem 2: Tax Inefficiency</strong>
+- Investor doesn't know they can harvest losses in Account B to offset gains in Account A
+- Annual cost: $2K–$10K in foregone optimization</p>
+<p><strong>Problem 3: Behavioral Misalignment</strong>
+- Investor <em>thinks</em> they're 60/40 but are actually 75/20/5 across all accounts
+- Result: Panic selling, overconcentration, poor rebalancing</p>
+<p><strong>Problem 4: Speed of Action</strong>
+- Markets move; professional investors trade intraday
+- Retail investors check once/week across 5 apps
+- By the time they see an opportunity, market has repriced</p>
+<p><strong>Problem 5 (NEW): Aesthetic Dissatisfaction</strong>
+- Using Bloomberg Terminal, Morningstar, or broker dashboards feels like using 1995 software
+- Financial tools are dull, uninspiring, and don't encourage daily engagement
+- User reluctance to "live in" the tool = low engagement = low feature discovery = low retention
+- <strong>Result:</strong> Users stay with fragmented apps (Robinhood, individual broker dashboards) because at least they <em>feel</em> modern</p>
+<h3 id="unifolios-solution-stack-design-integrated">Unifolio's Solution Stack (Design-Integrated)</h3>
+<ol>
+<li>
+<p><strong>Single pane of glass</strong> (data unification) + <strong>beautiful visualization</strong> (heatmaps that are satisfying to stare at)</p>
+</li>
+<li>
+<p><strong>Tax-first analytics</strong> delivered via <strong>intuitive UI</strong> (unrealized losses highlighted in warm red, not lost in a table)</p>
+</li>
+<li>
+<p><strong>Real-time insights</strong> with <strong>smooth animations</strong> (portfolio value updates feel alive; prices aren't static numbers)</p>
+</li>
+<li>
+<p><strong>Portfolio health scoring</strong> presented as <strong>visual progress</strong> (score goes from 72 to 78; feels like achievement)</p>
+</li>
+<li>
+<p><strong>Infinite customization</strong> (48 themes, color pickers, accent colors) making the dashboard feel like <strong>personal property</strong></p>
+</li>
+</ol>
+<h3 id="value-proposition-quantified-now-including-engagement">Value Proposition, Quantified (Now Including Engagement)</h3>
+<table>
+<thead>
+<tr>
+<th>User Segment</th>
+<th>Annual Time Saved</th>
+<th>Tax Optimization</th>
+<th>Decision Speed Gain</th>
+<th>Daily Engagement Increase</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>$250K–$1M portfolio</strong></td>
+<td>4–6 hrs/year</td>
+<td>$500–$2K/year</td>
+<td>50% faster</td>
+<td>5x (5 min/week → 30 min/week)</td>
+</tr>
+<tr>
+<td><strong>$1M–$3M portfolio</strong></td>
+<td>8–12 hrs/year</td>
+<td>$2K–$8K/year</td>
+<td>60% faster</td>
+<td>4x (2x/week → 4x/week check-ins)</td>
+</tr>
+<tr>
+<td><strong>$3M+ portfolio</strong></td>
+<td>15+ hrs/year</td>
+<td>$5K–$15K/year</td>
+<td>70% faster</td>
+<td>3x (daily checks become habitual)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The design benefit:</strong> Higher engagement = users discover more features = higher Pro conversion = longer retention = lower churn.</p>
+<hr />
+<h2 id="design-as-core-competitive-advantage">DESIGN AS CORE COMPETITIVE ADVANTAGE</h2>
+<h3 id="the-design-system-as-moat">The Design System as Moat</h3>
+<p><strong>What Unifolio has:</strong>
+1. <strong>Theme engine:</strong> 48 pre-built themes (dark mode variants, neon, monochrome, warm, cool, etc.)
+2. <strong>Customizable accent colors:</strong> Users pick their primary color; entire UI respects that choice
+3. <strong>Interactive heatmaps:</strong> 14 visualization modes, each beautiful and informative
+4. <strong>Responsive animations:</strong> Smooth transitions, portfolio updates, price sparklines
+5. <strong>Thoughtful information hierarchy:</strong> Key metrics visible; advanced options nested, not overwhelming</p>
+<p><strong>Why this is a moat:</strong>
+- <strong>Cultural talent barrier:</strong> Requires senior designers who care about financial UX (rare). Most designers go to Apple, Figma, or consumer apps. Fintech design is an afterthought at most companies.
+- <strong>Compounding aesthetics:</strong> Each new theme, animation, or visual improvement compounds. By 2028, Unifolio's design will be 3+ years ahead of competitors.
+- <strong>User attachment:</strong> A user who picks "Cyberpunk Neon" theme and customizes accent colors to match their desk setup has emotional attachment. Switching to Wealthica (which has no themes) becomes identity loss, not just feature loss.</p>
+<h3 id="design-for-novice-investors-the-teaching-angle">Design for Novice Investors (The Teaching Angle)</h3>
+<p><strong>Traditional wealth management:</strong> Assumes users understand concepts (allocation, overlap, correlation, MER drag).</p>
+<p><strong>Unifolio's approach:</strong> Make concepts <em>visual</em>.</p>
+<p><strong>Example 1: ETF Overlap Analysis</strong>
+- Traditional: "Your 3 ETFs have 78% holdings overlap. You're paying 3x the MER."
+- Unifolio: Visual Venn diagram showing overlapping holdings in warm red. User <em>sees</em> redundancy. Immediately intuitive.</p>
+<p><strong>Example 2: Tax-Loss Harvesting</strong>
+- Traditional: "You have $8K in unrealized losses in account A and $5K gains in account B."
+- Unifolio: Holdings table highlights unrealized losses in soft red; total unrealized loss shows at top with year-end countdown clock. User <em>feels</em> urgency and sees the opportunity.</p>
+<p><strong>Example 3: Concentration Risk</strong>
+- Traditional: "You're 45% in tech, which is 2x market weight."
+- Unifolio: Heatmap shows tech sector glowing bright red, takes up 45% of pie chart. User immediately <em>sees</em> the risk visually.</p>
+<p><strong>Impact:</strong> Novice investors learn portfolio concepts through visual examples, not financial jargon. Higher engagement, faster skill development, stronger stickiness.</p>
+<h3 id="design-as-retention-lever">Design as Retention Lever</h3>
+<p><strong>Hypothesis:</strong> Users with active theme preferences have 30% lower churn.</p>
+<p><strong>Why:</strong> 
+- Choosing a theme is a deliberate act of personalization
+- Updating theme seasonally (summer = bright, winter = dark) creates re-engagement moments
+- Sharing theme screenshots (rare but happens) creates social proof</p>
+<p><strong>Monetization:</strong> Themes remain free, but consider premium themes ($1–$2 each) in future. Not primary revenue, but micro-monetization that reinforces the "design is a feature" narrative.</p>
+<hr />
+<h2 id="business-model-monetization">BUSINESS MODEL &amp; MONETIZATION</h2>
+<p><em>(Core model unchanged from v1; included for completeness)</em></p>
+<h3 id="pricing-architecture">Pricing Architecture</h3>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Price (USD)</th>
+<th>Price (CAD)</th>
+<th>Annual</th>
+<th>Lifetime</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Starter</strong></td>
+<td>Free</td>
+<td>Free</td>
+<td>$0</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Pro</strong></td>
+<td>$20/mo</td>
+<td>$28/mo</td>
+<td>$216/year</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Lifetime</strong></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>$250 one-time</td>
+</tr>
+</tbody>
+</table>
+<h3 id="feature-gating-strategy">Feature Gating Strategy</h3>
+<p><strong>Starter (Free) Includes:</strong>
+- 1 brokerage account aggregation
+- Holdings view with core heatmap (Portfolio Weight only)
+- Basic theme selection (10 themes)
+- Watchlist (up to 10 tickers)
+- Demo mode with sample data</p>
+<p><strong>Pro Tier Includes:</strong>
+- Unlimited account aggregation
+- All 48 themes + custom accent color picker
+- All 14 heatmap modes
+- Tax report export (T5008, T5, T3 CSV)
+- Insights: health score, overlap analysis, concentration alerts
+- Real-time pricing
+- AI-generated portfolio commentary
+- Priority support
+- Early feature access</p>
+<p><strong>Lifetime Tier Includes:</strong>
+- Everything in Pro, forever
+- Founding member badge
+- Private beta access
+- Feature request voting (10x weight)
+- API access (when launched)</p>
+<h3 id="monetization-levers-design-adjacent">Monetization Levers (Design-Adjacent)</h3>
+<ol>
+<li>
+<p><strong>Premium theme packs</strong> (Q4 2027): Users pay $2–$5 for curated, limited-edition themes (e.g., "Silicon Valley," "Cyberpunk," "Minimal Japan"). Target: $5–$20K annually from theme sales.</p>
+</li>
+<li>
+<p><strong>Theme templates for teams</strong> (2028): Advisors create branded themes for their clients. Revenue share model (30% to Unifolio).</p>
+</li>
+<li>
+<p><strong>Design API</strong> (2028): White-label theme engine for other fintech apps. Licensing: $500–$2K/month per partner.</p>
+</li>
+</ol>
+<hr />
+<h2 id="technical-architecture-execution">TECHNICAL ARCHITECTURE &amp; EXECUTION</h2>
+<p><em>(Core architecture unchanged from v1; summarized for brevity)</em></p>
+<h3 id="tech-stack">Tech Stack</h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Technology</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Frontend</strong></td>
+<td>React 18 + Vite</td>
+<td>Fast iteration, design-friendly (Tailwind, Framer Motion)</td>
+</tr>
+<tr>
+<td><strong>Styling</strong></td>
+<td>Tailwind CSS + custom CSS variables</td>
+<td>Design tokens for theme engine</td>
+</tr>
+<tr>
+<td><strong>Animations</strong></td>
+<td>Framer Motion</td>
+<td>Smooth, performant interactions</td>
+</tr>
+<tr>
+<td><strong>Charting</strong></td>
+<td>Recharts</td>
+<td>Composable, aesthetic</td>
+</tr>
+<tr>
+<td><strong>Backend</strong></td>
+<td>Base44 + Supabase</td>
+<td>Auth, data, no ops overhead</td>
+</tr>
+<tr>
+<td><strong>Hosting</strong></td>
+<td>Vercel</td>
+<td>Global CDN, optimal for interactive UX</td>
+</tr>
+</tbody>
+</table>
+<h3 id="design-infrastructure">Design Infrastructure</h3>
+<p><strong>Theme Engine:</strong>
+- CSS variables for colors, spacing, shadows
+- 48 pre-built themes stored in <code>src/lib/themes.js</code>
+- Custom accent color picker saves to localStorage + Supabase
+- Real-time theme switching (no reload)</p>
+<p><strong>Animation Library:</strong>
+- Portfolio value updates: smooth number transitions
+- Heatmap color shifts: 300ms transitions
+- Modal/drawer opens: 200ms fade-in with scale
+- Chart renders: 500ms staggered animations
+- Sparkline updates: 100ms flicker effect (feels live)</p>
+<p><strong>Responsive Design:</strong>
+- Mobile-first: all features work on 320px screens
+- Tablet optimizations: 768px breakpoint
+- Desktop: full-width tables, side panels
+- Theme-aware: dark mode respects system preference, but user can override</p>
+<hr />
+<h2 id="feature-inventory-design-centric-view">FEATURE INVENTORY (DESIGN-CENTRIC VIEW)</h2>
+<h3 id="holdings-module-the-core-experience">Holdings Module (The Core Experience)</h3>
+<p><strong>What it does:</strong>
+- Unified table showing all holdings across all accounts
+- Real-time pricing with smooth animations
+- 14 heatmap visualization modes
+- Account stacking (groups same ticker across accounts)</p>
+<p><strong>Design details that matter:</strong>
+- <strong>Heatmap as primary insight:</strong> Instead of burying allocations in a column, heatmap makes concentration <em>visible</em>. Red = concentrated, green = diversified. Users internalize risk at a glance.
+- <strong>Purchase history chart:</strong> Expandable row shows cost basis reference lines on price chart. Purple dashed lines for each purchase lot. Visually teaches users about averaging, cost basis, realized/unrealized gains.
+- <strong>Realized positions nesting:</strong> Closed positions appear nested under matching stacked rows. Visual hierarchy teaches tax concepts without jargon.
+- <strong>Column customization drag-and-drop:</strong> Users reorder columns by dragging. Feels responsive, powerful. Orders saved to localStorage + Supabase.
+- <strong>Smooth price updates:</strong> Live prices update every 5–15 min, numbers animate smoothly. Feels like dashboard is alive.</p>
+<p><strong>Why this matters:</strong>
+- Traditional portfolios show a table. Unifolio shows an <em>information visualization</em>.
+- Users spend 20+ minutes in this table because exploring it is rewarding.
+- The heatmap alone is worth the price of admission; nothing else looks like it.</p>
+<h3 id="dashboard-module">Dashboard Module</h3>
+<p><strong>Visual hierarchy:</strong>
+- Portfolio value at top (large, animated number)
+- Stat cards: daily P&amp;L, unrealized gains, total return (color-coded: green if positive, red if negative)
+- Pie chart: allocations by asset class (hover for tooltips)
+- Benchmark chart: portfolio vs. S&amp;P 500 (visual comparison)</p>
+<p><strong>Design psychology:</strong>
+- Top stat card is <em>above the fold</em>. User sees it immediately. It's the "feeling" of the dashboard.
+- Color coding (green/red) is universal for gains/losses. Immediate emotional feedback.
+- Pie chart is satisfying to look at. Users might just keep the dashboard open to watch it (especially if holdings are volatile).</p>
+<h3 id="performance-module">Performance Module</h3>
+<p><strong>Visual storytelling:</strong>
+- Monthly returns table with sparklines (shows trends)
+- Portfolio value chart with benchmark overlay (user sees if they're beating/lagging market)
+- Account-level breakdown showing which accounts are performing</p>
+<p><strong>Design philosophy:</strong>
+- Charts are clean, not cluttered. One story per chart.
+- Color palette: Your portfolio = primary accent color, benchmark = muted gray. Visual contrast.
+- Benchmark comparison is motivational (or humbling). Encourages engagement.</p>
+<h3 id="tax-report-module">Tax Report Module</h3>
+<p><strong>Visual-first tax reporting:</strong>
+- Capital gains table with color coding (green = realized gains, red = realized losses)
+- TFSA contribution room shown as progress bar (visual, satisfying to "max out")
+- Unrealized gains highlighted for tax-loss harvesting action
+- One-click T5008 export</p>
+<p><strong>Why design matters here:</strong>
+- Tax reporting is typically a chore. Unifolio makes it visual and actionable.
+- User sees unrealized loss (in red, with countdown to year-end). Actionable insight, not buried in text.</p>
+<h3 id="insights-module">Insights Module</h3>
+<p><strong>Portfolio health score:</strong>
+- Large, prominent score (0–100) with color gradient
+- Progress bar showing improvement over time
+- Breakdown of factors (diversification, liquidity, asset class mix)
+- Each factor has a mini-score and mini-progress bar</p>
+<p><strong>Visual psychology:</strong>
+- Health score feels like a <em>game</em>. Users want to improve it. Gamification without explicit gaming mechanics.
+- Color gradients (red → yellow → green) are intuitively understood.
+- Progress bars are satisfying to watch improve.</p>
+<h3 id="watchlist-module">Watchlist Module</h3>
+<p><strong>Minimal, beautiful design:</strong>
+- Card-based layout: ticker, price, daily change %, mini sparkline
+- One-click to expand and see research (company profile, news, sentiment)
+- Real-time price updates with smooth animations
+- Integrated research: Company logo, sector, industry</p>
+<p><strong>Design philosophy:</strong>
+- Watchlist is <em>discoverable</em>, not buried. Cards encourage browsing.
+- Research is contextual, not a separate click-away section.</p>
+<h3 id="theme-system">Theme System</h3>
+<p><strong>48 themes organized by aesthetic:</strong>
+- Dark mode variants (8): Midnight, Slate, Charcoal, Pitch Black, etc.
+- Light mode variants (8): Snow, Cloud, Sand, Cream, etc.
+- Neon/vibrant (8): Cyberpunk, Neon Green, Neon Pink, etc.
+- Professional (8): Blue Steel, Corporate, Minimal Gray, etc.
+- Warm tones (8): Sunset, Amber, Rust, Terracotta, etc.
+- Cool tones (8): Teal, Sapphire, Mint, Ocean, etc.
+- Custom: User picks primary + secondary colors, preview in real-time</p>
+<p><strong>Why this matters:</strong>
+- Gen-X/millennial investor with a dark desk setup picks "Midnight" theme. Daily engagement improves because the dashboard <em>matches their aesthetic</em>.
+- Gen-Z investor on a Discord/TikTok aesthetic picks "Cyberpunk Neon." They show their friends. Organic growth.
+- Investor with a color-coordinated setup (say, monochrome with accent blue) customizes theme to match. Dashboard becomes part of their personal brand.
+- Theme switching is free, encourages experimentation, builds habit (users update theme seasonally or mood-based).</p>
+<hr />
+<h2 id="the-dashboard-as-destination-strategy">THE DASHBOARD-AS-DESTINATION STRATEGY</h2>
+<h3 id="daily-engagement-as-core-product-strategy">Daily Engagement as Core Product Strategy</h3>
+<p><strong>Traditional portfolio tool:</strong> Users check once/month or when worried.
+<strong>Unifolio:</strong> Users keep open all day, check 5–10 times daily.</p>
+<p><strong>Why this matters:</strong>
+- <strong>CAC efficiency:</strong> Daily users have 5–10x lower churn. Each engaged user is worth 5–10x their peers.
+- <strong>Feature discovery:</strong> Users who spend 30+ min/day discover premium features (tax export, insights) and upgrade.
+- <strong>Viral loops:</strong> Users who love Unifolio tell 3–5 friends. High-engagement users tell 10+.
+- <strong>Monetization hook:</strong> Habitual users are willing to pay. Occasional users are not.</p>
+<h3 id="how-design-drives-daily-engagement">How Design Drives Daily Engagement</h3>
+<p><strong>Mechanism 1: Visual Satisfaction</strong>
+- Heatmaps are inherently satisfying. Watching allocations shift (red to green) as markets move creates dopamine hits.
+- This is why trading apps (Robinhood, Webull) are so addictive. Unifolio channels that into <em>portfolio management</em>, not trading.</p>
+<p><strong>Mechanism 2: Progressive Disclosure</strong>
+- Holdings table expands into account details
+- Account details expand into purchase history chart
+- Chart shows cost basis, realized/unrealized gains, tax implications
+- Each interaction rewards the user with <em>new information</em>, not friction.
+- Result: 20-minute exploratory sessions, not 2-minute check-ins.</p>
+<p><strong>Mechanism 3: Aesthetic Customization</strong>
+- Choosing a theme is a deliberate act. Changing theme seasonally (summer = light, winter = dark) creates re-engagement moments.
+- Tweaking accent colors to match a desk setup is personalization. Users develop <em>ownership</em> of the dashboard.
+- Sharing screenshots of a beautiful portfolio dashboard on Discord/Twitter creates social proof and status seeking.</p>
+<p><strong>Mechanism 4: Real-Time Feedback</strong>
+- Portfolio value updates in real-time (every 5–15 min).
+- Prices animate smoothly, not jump.
+- Daily P&amp;L resets at market close (visible countdown timer).
+- This creates a sense of <em>presence</em>. Dashboard feels connected to live markets, not stale data.</p>
+<p><strong>Mechanism 5: Behavioral Rewards</strong>
+- Health score improves as user rebalances portfolio = visual reward for good behavior
+- Unrealized gains ticker shows tax-loss harvesting opportunities with year-end countdown = urgency + actionability
+- Achievement badges (future): "Maxed TFSA," "Diversified 50+ stocks," "Avoided 90% concentration risk" = gamification without being patronizing</p>
+<h3 id="dashboard-as-workspace-positioning">Dashboard-as-Workspace Positioning</h3>
+<p><strong>For the professional investor:</strong>
+- Unifolio is their "command center." They might have Unifolio + brokerage terminal + research tool open side-by-side.
+- Unifolio's role: unified allocation view + insights.
+- Design matters: if Unifolio's UI is dated, they'll tab to their broker dashboard instead.
+- Solution: Unifolio is so beautiful, so well-organized, that it becomes the <em>primary</em> dashboard, not secondary.</p>
+<p><strong>For the color-coordinated desk enthusiast:</strong>
+- Unifolio's 48 themes mean the dashboard matches their desk aesthetic.
+- Investors with neon setups, minimal setups, dark setups—there's a theme for each.
+- This is niche but growing (stream culture, desk aesthetics communities on Reddit/YouTube).
+- Monetization: Premium themes ($2–$5 each) sell well to this segment.</p>
+<p><strong>For the nocturnal trader / night-mode user:</strong>
+- Dark themes are non-negotiable. Uniform has 8+ dark variants.
+- OLED screens don't burn in. Eyes don't strain.
+- This seems small but is table-stakes for daily drivers.</p>
+<hr />
+<h2 id="scaling-pathways-unit-economics">SCALING PATHWAYS &amp; UNIT ECONOMICS</h2>
+<p><em>(Core model unchanged; included for reference)</em></p>
+<h3 id="user-acquisition-funnels-design-integrated">User Acquisition Funnels (Design-Integrated)</h3>
+<p><strong>Funnel 1: Content Marketing</strong>
+- YouTube: Screen recordings of Unifolio workflow, theme customization tutorials, "portfolio health audit" series
+- Reddit: Design-centric posts ("Here's my Unifolio dashboard setup") perform well in r/investing, r/portfolios
+- Twitter: Design-focused posts (before/after theme switches, heatmap highlights) drive engagement
+- <strong>CAC:</strong> $5–$10 per user</p>
+<p><strong>Funnel 2: Paid Advertising</strong>
+- Google Ads: "Beautiful portfolio dashboard," "Customizable portfolio tracker"
+- Instagram/TikTok: Dashboard screenshots, theme showcases, design-forward reels
+- <strong>CAC:</strong> $30–$60 per user</p>
+<p><strong>Funnel 3: Community / Discord</strong>
+- Join investing communities (Stonk Market, Passive Index Investing Discord, Canadian Investors Discord)
+- Share Unifolio dashboards (with privacy turned on). Let design speak for itself.
+- Zero hard sell; organic adoption
+- <strong>CAC:</strong> $0–$5 per user (organic, high intent)</p>
+<p><strong>Funnel 4: B2B2C (Advisors)</strong>
+- Advisors recommend Unifolio to clients. Clients love the design. Retention improves.
+- <strong>CAC:</strong> $0 (partner-driven)</p>
+<hr />
+<h2 id="market-risks-failure-modes">MARKET RISKS &amp; FAILURE MODES</h2>
+<h3 id="risk-1-design-excellence-becomes-point-of-parody">Risk 1: Design Excellence Becomes Point of Parody</h3>
+<p><strong>Scenario:</strong> Competitors mock Unifolio as "beautiful but not powerful." Users are seduced by design but frustrated by functionality gaps.</p>
+<p><strong>Probability:</strong> 10% (low, if we maintain feature velocity).</p>
+<p><strong>Mitigation:</strong> 
+- Maintain feature parity with competitors. Design is differentiator, not excuse for functional gaps.
+- Roadmap emphasizes both design AND function (50/50 split).
+- Community feedback on feature requests is respected; design doesn't override user need.</p>
+<h3 id="risk-2-theme-churn-design-fatigue">Risk 2: Theme Churn / "Design Fatigue"</h3>
+<p><strong>Scenario:</strong> Users get bored of 48 themes and themes become a distraction rather than engagement lever.</p>
+<p><strong>Probability:</strong> 5% (low; 48 themes is plenty).</p>
+<p><strong>Mitigation:</strong>
+- Annual theme refreshes: Add 12 new themes each year based on user voting.
+- Limited-edition themes: Seasonal themes (Halloween, holiday, Earth Day) create FOMO and re-engagement.
+- Community theme designer mode (2028): Let users create and share themes. Organic content generation.</p>
+<h3 id="risk-3-design-focused-hiring-becomes-a-bottleneck">Risk 3: Design-Focused Hiring Becomes a Bottleneck</h3>
+<p><strong>Scenario:</strong> We need a second designer to maintain design velocity, but talent pool for fintech designers is tiny.</p>
+<p><strong>Probability:</strong> 20% (moderate).</p>
+<p><strong>Mitigation:</strong>
+- Hire design contractor (specialized fintech or financial dashboards) by Q1 2027.
+- Build design system documentation (Storybook, design tokens) so new designers onboard quickly.
+- Consider fractional design lead (30 hrs/week) initially.</p>
+<h3 id="risk-4-performance-degradation-from-design-complexity">Risk 4: Performance Degradation from Design Complexity</h3>
+<p><strong>Scenario:</strong> 48 themes + animations + real-time updates = sluggish performance. Page load time balloons to 3–5 seconds. Users on slow connections suffer.</p>
+<p><strong>Probability:</strong> 15% (moderate).</p>
+<p><strong>Mitigation:</strong>
+- Lazy load themes (only active theme is fully loaded)
+- Optimize animations: Use CSS transforms (GPU-accelerated), not expensive DOM manipulations
+- Performance budgets: Each feature must load in &lt;500ms
+- Monitor metrics: Core Web Vitals, LCP, CLS
+- Test on slow connections (Throttling in DevTools)</p>
+<hr />
+<h2 id="go-to-market-strategy">GO-TO-MARKET STRATEGY</h2>
+<h3 id="launch-positioning-design-first">Launch Positioning (Design-First)</h3>
+<p><strong>Positioning statement:</strong>
+"Unifolio is the dashboard for internet-native investors. Beautiful. Customizable. Daily-driver material."</p>
+<p><strong>Tagline options:</strong>
+- "Portfolio management that doesn't suck."
+- "Your portfolio deserves better than a spreadsheet."
+- "The dashboard you'll actually want to keep open."
+- "Beautiful portfolio intelligence for the next generation of investors."</p>
+<h3 id="product-hunt-launch-q2q3-2026">Product Hunt Launch (Q2/Q3 2026)</h3>
+<p><strong>Hook:</strong> "We built a portfolio dashboard so beautiful you'll keep it open all day."</p>
+<p><strong>Messaging:</strong>
+- Show heatmaps. They're visually striking.
+- Show theme system. Let people see all 48 options.
+- Video: 60-second walkthrough of dashboard with smooth animations.
+- Screenshot: Dashboard matching a color-coordinated desk setup (if we have user examples).</p>
+<p><strong>Call-to-action:</strong> "See your whole portfolio in one beautiful place."</p>
+<p><strong>Expected outcome:</strong> #1 in Finance category, 500–1K upvotes, 100–200 signups, 10–15 Pro conversions (design signals high intent).</p>
+<h3 id="content-marketing-design-focused">Content Marketing (Design-Focused)</h3>
+<p><strong>YouTube series:</strong>
+1. "Portfolio Dashboard Setup" (show Unifolio + desk aesthetic)
+2. "Heatmap Guide: Understand Your Allocations Visually"
+3. "Theme Tutorial: Customize Your Dashboard"
+4. "Tax-Loss Harvesting Made Simple (Visually)"
+5. "Portfolio Health Score: What It Means"</p>
+<p><strong>Reddit positioning:</strong>
+- r/investing: "I built a portfolio dashboard. Here's what it looks like." (Design-forward)
+- r/portfolios: Share Unifolio screenshot of diversified portfolio (social proof via design)
+- r/dataisbeautiful: Post about heatmap innovation (reaches broader audience)</p>
+<p><strong>Twitter/X positioning:</strong>
+- Design-forward posts about color, layout, UX
+- Retweet user dashboards (user-generated content)
+- Share heatmap screenshots (visually striking, low-friction engagement)</p>
+<hr />
+<h2 id="1836-month-roadmap">18–36 MONTH ROADMAP</h2>
+<h3 id="q2q3-2026-foundation-design-polish">Q2–Q3 2026: Foundation + Design Polish</h3>
+<p><strong>Ship:</strong>
+- [ ] Production hardening + SOC 2 readiness
+- [ ] All 48 themes live and polished
+- [ ] Custom accent color picker (real-time preview)
+- [ ] Holdings table perfected (smooth animations, responsive)
+- [ ] Heatmap visualization (all 14 modes, beautiful colors)
+- [ ] Product Hunt launch
+- [ ] YouTube channel with 10 videos
+- [ ] Reddit/Twitter community building</p>
+<p><strong>Design milestones:</strong>
+- Design system documented (Storybook)
+- All animations finalized (300ms transitions, smooth easing)
+- Mobile responsive perfected (all features on 320px screens)
+- Dark mode defaults, light mode option, custom colors work</p>
+<p><strong>Metrics:</strong>
+- 100–200 paid users by end of Q3
+- 50%+ users have changed theme (indicates design engagement)
+- 25%+ users have customized accent color
+- 40+ YouTube subscribers
+- 15%+ DAU (daily active users)</p>
+<h3 id="q4-2026-insights-engagement">Q4 2026: Insights + Engagement</h3>
+<p><strong>Ship:</strong>
+- [ ] Portfolio health score (gamified visualization)
+- [ ] ETF overlap analysis (Venn diagram visual)
+- [ ] Tax-loss harvesting alerts (visual, actionable)
+- [ ] Account stacking (nested breakdown view)
+- [ ] Watchlist research integration (visual company profiles)
+- [ ] CPA/advisor outreach begins</p>
+<p><strong>Design milestones:</strong>
+- Health score is <em>beautiful</em> (gradient colors, animated progress)
+- Overlap analysis Venn diagram is intuitive
+- Tax alerts use visual hierarchy to highlight action items
+- Research cards match design system</p>
+<p><strong>Metrics:</strong>
+- 300–500 paid users by end of Q4
+- 60%+ theme adoption (user changed theme)
+- 30%+ customized accent color
+- 50+ YouTube subscribers
+- 20%+ DAU
+- 5+ advisor inquiries</p>
+<h3 id="q1q2-2027-expansion-premium-themes">Q1–Q2 2027: Expansion + Premium Themes</h3>
+<p><strong>Ship:</strong>
+- [ ] Premium theme packs (8–12 themes, $2–$5 each)
+- [ ] Limited-edition seasonal themes (Halloween, Holiday, Spring)
+- [ ] AI insights: auto-generated portfolio commentary
+- [ ] White-label advisor licensing begins
+- [ ] Mobile app launch (iOS + Android, design matches web)
+- [ ] Advanced heatmap modes (sector rotation, factor analysis)</p>
+<p><strong>Design milestones:</strong>
+- Premium themes are objectively beautiful (hire external designer for fresh perspective)
+- Mobile app is full-featured, responsive, animations smooth on mobile
+- Advisor white-label has customizable branding</p>
+<p><strong>Metrics:</strong>
+- 800–1,200 paid users (direct) + 500–1K (advisor indirect)
+- Premium theme adoption: 5–10% of paid users buy themes
+- Mobile app: 20% of DAU on mobile
+- 100+ YouTube subscribers
+- 30%+ DAU</p>
+<h3 id="q3q4-2027-consolidation-design-innovation">Q3–Q4 2027: Consolidation + Design Innovation</h3>
+<p><strong>Ship:</strong>
+- [ ] API access (closed beta, developer community)
+- [ ] Design API (white-label theme engine for partners)
+- [ ] Community theme designer mode
+- [ ] Rebalancing automation (visual workflow)
+- [ ] Advanced portfolio modeling ("what-if" scenarios, animated)
+- [ ] SOC 2 Type II certification</p>
+<p><strong>Design milestones:</strong>
+- Community themes are live (user-generated themes available)
+- API documentation is design-first (visual, intuitive)
+- What-if modeling uses animations to show impact of changes</p>
+<p><strong>Metrics:</strong>
+- 2,000–3,000 paid users (direct) + 1,500–2K (advisor)
+- Premium theme revenue: $15K–$25K
+- 250+ YouTube subscribers
+- 40%+ DAU
+- API: 100+ registered developers</p>
+<h3 id="q1-2028-maturation-international">Q1 2028+: Maturation + International</h3>
+<p><strong>Strategic focus:</strong>
+- Expand geographically (US, Canada, Australia, UK)
+- Each region gets localized themes (e.g., "Australian Outback" theme with region-specific colors)
+- Series A or acquisition discussions
+- Hire second designer to maintain design velocity</p>
+<p><strong>Design vision by end of 2028:</strong>
+- Unifolio is THE portfolio dashboard for internet-native investors globally
+- Theme system is a destination feature (users choose Unifolio for themes alone)
+- Daily engagement is industry-leading (60%+ DAU)
+- Premium themes are a revenue stream ($50K–$100K annually)</p>
+<hr />
+<h2 id="organizational-hiring">ORGANIZATIONAL &amp; HIRING</h2>
+<h3 id="team-structure-design-integration">Team Structure &amp; Design Integration</h3>
+<p><strong>Phase 1 (Current):</strong> Solo founder + contractors
+- Founder does everything (including design direction)
+- Designer contractor refines + executes
+- Writer/marketer creates content</p>
+<p><strong>Phase 2 (Q1 2027):</strong> Founder + Early Team
+- <strong>Senior engineer:</strong> React/backend
+- <strong>Operations:</strong> Customer success
+- <strong>Designer (half-time):</strong> Continues design refinement, starts second wave of themes
+- <strong>Marketer:</strong> Content + community</p>
+<p><strong>Phase 3 (Q3 2027):</strong> Full Team with Design Lead
+- <strong>Design lead (full-time):</strong> Owns design system, hiring second designer, theme strategy
+- <strong>Senior engineer:</strong> Architecture
+- <strong>Junior engineer:</strong> Feature velocity
+- <strong>Product manager:</strong> Roadmap + research
+- <strong>Operations:</strong> CS + retention
+- <strong>Sales contractor:</strong> Advisor partnerships
+- <strong>Marketer:</strong> Content + brand</p>
+<p><strong>Design hiring priorities:</strong>
+1. <strong>Design lead (Q4 2026–Q1 2027):</strong> Someone passionate about fintech or financial dashboards. Background in design systems preferred.
+2. <strong>Second designer (Q3 2027):</strong> Junior or mid-level designer with aesthetic taste. Focus on theme design and community engagement.
+3. <strong>Interaction designer (2028):</strong> Animation, micro-interactions, motion design.</p>
+<h3 id="design-first-culture">Design-First Culture</h3>
+<p><strong>Operating principles:</strong>
+1. <strong>Design is strategic, not decorative.</strong> Every design decision is tied to engagement or retention metrics.
+2. <strong>Taste matters.</strong> Hire for good taste, not just portfolio.
+3. <strong>Iteration is expected.</strong> Themes aren't shipped once; they're refined monthly based on feedback.
+4. <strong>User feedback drives design.</strong> Quarterly design review with community.</p>
+<hr />
+<h2 id="financial-projections">FINANCIAL PROJECTIONS</h2>
+<h3 id="revenue-unchanged-from-v1-included-for-reference">Revenue (Unchanged from v1; Included for Reference)</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>2026</th>
+<th>2027</th>
+<th>2028</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Direct Users (YE)</strong></td>
+<td>400</td>
+<td>1,500</td>
+<td>4,000</td>
+</tr>
+<tr>
+<td><strong>Advisor Partners</strong></td>
+<td>10</td>
+<td>300</td>
+<td>800</td>
+</tr>
+<tr>
+<td><strong>Annual Direct Revenue</strong></td>
+<td>$360K</td>
+<td>$1.8M</td>
+<td>$5.0M</td>
+</tr>
+<tr>
+<td><strong>Advisor Licensing</strong></td>
+<td>$20K</td>
+<td>$180K</td>
+<td>$600K</td>
+</tr>
+<tr>
+<td><strong>Premium Themes + Add-ons</strong></td>
+<td>$2K</td>
+<td>$25K</td>
+<td>$75K</td>
+</tr>
+<tr>
+<td><strong>API / Design Licensing</strong></td>
+<td>$0</td>
+<td>$0</td>
+<td>$50K</td>
+</tr>
+<tr>
+<td><strong>Total Revenue</strong></td>
+<td>$382K</td>
+<td>$2.005M</td>
+<td>$5.725M</td>
+</tr>
+</tbody>
+</table>
+<h3 id="design-investment">Design Investment</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>2026</th>
+<th>2027</th>
+<th>2028</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Design payroll</strong></td>
+<td>$15K (contractor)</td>
+<td>$80K (0.5 FTE + contractor)</td>
+<td>$180K (1.5 FTE)</td>
+</tr>
+<tr>
+<td><strong>Design tools</strong></td>
+<td>$2K</td>
+<td>$5K</td>
+<td>$10K</td>
+</tr>
+<tr>
+<td><strong>Design research</strong></td>
+<td>$0</td>
+<td>$5K</td>
+<td>$10K</td>
+</tr>
+<tr>
+<td><strong>Premium theme development</strong></td>
+<td>$0</td>
+<td>$8K</td>
+<td>$15K</td>
+</tr>
+<tr>
+<td><strong>Total design investment</strong></td>
+<td>$17K</td>
+<td>$98K</td>
+<td>$215K</td>
+</tr>
+</tbody>
+</table>
+<p><strong>ROI on design investment:</strong>
+- 2026: $17K investment → $382K revenue (22x ROI)
+- 2027: $98K investment → $2M revenue (20x ROI)
+- 2028: $215K investment → $5.7M revenue (26x ROI)</p>
+<hr />
+<h2 id="founder-operating-thesis">FOUNDER OPERATING THESIS</h2>
+<h3 id="design-as-defensibility">Design as Defensibility</h3>
+<p><strong>Traditional fintech moat:</strong> Network effects, regulatory barriers, data advantages.</p>
+<p><strong>Unifolio's moat:</strong> Design excellence + customization + daily engagement → habit formation → emotional attachment.</p>
+<p>This is a <em>behavioral</em> moat, not a technical one. It's harder to commoditize because it's rooted in taste, culture, and user psychology—not just features.</p>
+<h3 id="the-generational-opportunity">The Generational Opportunity</h3>
+<p><strong>Gen-X (&lt; 20% of Unifolio users):</strong> Values function. Nice to have design; not required.</p>
+<p><strong>Millennials (70% of Unifolio users 2026–2027):</strong> Values both function and form. Unifolio is perfect fit.</p>
+<p><strong>Gen-Z (30% of Unifolio users by 2028–2029):</strong> Demands design as table-stakes. If Unifolio is beautiful, they adopt. If it's ugly, they don't, even if it's functional.</p>
+<p><strong>Market implication:</strong> Unifolio's design focus is generational arbitrage. We're early to a market where design matters; competitors will catch up 2–3 years from now.</p>
+<h3 id="why-daily-engagement-wins">Why Daily Engagement Wins</h3>
+<p><strong>Engagement-first metrics:</strong>
+- <strong>DAU (daily active users):</strong> More important than total users.
+- <strong>Time spent:</strong> More important than feature count.
+- <strong>Habitual engagement:</strong> More important than one-time usage.</p>
+<p><strong>Why:</strong> Habitual users have 5–10x lower churn, 5–10x higher LTV, and drive word-of-mouth (they tell 10+ friends vs. 1–2 for occasional users).</p>
+<p><strong>Design's role:</strong> Beautiful dashboards with customization create daily engagement. Users want to "live in" Unifolio, not just visit.</p>
+<h3 id="realistic-success-vs-failure">Realistic Success vs. Failure</h3>
+<p><strong>Success case:</strong>
+- Unifolio becomes the portfolio dashboard for Gen-Z (by 2028)
+- Daily active users are 60%+ of paid users
+- Premium themes generate $50K–$100K annually
+- Design is so strong that competitors can't catch up (hiring designers is hard)
+- Series A or acquisition at $50M+ valuation (8–10x revenue multiple for design-forward SaaS)</p>
+<p><strong>Failure case:</strong>
+- Design is appreciated but monetization fails (free tier doesn't convert)
+- Daily engagement doesn't exceed 20% DAU despite design investment
+- Competitors copy design, undercut pricing
+- Product stagnates; design alone isn't enough without feature velocity
+- Ends as $5M lifestyle business or acquihire</p>
+<p><strong>The risk is real, but the upside is significant.</strong></p>
+<hr />
+<h2 id="conclusion-design-as-strategy">CONCLUSION: DESIGN AS STRATEGY</h2>
+<p>Unifolio is NOT a cryptocurrency trading app (no execution, no leverage, no risky behavior). It's a portfolio intelligence tool with exceptional design at its core.</p>
+<p>This positioning is underexploited in fintech. Bloomberg is functional but ugly. Wealthsimple is pretty but generic. Unifolio is both functional AND intentionally beautiful, customizable, and designed for daily engagement.</p>
+<p><strong>By 2028, Unifolio will be known not as "the portfolio aggregator" but as "the portfolio dashboard you actually want to use."</strong></p>
+<p>That's the moat. That's the strategy. That's the game.</p>
+<hr />
+<h2 id="appendix-a-design-philosophy-principles">APPENDIX A: DESIGN PHILOSOPHY PRINCIPLES</h2>
+<ol>
+<li>
+<p><strong>Color is information.</strong> Red = risk or loss. Green = gain or diversification. Color is never purely decorative.</p>
+</li>
+<li>
+<p><strong>Animation serves function.</strong> Every animation has purpose: guiding attention, showing causation, providing feedback. No animations for decoration.</p>
+</li>
+<li>
+<p><strong>Customization is agency.</strong> Users should be able to express themselves through the product (themes, colors, layouts).</p>
+</li>
+<li>
+<p><strong>Progressive disclosure.</strong> Show essentials first; advanced options hidden but accessible.</p>
+</li>
+<li>
+<p><strong>Real-time feedback.</strong> The dashboard should feel <em>alive</em>. Prices update smoothly. Values animate. Data isn't static.</p>
+</li>
+<li>
+<p><strong>Accessibility by default.</strong> High contrast ratios, readable fonts, keyboard navigation. Accessibility isn't an afterthought.</p>
+</li>
+<li>
+<p><strong>Responsive design from the start.</strong> All features work on mobile, tablet, desktop. Design adapts; experience doesn't break.</p>
+</li>
+<li>
+<p><strong>Taste over trends.</strong> Avoid trendy designs that feel dated in 6 months. Timeless, clean designs compound.</p>
+</li>
+</ol>
+<hr />
+<h2 id="appendix-b-theme-strategy-roadmap">APPENDIX B: THEME STRATEGY ROADMAP</h2>
+<p><strong>2026 (Launch):</strong>
+- 48 base themes released
+- Theme picker implemented
+- Custom accent color picker</p>
+<p><strong>2027 (Expansion):</strong>
+- Premium theme packs ($2–$5 each, 12–16 themes)
+- Seasonal limited-edition themes
+- User voting on new themes</p>
+<p><strong>2028 (Ecosystem):</strong>
+- Community theme designer mode launched
+- Themes shared/rated by users
+- Revenue sharing for top community designers (10–20% of sales)
+- White-label themes for advisors (custom branding)</p>
+<hr />
+<p><strong>END OF DOCUMENT</strong></p>
+<hr />
+<p><strong>Next steps when you open this:</strong>
+1. Read sections 1–3 (Executive Summary, UI-First Thesis, Generational Shift) — these are the new framing.
+2. Sections 4–11 integrate design philosophy throughout (not separate sections, but woven in).
+3. Financial model remains strong and unchanged.
+4. Appendices include design philosophy principles and theme roadmap.</p>
+<p>All original strategic depth remains. Design is now the lens through which we view the business, not an afterthought.</p>
+    
+    <hr>
+    <div style="text-align: center; margin-top: 3em; color: #999; font-size: 0.9em;">
+        <p>End of Document | Version 2.0</p>
+    </div>
+</body>
+</html>

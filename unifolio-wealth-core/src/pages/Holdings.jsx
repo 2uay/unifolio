@@ -133,8 +133,20 @@ export default function Holdings() {
   const [previewFilters, setPreviewFilters] = useState({});
   const [sortField, setSortField] = useState('marketValue');
   const [sortDir, setSortDir] = useState('desc');
-  const [expandedId, setExpandedId] = useState(null);
-  const [expandedChildId, setExpandedChildId] = useState(null);
+  // Multi-row expansion: any number of holdings can be expanded simultaneously.
+  // Tracked as Sets so toggling a row leaves other open rows untouched.
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const [expandedChildIds, setExpandedChildIds] = useState(() => new Set());
+  const toggleExpandedId = (id) => setExpandedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleExpandedChildId = (id) => setExpandedChildIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [showRealized, setShowRealized] = useState(false);
   const [closedOpen, setClosedOpen] = useState(true);
   const [expandedRealizedKeys, setExpandedRealizedKeys] = useState(() => new Set());
@@ -982,6 +994,24 @@ export default function Holdings() {
             Stack Assets
           </label>
         </div>
+        <div className="flex items-center gap-2">
+          <ThemedSwitch
+            id="show-lots"
+            checked={expandedIds.size > 0}
+            onCheckedChange={(open) => {
+              if (open) {
+                setExpandedIds(new Set(displayHoldings.map(h => h.id).filter(Boolean)));
+              } else {
+                setExpandedIds(new Set());
+                setExpandedChildIds(new Set());
+              }
+            }}
+            className="scale-90"
+          />
+          <label htmlFor="show-lots" className="text-xs text-muted-foreground cursor-pointer select-none">
+            Show Lots
+          </label>
+        </div>
         {stackAssets && (
           <div className="flex items-center gap-2">
             <ThemedSwitch
@@ -1088,7 +1118,7 @@ export default function Holdings() {
                   const lp = h.current_price ?? h.lastPrice;
                   const changePct = sparkArr ? safeDivide(lp - sparkArr[0], sparkArr[0]) * 100 : 0;
                   const changeAmt = sparkArr ? safeNumber(lp) - safeNumber(sparkArr[0]) : 0;
-                  const isExpanded = expandedId === h.id;
+                  const isExpanded = expandedIds.has(h.id);
 
                   // Calculate heatmap style based on selected mode (only if enabled)
                   const heatmapStyle = heatmapEnabled ? calculateHeatmapStyle(h, previewMode ?? heatmapMode, {
@@ -1110,7 +1140,7 @@ export default function Holdings() {
                         h._isStacked && 'border-l-2 border-l-amber-400/50',
                       )}
                       title={heatmapStyle.label}
-                      onClick={() => { setExpandedChildId(null); setExpandedId(isExpanded ? null : h.id); }}
+                      onClick={() => toggleExpandedId(h.id)}
                     >
                       {visibleColumns.map(colId => (
                         <td key={`${h.id}-${colId}`} className={compressTable ? 'px-1.5 py-1' : 'px-2 sm:px-3 py-1.5 sm:py-2'}>
@@ -1142,7 +1172,7 @@ export default function Holdings() {
                         : 0;
                       const isLastChild = childIdx === h._stackedChildren.length - 1;
 
-                      const isChildExpanded = expandedChildId === child.id;
+                      const isChildExpanded = expandedChildIds.has(child.id);
                       rows.push(
                         <tr
                           key={`stack-child-${child.id}`}
@@ -1151,7 +1181,7 @@ export default function Holdings() {
                             isChildExpanded ? 'bg-secondary/20' : 'bg-secondary/10 hover:bg-secondary/20',
                             isLastChild && !isChildExpanded ? 'border-b-2 border-b-border/30' : 'border-b border-border/20'
                           )}
-                          onClick={() => setExpandedChildId(isChildExpanded ? null : child.id)}
+                          onClick={() => toggleExpandedChildId(child.id)}
                         >
                           <td colSpan={visibleColumns.length} className="px-3 py-2">
                             <div className="flex flex-wrap gap-x-4 gap-y-1 pl-4 text-xs text-muted-foreground items-center">

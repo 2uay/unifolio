@@ -358,7 +358,7 @@ export default function PrivacyAndData() {
             Disconnecting removes the live sync but does not delete imported historical data.
           </p>
           <Button variant="outline" size="sm" asChild>
-            <a href="/institutions">Go to Institutions →</a>
+            <a href="/import">Manage in Import Center →</a>
           </Button>
         </div>
       </ExpandableSection>

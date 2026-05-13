@@ -47,6 +47,21 @@ async function cleanupAccountClientSide(accountId, userId) {
     if (userId) query = query.eq('user_id', userId);
     return query;
   };
+
+  // Capture the institution_id before deleting the account row, so we can
+  // prune the institution if it ends up orphaned.
+  let institutionId = null;
+  try {
+    const lookup = await withTimeout(
+      supabase.from('accounts').select('institution_id').eq('id', accountId).maybeSingle(),
+      DELETE_TIMEOUT_MS,
+      'Lookup account institution',
+    );
+    institutionId = lookup?.data?.institution_id || null;
+  } catch (err) {
+    console.warn('[DataDeletion] institution lookup failed:', err?.message || err);
+  }
+
   await Promise.allSettled([
     runClientDelete('Delete account holdings', scoped('holdings')),
     runClientDelete('Delete account realized positions', scoped('realized_positions')),
@@ -64,6 +79,36 @@ async function cleanupAccountClientSide(accountId, userId) {
       ? supabase.from('accounts').delete().eq('id', accountId).eq('user_id', userId)
       : supabase.from('accounts').delete().eq('id', accountId),
   );
+
+  // Orphaned-institution cascade: drop the institution if nothing else
+  // references it (no remaining accounts, no Plaid items).
+  if (institutionId) {
+    try {
+      const [acctsLeft, plaidLeft] = await Promise.all([
+        withTimeout(
+          supabase.from('accounts').select('id', { count: 'exact', head: true }).eq('institution_id', institutionId),
+          DELETE_TIMEOUT_MS,
+          'Count remaining accounts',
+        ),
+        withTimeout(
+          supabase.from('plaid_items').select('id', { count: 'exact', head: true }).eq('institution_id', institutionId),
+          DELETE_TIMEOUT_MS,
+          'Count remaining plaid items',
+        ).catch(() => ({ count: 0 })),
+      ]);
+      const remaining = (acctsLeft?.count || 0) + (plaidLeft?.count || 0);
+      if (remaining === 0) {
+        await runClientDelete(
+          'Delete orphaned institution',
+          userId
+            ? supabase.from('institutions').delete().eq('id', institutionId).eq('user_id', userId)
+            : supabase.from('institutions').delete().eq('id', institutionId),
+        );
+      }
+    } catch (err) {
+      console.warn('[DataDeletion] orphaned-institution cleanup skipped:', err?.message || err);
+    }
+  }
 }
 
 async function cleanupAllClientSide(userId) {
@@ -142,10 +187,23 @@ export function removeLocalAccountData(accountId) {
   const bundle = readLocalPortfolio();
   if (!bundle) return;
   const keepAccount = row => (row.account_id ?? row.accountId ?? row.id) !== accountId;
+  const removed = (bundle.accounts || []).find(row => row.id === accountId);
   bundle.accounts = (bundle.accounts || []).filter(row => row.id !== accountId);
   bundle.holdings = (bundle.holdings || []).filter(keepAccount);
   bundle.realizedPositions = (bundle.realizedPositions || []).filter(keepAccount);
   bundle.transactions = (bundle.transactions || []).filter(keepAccount);
+
+  // Drop the institution if nothing references it locally any more.
+  const orphanedInstitutionId = removed?.institution_id ?? removed?.institutionId;
+  if (orphanedInstitutionId) {
+    const stillReferenced = (bundle.accounts || []).some(
+      a => (a.institution_id ?? a.institutionId) === orphanedInstitutionId,
+    );
+    if (!stillReferenced) {
+      bundle.institutions = (bundle.institutions || []).filter(i => i.id !== orphanedInstitutionId);
+    }
+  }
+
   writeLocalPortfolio(bundle);
 }
 

@@ -18,6 +18,7 @@ import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { useAuth } from '@/lib/AuthContext';
 import { deleteImportedAccountData } from '@/lib/dataDeletion';
+import { supabase } from '@/lib/supabaseClient';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -161,6 +162,33 @@ export default function Accounts() {
 
   const handleSave = (asset) => saveMutation.mutate(editingAsset ? { ...editingAsset, ...asset } : asset);
   const handleEdit = (asset) => { setEditingAsset(asset); setShowModal(true); };
+
+  // Inline editing of account type (TFSA/RRSP/etc) so users can override
+  // when an importer mis-classifies an account.
+  const ACCOUNT_TYPE_OPTIONS = [
+    'TFSA', 'RRSP', 'RESP', 'RDSP', 'FHSA', 'LIRA',
+    'Cash', 'Margin', 'Joint', 'Individual',
+    'Roth IRA', 'IRA', '401(k)', 'Brokerage',
+  ];
+  const [editingAccountTypeId, setEditingAccountTypeId] = useState(null);
+  const [savingAccountTypeId, setSavingAccountTypeId] = useState(null);
+  const handleAccountTypeChange = async (accountId, newType) => {
+    setSavingAccountTypeId(accountId);
+    setEditingAccountTypeId(null);
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({ account_type: newType, updated_at: new Date().toISOString() })
+        .eq('id', accountId);
+      if (error) throw error;
+      await refreshPortfolioData?.();
+    } catch (err) {
+      console.error('[Accounts] failed to update account type:', err);
+      alert(err?.message || 'Could not update account type. Please try again.');
+    } finally {
+      setSavingAccountTypeId(null);
+    }
+  };
   const handleCloseModal = () => { setShowModal(false); setEditingAsset(null); };
 
   const grouped = useMemo(() => {
@@ -313,7 +341,40 @@ export default function Accounts() {
                               </td>
                             );
                           }
-                          if (columnId === 'type') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}><span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{acc.account_type ?? acc.type}</span></td>;
+                          if (columnId === 'type') return (
+                            <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 ${align}`}>
+                              {editingAccountTypeId === acc.id ? (
+                                <select
+                                  autoFocus
+                                  defaultValue={acc.account_type ?? acc.type ?? 'Brokerage'}
+                                  disabled={savingAccountTypeId === acc.id}
+                                  onBlur={() => setEditingAccountTypeId(null)}
+                                  onChange={(e) => handleAccountTypeChange(acc.id, e.target.value)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded-full bg-card border border-primary/40 text-foreground font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
+                                >
+                                  {ACCOUNT_TYPE_OPTIONS.map(opt => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                  {/* Preserve current type if it's not in our list */}
+                                  {!ACCOUNT_TYPE_OPTIONS.includes(acc.account_type ?? acc.type) && (acc.account_type ?? acc.type) && (
+                                    <option value={acc.account_type ?? acc.type}>{acc.account_type ?? acc.type}</option>
+                                  )}
+                                </select>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingAccountTypeId(acc.id)}
+                                  title="Click to change account type (e.g. TFSA, RRSP)"
+                                  className="group inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium hover:bg-primary/20 hover:ring-1 hover:ring-primary/40 transition-all cursor-pointer"
+                                >
+                                  {savingAccountTypeId === acc.id
+                                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                                    : (acc.account_type ?? acc.type ?? '—')}
+                                  <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-70 transition-opacity" />
+                                </button>
+                              )}
+                            </td>
+                          );
                           if (columnId === 'holdings') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 font-mono ${align}`}>{privacyMode ? PM : formatCurrency(convertedHoldings)}</td>;
                           if (columnId === 'cash') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 font-mono ${align}`}>{privacyMode ? PM : formatCurrency(convertedCash)}</td>;
                           if (columnId === 'total') return <td key={`${acc.id}-${columnId}`} className={`px-4 py-3 font-mono font-semibold ${align}`}>{privacyMode ? PM : formatCurrency(convertedTotal)}</td>;

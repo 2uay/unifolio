@@ -187,6 +187,80 @@ This file tracks all significant feature additions, changes, and known limitatio
 - Signed-in users with imported Supabase data now load that data through `PortfolioDataProvider`; demo/unsigned users continue to see sample data
 - Dashboard, Holdings, Accounts, Performance, Transactions, Tax Report, Insights, Institutions, portfolio breakdowns, holding details, and tax exports now read through the imported portfolio data layer where applicable
 
+### 2026-05-08
+
+#### Import Pipeline + Themes + Profile Picture + Logo Animation
+- **Commit `3b10ffb`:** themes, logo animation, profile picture, topbar avatar, import pipeline
+- **Commit `8b700b9`:** Stack ETF CDRs, delete accounts/institutions, TSX P&L fix, real candlestick charts
+- **Commit `585da52`:** defensive fallbacks in `usePortfolioData` to prevent `getInstitution` ReferenceError
+- **Commit `8d0e18e`:** Fix holdings totals styling and logo hover shine
+
+#### Login Intro / Auth Polish
+- **Commits `ddb07f1`, `518f12b`, `332f27d`:** added a replayable intro animation on the login screen with a viewport-pinned replay button; fixed initial placement bug
+
+### 2026-05-09
+
+#### Multi-Feature Sprint
+- **Commit `7f7c906`:** living themes, physics background, pop-out Holdings window, custom cursor, login wheel, SVG logos, AI assistant
+- **Commit `db165c7`:** made intro and site colors theme-aware
+- **Commits `46fefa4`, `35d1203`, `9940b47`, `1f53198`/`885b7d6`:** iterated login intro wheel animation, smoothed logo hover spin (later reverted), shortened intro duration
+- **Commit `e2ae230`, `85bf8b6`:** pin/force replay button to viewport corner
+
+#### Security Identity Import Handling
+- **Commit `8428e61`:** introduced `src/lib/securityIdentity.js` so the importer can present a Securities Review step when broker rows are ambiguous (LLY vs LLY CDR, etc.). NOTE: the heuristic CDR inference rules in this commit are the source of the "fake CDR" bug — they suggest `.NE` for any CAD-priced holding under $125, regardless of whether a real CIBC CDR exists. Slated for rewrite in the Holdings rebuild (Phase 1).
+
+#### Pop-out Holdings Window
+- **Commits `9d526dd`, `4d4745f`, `b3239ea`:** Holdings can be extracted into a persistent floating window; dropdown z-index fixed; `PortfolioBreakdown` restored to the embedded Holdings view (excluded from the floating window).
+
+#### Profile Picture Persistence
+- **Commits `105851a`, `eb01ad6`:** profile picture now loads on app open and saves correctly through Supabase Storage with proper error propagation.
+
+### 2026-05-13
+
+#### Account Deletion Cascade — Orphaned Institutions
+- **Files:** `supabase/schema.sql`, `src/lib/dataDeletion.js`, `src/lib/PortfolioDataContext.jsx`
+- Deleting an account from the Accounts page now also removes the institution row when no other accounts (and no Plaid items) reference it. Previously the institution lingered as an empty header in the Accounts/Institutions pages.
+- The `delete_unifolio_account` RPC captures `institution_id` before deleting the account, then prunes the institution if remaining-account count + plaid_items count == 0 under that institution for the user.
+- The client-side fallback `cleanupAccountClientSide()` does the same orphaned-institution check via two count-only Supabase queries so users on the old schema still get the cascade.
+- `removeLocalAccountData()` strips orphaned institutions from the localStorage portfolio bundle so the demo-mode / local-cache path matches.
+- `PortfolioDataContext` filters `institutions` against the live `accounts` list so the UI hides empty institutions instantly after a delete, even before the Supabase round-trip lands.
+
+#### Holdings Rebuild Phase 2 — Live Listing Verification (No More Heuristics)
+- **Files:** `src/lib/cdrRegistry.js`, `src/lib/listingResolver.js` (new), `src/lib/securityIdentity.js`, `src/lib/csvParser.js`, `src/pages/ImportCenter.jsx`
+- Replaced the static "underlying → CDR symbol" map with a live verification pipeline. The importer no longer assumes which exchange a CDR lists on (NEO vs TSX) or fabricates an exchange when a Wealthsimple row only carries `(symbol, currency)`.
+- `cdrRegistry.js` is now a hint-only `Set` of underlyings known to have a CIBC CDR. It does not store symbols or exchanges — those come from the live resolver.
+- `listingResolver.resolveListings(underlying)` queries Finnhub `/search` and classifies results into `{ us, tsx, cdr }`, each with `{ symbol, exchange, description, currency }` or `null`. Cached for 30 days in localStorage (`unifolio_listing_resolver_v1`); manual overrides written via `setManualListing()` never expire.
+- `securityIdentity.js` is split into two phases. Phase 1 (`resolveSecurityIdentity`, sync) produces a candidate identity from the row alone — IBKR rows resolve to `high` confidence (Conid + ListingExchange trusted verbatim); Wealthsimple bare-ticker rows are flagged `_needs_verification`. Phase 2 (`verifyIdentities`, async) batches Finnhub lookups and upgrades flagged rows to `confirmed`.
+- New `csvParser.verifyParsedSecurities(parsed)` runs Phase 2 across every row collection in a parsed bundle (positions, transactions, realized) and rebuilds `securityAmbiguities` to reflect only the rows that genuinely need human input.
+- `ImportCenter` now awaits `verifyParsedSecurities` after `composeParsedImports`. The Securities Review step shows verified Finnhub candidates AND a manual entry form (symbol + exchange + currency dropdowns) for unresolvable rows. Manual entries are persisted to the listing resolver cache so future imports skip the prompt.
+- Same-underlying rows in different listings (LLY-NYSE-USD vs LLY-CDR-CAD) get distinct `security_key`s by construction (`underlying@exchange:currency`) and appear as two separate Holdings rows. `underlying_ticker` is set to the bare US symbol on every row, providing the join key for a future "consolidated exposure" view that aggregates both listings across FX into one true position.
+- Removed the price-based `.NE` inference and the unconditional CAD-⇒-TSX assumption. The resolver never invents an exchange; if Finnhub returns no match, the row surfaces in review for manual entry.
+
+#### Holdings Rebuild Phase 1 — Symbol Identity Hardening
+- **Files:** `src/lib/cdrRegistry.js` (new), `src/lib/securityIdentity.js`, `src/lib/stockApi.js`
+- Replaced the heuristic CDR inference (the old `price < $125 CAD ⇒ suggest .NE` rule and the unconditional "CAD + name contains 'cdr'" suggestion) with a strict, registry-gated policy. The importer no longer offers fictional CDRs like "NVO CDR" — Novo Nordisk has no CIBC-issued CDR, so the option is suppressed entirely.
+- New `cdrRegistry.js` holds the curated list of real CIBC CDRs (70 entries — AAPL, ABBV, ABNB, ADBE, AMD, AMZN, ASML, AVGO, AXP, BA, BAC, BLK, BMY, C, CAT, COIN, COST, CRM, CRWD, CSCO, CVX, DIS, F, GE, GM, GOOG, GOOGL, GS, HD, IBM, INTC, JNJ, JPM, KO, LLY, MA, MCD, META, MRK, MRNA, MS, MSFT, NFLX, NKE, NVDA, ORCL→ORAC, PEP, PFE, PG, PLTR, PYPL, QCOM, ROKU, SBUX, SNAP, SNOW, T→ATTC, TGT, TM, TMUS, TSLA, UBER, UNH, UPS, V, VZ, WFC, WMT, XOM, ZM). Exports `isValidCDR(ticker)` and `getCDR(ticker) → {tsxSymbol, hedged}`.
+- `securityIdentity.candidateFor()` now follows a 5-step decision tree: (1) trust full broker identity, (2) honor explicit exchange suffix on the ticker, (3) require a real CDR when row text mentions one, (4) treat unambiguous CAD as TSX-listed, (5) default to US listing. Picker only surfaces when broker data is incomplete or genuinely ambiguous.
+- `buildSecurityAmbiguities()` no longer triggers the Securities Review step for `high`-confidence rows (which now includes every IBKR row, since IBKR provides listing_exchange + currency on every line). When a real CDR exists for a row's underlying, it is added to the candidate list explicitly rather than inferred.
+- `stockApi.inferQuoteSymbol()` now consults the resolved `security_identity` / `listing_exchange` fields. It only produces `.NE` when the row was already resolved as a CDR; otherwise CAD rows go to `.TO` and USD rows stay bare.
+- Verified: importing the attached IBKR Flex file no longer triggers the Securities Review step; importing Wealthsimple activity offers a CDR for LLY (real) but not for NVO (no CDR exists).
+
+### 2026-05-11
+
+#### Plaid + New Pages + Login Redesign
+- **Commit `76f328c`:** Plaid integration, new Plans / Profile / ResetPassword pages, redesigned login, additional theme + UI polish
+
+#### Domain Routing + Pro Plan Surface
+- **Commit `4270ee2`:** `unifolio.pro` now routes to `/plans`; `unifolio.ca` serves the full app
+- **Commit `9cbffdf`:** 10 Pro-only "living" themes with tri-color animated backgrounds
+- **Commit `526b6a5`:** domain routing, Plaid loading state, and pro-theme oscillation fixes
+
+#### Navigation + Content Updates
+- **Commit `fdb2316`:** removed Debts & Balances from nav; compacted holding detail row; added Community page; domain routing tweaks
+- **Commit `80d7352`:** Community page surfaces a Discord invite; removed the prior domain redirect logic
+- **Commit `fba5a85`:** removed the stock chart from the holding detail row; removed Watchlist from the sidebar nav
+- **Commit `69d3e54`:** added a Unifolio logo PNG for Discord embeds and public hosting
+
 ---
 
 ## Known Limitations / TODOs

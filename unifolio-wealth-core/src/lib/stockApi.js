@@ -123,12 +123,27 @@ function isUsablePrice(value) {
   return Number.isFinite(Number(value)) && Number(value) > 0;
 }
 
+// Maps a broker row to the Yahoo-format quote symbol used by the price proxy.
+// Strict policy: never invent a `.NE` CDR ticker. A CDR symbol is only emitted
+// when the row actually identifies as a CDR (via cdrRegistry-aware
+// resolveSecurityIdentity) and the underlying has a real CIBC CDR.
 function inferQuoteSymbol(row = {}) {
+  // Prefer broker-provided quote_symbol if present.
+  const explicit = String(row.quote_symbol || row.quoteSymbol || '').trim();
+  if (explicit) return explicit.toUpperCase();
+
   const ticker = String(row.ticker || '').trim().toUpperCase();
   if (!ticker || ticker.includes('.') || ticker.includes(':')) return ticker;
-  const name = String(row.asset_name || row.name || '').toLowerCase();
-  const currency = String(row.currency || '').toUpperCase();
-  if (currency === 'CAD' && name.includes('cdr')) return `${ticker}.NE`;
+
+  const currency = String(row.currency || row.listing_currency || '').toUpperCase();
+  const identity = String(row.security_identity || '').toLowerCase();
+  const listingExch = String(row.listing_exchange || row.exchange || '').toUpperCase();
+
+  // Real CDR (resolved upstream by securityIdentity + cdrRegistry).
+  if (identity === 'cdr' || /NEO|CBOE/.test(listingExch)) return `${ticker}.NE`;
+  // Native TSX listing.
+  if (identity === 'tsx' || /TSX|XTSE/.test(listingExch)) return `${ticker}.TO`;
+  // Plain CAD with no CDR signal — assume native TSX listing.
   if (currency === 'CAD' && ticker !== 'CASH') return `${ticker}.TO`;
   return ticker;
 }
@@ -349,22 +364,57 @@ async function _fetchBatch(tickers) {
   return results;
 }
 
+// ─── Company profile cache (sector/industry/country enrichment) ────
+const PROFILE_CACHE_KEY = 'unifolio_company_profiles_v1';
+const PROFILE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — sectors don't move
+
+function readProfileCache() {
+  try { return JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function writeProfileCache(cache) {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+
 /**
- * Fetch company profile (name, sector, logo, market cap, etc.)
- * Not cached — call sparingly (e.g. on research panel open).
+ * Fetch company profile (name, sector, industry, country, market cap, logo).
+ * Cached 30 days in localStorage so sector breakdowns don't burn API calls.
  */
 export async function fetchCompanyProfile(ticker) {
-  if (!API_KEY) return null;
+  if (!API_KEY || !ticker) return null;
+  const key = String(ticker).toUpperCase();
+  const cache = readProfileCache();
+  const entry = cache[key];
+  if (entry?.ts && Date.now() - entry.ts < PROFILE_CACHE_TTL_MS) return entry.data;
+
   try {
     const symbol = toFinnhubSymbol(ticker);
     const url = `${BASE_URL}/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
-    return Object.keys(data).length ? data : null;
+    const profile = Object.keys(data).length ? data : null;
+    cache[key] = { ts: Date.now(), data: profile };
+    writeProfileCache(cache);
+    return profile;
   } catch {
     return null;
   }
+}
+
+/**
+ * Batch profile fetch with concurrency control. Returns { [ticker]: profile|null }.
+ * Uses the same 30-day cache so repeat tickers across imports cost zero API calls.
+ */
+export async function fetchManyProfiles(tickers) {
+  const unique = [...new Set((tickers || []).filter(Boolean).map(t => String(t).toUpperCase()))];
+  if (unique.length === 0) return {};
+  const result = {};
+  await mapWithConcurrency(unique, 5, async (ticker) => {
+    result[ticker] = await fetchCompanyProfile(ticker);
+  });
+  return result;
 }
 
 /**

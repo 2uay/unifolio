@@ -69,6 +69,9 @@ alter table holdings add column if not exists daily_pnl_percent numeric default 
 alter table holdings add column if not exists exchange text;
 alter table holdings add column if not exists country text;
 alter table holdings add column if not exists sector text default 'Unknown';
+alter table holdings add column if not exists industry text default 'Unknown';
+alter table holdings add column if not exists logo text;
+alter table holdings add column if not exists market_cap numeric;
 alter table holdings add column if not exists conid text;
 alter table holdings add column if not exists report_date date;
 alter table holdings add column if not exists import_batch_id text;
@@ -256,12 +259,20 @@ create policy "users read own plaid items" on plaid_items
   for select using (auth.uid() = user_id);
 
 -- ──────────────────────────────────────────────────────────────────────────────
--- ADMIN: Set a specific user to Pro plan
--- Run this in the Supabase SQL editor, substituting the real email:
+-- ADMIN: Grant a specific user a Pro or Lifetime plan
+-- Run one of these in the Supabase SQL editor, substituting the real email:
 --
+--   -- Pro (monthly/annual subscription tier — unlocks most features + themes):
 --   UPDATE user_profiles SET plan = 'pro'
 --   WHERE user_id = (SELECT id FROM auth.users WHERE email = 'tuaymontana@gmail.com');
 --
+--   -- Lifetime (one-time purchase tier — unlocks Pro + Lifetime-only themes
+--   -- like 'glass' / Liquid Glass):
+--   UPDATE user_profiles SET plan = 'lifetime'
+--   WHERE user_id = (SELECT id FROM auth.users WHERE email = 'tuaymontana@gmail.com');
+--
+-- The app reads user_profiles.plan first (admin override path) and falls
+-- back to auth.users.app_metadata.plan, so a single UPDATE is enough.
 -- ──────────────────────────────────────────────────────────────────────────────
 
 -- Server-side delete helpers
@@ -304,9 +315,35 @@ begin
   get diagnostics v_deleted = row_count;
   v_counts := v_counts || jsonb_build_object('import_batches', v_deleted);
 
-  delete from accounts where user_id = v_user_id and id = p_account_id;
-  get diagnostics v_deleted = row_count;
-  v_counts := v_counts || jsonb_build_object('accounts', v_deleted);
+  -- Capture the institution before deleting the account so we can prune it
+  -- if no other accounts remain under it.
+  declare v_institution_id text;
+  begin
+    select institution_id into v_institution_id
+    from accounts where user_id = v_user_id and id = p_account_id;
+
+    delete from accounts where user_id = v_user_id and id = p_account_id;
+    get diagnostics v_deleted = row_count;
+    v_counts := v_counts || jsonb_build_object('accounts', v_deleted);
+
+    -- Orphaned-institution cleanup: drop the institution row when no accounts
+    -- (and no Plaid items) reference it any more. Keeps the Accounts page and
+    -- Institutions page free of empty headers after the user deletes the last
+    -- account at a broker.
+    if v_institution_id is not null then
+      if not exists (
+        select 1 from accounts
+        where user_id = v_user_id and institution_id = v_institution_id
+      ) and not exists (
+        select 1 from plaid_items
+        where user_id = v_user_id and institution_id = v_institution_id
+      ) then
+        delete from institutions where user_id = v_user_id and id = v_institution_id;
+        get diagnostics v_deleted = row_count;
+        v_counts := v_counts || jsonb_build_object('institutions', v_deleted);
+      end if;
+    end if;
+  end;
 
   return v_counts;
 end;
