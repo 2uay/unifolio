@@ -10,7 +10,8 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
-    "screenshot": "node scripts/capture-pages.mjs"
+    "screenshot": "node scripts/capture-pages.mjs",
+    "policies:pdf": "node scripts/policies-to-pdf.mjs"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.27",

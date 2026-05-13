@@ -178,6 +178,44 @@ export default function PrivacyAndData() {
         description="Everything you need to know about what Unifolio stores, where, and how to take it with you."
       />
 
+      {/* Formal policy callout — links to the canonical, version-controlled
+          policies on GitHub. The summaries below are the user-friendly view
+          of the same commitments. */}
+      <div className="rounded-xl border border-border bg-card p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground">Official Privacy Policy</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            The summaries below are the plain-English version. The canonical, dated, version-controlled policy documents live in the public Unifolio repository.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="https://github.com/2uay/unifolio/blob/main/unifolio-wealth-core/docs/PRIVACY_POLICY.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
+          >
+            Privacy Policy →
+          </a>
+          <a
+            href="https://github.com/2uay/unifolio/blob/main/unifolio-wealth-core/docs/INFOSEC_POLICY.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-foreground text-xs font-semibold hover:bg-secondary transition-colors"
+          >
+            Security Policy →
+          </a>
+          <a
+            href="https://github.com/2uay/unifolio/blob/main/unifolio-wealth-core/docs/DATA_RETENTION_POLICY.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-foreground text-xs font-semibold hover:bg-secondary transition-colors"
+          >
+            Retention Policy →
+          </a>
+        </div>
+      </div>
+
       {/* Hero commitment strip */}
       <div className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-4 flex flex-wrap items-center gap-4">
         <Shield className="h-8 w-8 text-primary flex-shrink-0" />
