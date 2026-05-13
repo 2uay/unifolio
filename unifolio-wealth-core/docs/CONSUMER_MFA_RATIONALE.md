@@ -54,7 +54,7 @@ This means an attacker would need to compromise the victim's email account befor
 Supabase Auth (Unifolio's identity provider) enforces a minimum 8-character password length at signup and password change, rejecting weaker passwords outright. Authentication attempts are rate-limited per IP and per account by Supabase's gotrue layer to defeat brute-force credential guessing. Supabase's HaveIBeenPwned breach-corpus check (Pro-tier feature) will be enabled when Unifolio upgrades from Supabase Free; HIBP enablement is on the same roadmap milestone as the consumer MFA deployment in §5 below.
 
 ### 3.3 Bcrypt password hashing with per-user salt
-Passwords are stored as bcrypt hashes by Supabase Auth with cost factor 10. Even in the unlikely event of a database compromise, individual passwords cannot be recovered in any practical timeframe.
+Passwords are stored as bcrypt hashes by Supabase Auth with the industry-standard cost factor configured by the Supabase Auth (gotrue) implementation. Even in the unlikely event of a database compromise, individual passwords cannot be recovered in any practical timeframe.
 
 ### 3.4 Postgres Row-Level Security on all sensitive data
 Even if an attacker obtained a valid session for one user, every sensitive table in the Unifolio database has Row-Level Security policies enforcing `user_id = auth.uid()`. The attacker cannot pivot from one compromised account to another user's data. (22 RLS policies as of this writing — see `supabase/schema.sql`.)
@@ -69,7 +69,7 @@ Per §2.2 above, even a perfect compromise of a Unifolio account does not enable
 Unifolio uses Plaid only for the read-only Investments and Transactions products. We do not use Plaid Auth, Transfer, Income, or any of the money-movement-capable products. A compromised Unifolio account cannot initiate a Plaid-mediated transfer because no such code path exists in the product.
 
 ### 3.8 User self-service deletion
-A user who suspects their account has been compromised can permanently delete all their Unifolio data in three clicks (Settings → Privacy & Data → Delete All Data) without contacting support. Deletion cascades to revoke any active Plaid `access_token` via Plaid's `/item/remove` endpoint, which terminates the connection at the bank end as well.
+A user who suspects their account has been compromised can permanently delete all their Unifolio data in three clicks (Settings → Privacy & Data → Delete All Data) without contacting support. The database row holding any active Plaid `access_token` is hard-deleted within 24 hours; the user-facing flow prompts the user to first disconnect any Plaid Item from Settings (which calls Plaid's `/item/remove` immediately and terminates the connection at the bank end). Cascading API-side revocation on full-account-delete is a Q3 2026 roadmap item — see DATA_RETENTION_POLICY.md §5.
 
 ---
 
@@ -79,9 +79,9 @@ We accept residual risk in the following scenarios:
 
 | Threat | Mitigation in place | Residual risk |
 |---|---|---|
-| Credential stuffing from a third-party breach | HaveIBeenPwned rejection at signup + email-verification gating | Low — most stuffed passwords are pre-rejected |
+| Credential stuffing from a third-party breach | Email-verification gating + bcrypt hashing + Supabase rate-limited authentication. (HIBP breach-corpus rejection enabled when Unifolio upgrades from Supabase Free.) | Medium — partially mitigated; HIBP closes the remainder |
 | Phishing of a Unifolio password | Email-verification gating + read-only product surface | Medium — see §5 roadmap |
-| Brute-force guessing of a weak password | Supabase rate-limiting + 8-character minimum + breach-list rejection | Low |
+| Brute-force guessing of a weak password | Supabase rate-limiting + 8-character password minimum | Low |
 | Session hijacking via stolen browser token | 1-hour token expiry + sign-out functionality | Low |
 | Insider attack by Supabase / Vercel staff | Vendor SOC 2 II + DPA + no production access from Unifolio's side | Low |
 | Account takeover leading to financial loss | Read-only product, no money movement, no trade execution | Very low |

@@ -47,7 +47,7 @@ Unifolio classifies data by sensitivity:
 ## 4. Access Controls
 
 ### 4.1 User-facing access
-- Authentication via **Supabase Auth** (email + password); password complexity ≥ 8 characters, breach-list checking enabled.
+- Authentication via **Supabase Auth** (email + password); minimum 8-character password length and rate-limited authentication attempts to defeat brute-force guessing. HaveIBeenPwned breach-corpus checking is a Supabase Pro feature and will be enabled when Unifolio upgrades from Free (Q3 2026 roadmap, same milestone as consumer MFA).
 - Postgres **Row-Level Security (RLS)** policies on every table containing Class A or B data — confirmed enabled on `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `custom_assets`. Each policy enforces `user_id = auth.uid()`.
 - MFA via TOTP is on the roadmap (Q3 2026). Email verification is currently required before any account can be activated or connected to Plaid Link.
 
