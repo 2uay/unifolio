@@ -38,8 +38,9 @@ Unifolio enforces access on three principles:
 ### 3.1 Authentication
 End users authenticate to Unifolio via **Supabase Auth** with email + password. Password requirements:
 - Minimum 8 characters (Supabase default).
-- Passwords are checked against the HaveIBeenPwned breach corpus on signup and rejected if found.
+- Authentication attempts are rate-limited per IP and per account by Supabase's gotrue layer to defeat brute-force guessing.
 - Passwords are stored as bcrypt hashes by Supabase Auth — Unifolio's application code never sees plaintext passwords at any point.
+- HaveIBeenPwned breach-corpus password rejection is a Supabase Pro feature; it will be enabled when Unifolio upgrades from Supabase Free.
 
 Email verification is **required** before any account is activated; the user cannot connect Plaid Link, import data, or persist any portfolio data prior to email confirmation.
 

@@ -91,7 +91,7 @@ Class A/B data is stored only in Supabase Postgres (Toronto / US East regions). 
 See companion document **[DATA_RETENTION_POLICY.md](DATA_RETENTION_POLICY.md)**.
 
 ### 6.5 Backups
-Supabase performs nightly automated backups with point-in-time-recovery. Backup storage is encrypted by AWS KMS; access is restricted to Supabase staff under their SOC 2 controls.
+Supabase performs automated database backups according to its tier policy. Backup storage is encrypted by AWS KMS; access is restricted to Supabase staff under their SOC 2 controls. Unifolio is currently on the Supabase Free tier, which provides daily automated backups; point-in-time recovery (PITR) and longer retention will be enabled when Unifolio upgrades to Supabase Pro (planned trigger: first ≥5 paying users or any incident requiring sub-day recovery, whichever comes first).
 
 ---
 

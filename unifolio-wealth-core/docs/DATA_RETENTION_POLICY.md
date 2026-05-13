@@ -74,12 +74,16 @@ These records are retained **90 days** for security and compliance investigation
 
 ## 4. Backup retention
 
-Supabase performs **automated nightly backups** of the entire Postgres database with **point-in-time recovery (PITR)** for the last 7 days. After a deletion request:
+Supabase performs **automated daily backups** of the entire Postgres database according to its tier policy (Unifolio is currently on Supabase Free, which provides daily backups). Backup storage is encrypted at rest by AWS KMS and access is restricted to Supabase staff under their SOC 2 II controls.
+
+After a deletion request:
 - The deleted record is gone from the **live database** within 24 hours.
-- It may persist in **encrypted backup snapshots** for up to **30 days** before backup rotation purges it.
+- It may persist in **encrypted backup snapshots** for up to the Supabase tier-defined retention window (currently 7 days on Free tier) before backup rotation purges it.
 - Backup data is **only ever accessed for disaster recovery** and is never used for normal queries.
 
-If a user explicitly requests their data be removed from backups before the 30-day window (a rare GDPR request), we will document the request and confirm completion within an additional 30 days.
+Point-in-time recovery (PITR) and longer backup retention will be enabled when Unifolio upgrades to Supabase Pro (trigger: first ≥5 paying users or any incident requiring sub-day recovery).
+
+If a user explicitly requests their data be removed from backups before the rotation window completes (a rare GDPR request), we will document the request and confirm completion within an additional 30 days.
 
 ---
 

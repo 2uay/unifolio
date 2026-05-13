@@ -50,8 +50,8 @@ A new account is **inert** until the user clicks the verification link sent to t
 
 This means an attacker would need to compromise the victim's email account before they could use a stolen or guessed Unifolio password to do anything meaningful. Email-account compromise is the same prerequisite that defeats SMS-based MFA, so the gap between "no MFA" and "MFA via the standard mechanisms" is narrower than it first appears in this product context.
 
-### 3.2 HaveIBeenPwned breach-list password rejection
-Supabase Auth (Unifolio's identity provider) checks every new and changed password against the HaveIBeenPwned breach corpus and rejects any password known to be compromised. This eliminates the most common credential-stuffing vector — reuse of a password leaked in a third-party breach.
+### 3.2 Password strength enforcement and brute-force protection
+Supabase Auth (Unifolio's identity provider) enforces a minimum 8-character password length at signup and password change, rejecting weaker passwords outright. Authentication attempts are rate-limited per IP and per account by Supabase's gotrue layer to defeat brute-force credential guessing. Supabase's HaveIBeenPwned breach-corpus check (Pro-tier feature) will be enabled when Unifolio upgrades from Supabase Free; HIBP enablement is on the same roadmap milestone as the consumer MFA deployment in §5 below.
 
 ### 3.3 Bcrypt password hashing with per-user salt
 Passwords are stored as bcrypt hashes by Supabase Auth with cost factor 10. Even in the unlikely event of a database compromise, individual passwords cannot be recovered in any practical timeframe.

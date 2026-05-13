@@ -78,7 +78,7 @@ All data is encrypted **at rest** (AES-256 via AWS KMS, managed by Supabase) and
 | Account data after deletion request | Hard-deleted within **24 hours** of deletion request; cascades through all tables |
 | Plaid access tokens after deletion | Revoked via Plaid `/item/remove` immediately when the user disconnects an Item from Settings. Database record holding the token is hard-deleted within 24 hours of any account-deletion request. |
 | Audit logs (deletion timestamps, security events) | 90 days, then permanent purge |
-| Backup copies (Supabase nightly backups) | Cycled out within **30 days** of deletion request |
+| Backup copies (Supabase automated daily backups, retention per Supabase tier) | Cycled out per Supabase backup rotation (currently 7 days on Free tier) |
 | Marketing email opt-in records (if applicable) | Until withdrawn + 30-day suppression list |
 
 See the companion document **DATA_RETENTION_POLICY.md** for the technical implementation.
