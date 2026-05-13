@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, Building2, TrendingUp,
   ArrowLeftRight, Lightbulb, Zap, Link2, Settings, X,
-  LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem, Users,
+  LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem, Users, GraduationCap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -30,9 +30,10 @@ const navItems = [
 ];
 
 const utilityNavItems = [
+  { path: '/learn', label: 'Learn', icon: GraduationCap },
   { path: '/plans', label: 'Plans & Pricing', icon: Gem },
   { path: '/community', label: 'Community', icon: Users },
-  { path: '/instructions', label: 'Instructions', icon: BookOpen },
+  { path: '/instructions', label: 'Import Instructions', icon: BookOpen },
   { path: '/privacy', label: 'Privacy & Data', icon: Shield },
 ];
 

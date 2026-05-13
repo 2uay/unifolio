@@ -40,6 +40,7 @@ import Plans from '@/pages/Plans';
 import ResetPassword from '@/pages/ResetPassword';
 import Welcome from '@/pages/Welcome';
 import Community from '@/pages/Community';
+import Learn from '@/pages/Learn';
 
 const isProDomain = typeof window !== 'undefined' &&
   (window.location.hostname === 'unifolio.pro' || window.location.hostname === 'www.unifolio.pro');
@@ -85,6 +86,7 @@ const AuthenticatedApp = () => {
         <Route path="/instructions" element={<Instructions />} />
         <Route path="/privacy" element={<PrivacyAndData />} />
         <Route path="/community" element={<Community />} />
+        <Route path="/learn" element={<Learn />} />
         <Route path="/plans" element={<Plans />} />
         <Route path="/import" element={<ImportCenter />} />
         <Route path="/tax" element={<TaxReport />} />

@@ -340,6 +340,23 @@ export default function Plans() {
           ))}
         </div>
 
+        {/* Learn first banner */}
+        <div className="mb-12 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card/60 to-card/40 backdrop-blur-md p-6 sm:p-7 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex-1">
+            <p className="text-[11px] font-bold tracking-[0.08em] uppercase text-primary mb-1">New to investing?</p>
+            <h3 className="text-lg font-bold text-foreground mb-1">Understand what you’re paying for first.</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Plain-language guide to ETFs, true exposure, CDRs, Norbert’s Gambit, TFSA vs RRSP placement, and how every Unifolio metric translates into real dollars over 30 years.
+            </p>
+          </div>
+          <a
+            href="/learn"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            Open Learn Hub →
+          </a>
+        </div>
+
         {/* Why Unifolio Pro */}
         <div className="mb-20">
           <div className="text-center mb-8">
