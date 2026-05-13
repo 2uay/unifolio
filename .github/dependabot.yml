@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # JavaScript/Node dependencies for the Unifolio app
+  - package-ecosystem: "npm"
+    directory: "/unifolio-wealth-core"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Toronto"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    # Group non-security patch + minor updates so we don't drown in PRs
+    groups:
+      patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
+        # Major bumps still get their own PR per package
+    # Ignore dev-only build tooling that doesn't affect runtime security
+    ignore:
+      - dependency-name: "eslint*"
+        update-types: ["version-update:semver-patch"]
+      - dependency-name: "@types/*"
+        update-types: ["version-update:semver-patch"]
+
+  # GitHub Actions workflows (only if/when we add CI)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "ci"

@@ -29,6 +29,7 @@ export default function Welcome() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [signupSuccess, setSignupSuccess] = useState(false);
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => {
     try { return Boolean(localStorage.getItem(REMEMBERED_EMAIL_KEY)); } catch { return false; }
   });
@@ -101,6 +102,10 @@ export default function Welcome() {
     clearAuthNotice?.();
     if (password.length < 6) {
       setError('Password must be at least 6 characters.');
+      return;
+    }
+    if (!consentAccepted) {
+      setError('Please confirm you agree to the Terms of Service and Privacy Policy.');
       return;
     }
     setLoading(true);
@@ -258,11 +263,26 @@ export default function Welcome() {
                 required
                 className="bg-background/55 border-border/70 text-foreground placeholder:text-muted-foreground focus:border-primary/50"
               />
+              <label className="flex items-start gap-2.5 cursor-pointer text-[11px] leading-relaxed text-muted-foreground select-none">
+                <input
+                  type="checkbox"
+                  checked={consentAccepted}
+                  onChange={(e) => setConsentAccepted(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 rounded border-border/70 text-primary focus:ring-primary/40 cursor-pointer"
+                />
+                <span>
+                  I agree to the{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Privacy Policy</a>,
+                  and consent to Unifolio collecting and storing my portfolio data as described.
+                </span>
+              </label>
               {error && <p className="text-red-400 text-xs">{error}</p>}
               <Button
                 type="submit"
-                disabled={loading}
-                className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                disabled={loading || !consentAccepted}
+                className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold disabled:opacity-50"
               >
                 {loading ? 'Creating account…' : 'Create Account'}
               </Button>
