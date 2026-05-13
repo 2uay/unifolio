@@ -60,15 +60,14 @@ Currently we do **not** auto-delete inactive accounts. If we introduce auto-expi
 - Default to a 24-month-of-inactivity threshold.
 - Update this policy and notify users of the change.
 
-### 3.4 Audit log
+### 3.4 Audit trail
 
-Deletion events are written to an `audit_log` table containing only:
-- `event_type` ("account_deletion", "data_export", "plaid_token_revoke", etc.)
-- `user_id` (UUID; not the email or name)
-- `timestamp`
-- `actor` ("self" | "ops")
+Unifolio relies on Supabase's built-in audit infrastructure rather than maintaining a custom `audit_log` table. Specifically:
+- **Supabase Auth** logs every sign-in, sign-out, password change, and account-deletion event with timestamp and IP (visible at `https://supabase.com/dashboard/project/<id>/auth/users` and via the Postgres `auth.audit_log_entries` table managed by gotrue).
+- **Supabase Postgres logs** capture every API call hitting `delete_unifolio_user_data` and `delete_unifolio_account` RPCs (visible at `https://supabase.com/dashboard/project/<id>/logs/postgres-logs`).
+- **Vercel function logs** capture every HTTP request, including the deletion request that triggers the RPC call.
 
-These records are retained **90 days** for security and compliance investigation, then permanently purged by a scheduled cleanup query.
+Retention is governed by Supabase's tier policy (currently 7 days on Free; longer on Pro). When Unifolio upgrades to Supabase Pro, log retention will extend automatically. A dedicated application-level audit table writing structured event rows is on the 2026 roadmap and will be added before any contractor onboarding.
 
 ---
 

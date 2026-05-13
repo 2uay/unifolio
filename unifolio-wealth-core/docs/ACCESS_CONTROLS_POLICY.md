@@ -45,8 +45,9 @@ End users authenticate to Unifolio via **Supabase Auth** with email + password. 
 Email verification is **required** before any account is activated; the user cannot connect Plaid Link, import data, or persist any portfolio data prior to email confirmation.
 
 ### 3.2 Authorization
-Every Postgres table containing Class A or Class B data has **Row-Level Security (RLS) policies enabled**. Each policy enforces `user_id = auth.uid()` so that even if a malicious browser client crafted a query, the database engine would refuse to return rows belonging to other users. RLS is enabled on:
-- `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `custom_assets`, and all related tables (see `supabase/schema.sql` for the canonical list — 22 RLS policies as of this writing).
+Every Postgres table containing Class A or Class B data has **Row-Level Security (RLS) policies enabled**. Each policy enforces `user_id = auth.uid()` so that even if a malicious browser client crafted a query, the database engine would refuse to return rows belonging to other users. RLS is enabled on every Supabase table holding Class A or B data:
+- `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `watchlist`, and related tables (see `supabase/schema.sql` for the canonical list — 22 RLS policies as of this writing).
+- User-entered custom assets (real estate, precious metals, collectibles) are stored in a separate legacy backend service (base44) with its own per-user authorization model; migration into Supabase + RLS is on the 2026 roadmap.
 
 ### 3.3 Session management
 - Sessions are managed by Supabase Auth's JWT-based access tokens with short expiry (1 hour) and refresh tokens (7 days).
@@ -188,7 +189,7 @@ This policy is reviewed annually at minimum, and immediately after any access-re
 
 | Date | Reviewer | Vendors reviewed | Findings | Actions taken |
 |---|---|---|---|---|
-| 2026-05-13 | Ahmed Al-Samak | Vercel, Supabase, GitHub, GoDaddy, Microsoft 365, Plaid | Initial policy adoption. All vendors scoped to single user (CEO). All MFA confirmed active. | None — baseline established |
+| 2026-05-13 | Ahmed Al-Samak | Vercel, Supabase, GitHub, GoDaddy, Microsoft 365, Anthropic / OpenAI, Plaid | Initial policy adoption. All vendors scoped to single user (CEO). MFA confirmed active on every console (Vercel, Supabase, GitHub via Authenticator + WebAuthn passkey; GoDaddy, Microsoft 365, Anthropic, OpenAI via TOTP). Supabase Data Processing Addendum executed via Dashboard → Settings → Organization → Legal. Founder MacBook hardened (FileVault + automatic lock + macOS auto-updates). | None — baseline established |
 
 (New rows are appended each annual review or post-incident.)
 

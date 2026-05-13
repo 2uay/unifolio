@@ -60,8 +60,8 @@ We do **not** make automated decisions that produce legal effects on you (no alg
 
 | Data | Storage location | Provider |
 |---|---|---|
-| Account data, holdings, transactions, profile | Supabase Postgres (US East / Toronto regions) | Supabase Inc. (SOC 2 Type II) |
-| Profile photos | Supabase Storage (same regions) | Supabase Inc. |
+| Account data, holdings, transactions, profile | Supabase Postgres (AWS us-east-2 / Ohio) | Supabase Inc. (SOC 2 Type II) |
+| Profile photos | Supabase Storage (same region) | Supabase Inc. |
 | Web app code + serverless functions | Vercel (global edge, primary US East) | Vercel Inc. (SOC 2 Type II) |
 | Internal email | Microsoft 365 (Canada region) | Microsoft Corporation |
 | Plaid connection tokens | Supabase + Plaid's own servers | Plaid Inc. (SOC 2 Type II) |
