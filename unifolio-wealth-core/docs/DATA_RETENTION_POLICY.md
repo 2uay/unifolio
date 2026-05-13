@@ -23,7 +23,7 @@ This policy defines how long Unifolio retains each category of user data, when a
 | **Imported broker files** | Raw CSV/Flex/PDF uploads | **Never stored** — only parsed positions/transactions are saved | N/A | N/A |
 | **Profile picture asset** | Image file in Supabase Storage | Yes | Deleted from Storage immediately on account deletion | Per Supabase tier (currently 7 days on Free) |
 | **Transient session data** | Auth tokens, session cookies | Until user signs out or 7-day session timeout | Cleared immediately on sign-out | N/A |
-| **Audit logs** | Sign-ins, deletion timestamps, security events | Yes | Retained **90 days** post-deletion (security obligation), then permanent purge | 90 days |
+| **Operational audit signals** | Supabase Auth `auth.audit_log_entries` (sign-ins, password changes, account deletions); Supabase Postgres logs; Vercel function logs | Yes (vendor-managed) | Retained per Supabase tier policy (currently 7 days on Free; longer on Pro). Application-level audit table is on the 2026 roadmap (see §3.4). | Per Supabase tier |
 | **Email correspondence** | Support emails, password reset emails | Stored in Microsoft 365 mailbox | Anonymized or deleted on user request | Per Microsoft 365 policy |
 | **Marketing opt-in records** | Subscriber list (if applicable) | Until unsubscribe + 30-day suppression list | Removed within 30 days of unsubscribe | N/A |
 
@@ -38,13 +38,14 @@ Users can permanently delete all their data via:
 
 The flow:
 1. User confirms deletion via a 2-step modal (`DeleteConfirmModal` in `src/pages/PrivacyAndData.jsx`) with a checkbox confirming the action is irreversible.
-2. The frontend calls the `delete_unifolio_user_data` Postgres RPC (defined in `supabase/schema.sql`), which executes inside a single transaction:
-   - Hard-delete from: `holdings`, `transactions`, `realized_positions`, `custom_assets`, `import_batches`, `watchlist`, `accounts`, `plaid_items`, `institutions` (those orphaned), `user_profiles`.
-   - Auth user record deletion via `auth.users` cascade.
-   - Profile picture asset deletion from Supabase Storage `avatars` bucket.
-3. **Plaid `access_token` revocation:** when a user explicitly disconnects a Plaid Item from Settings, Unifolio calls Plaid's `/item/remove` immediately, terminating the connection at both the Unifolio and the bank end. On full-account deletion (the path above), the database record holding the access token is hard-deleted within 24 hours, but the active token revocation against Plaid's API on full-account-delete is a roadmap item targeted for Q3 2026. Until then, users are prompted to disconnect Plaid Items prior to triggering account deletion.
-4. Local browser caches (theme, currency, watchlist, profile picture cache) are cleared by the frontend.
-5. A deletion audit row is written to `audit_log` (see §3.4) with the user ID and timestamp; **no other PII** is logged.
+2. The frontend calls the `delete_unifolio_user_data` Postgres RPC (defined in `supabase/schema.sql`), which deletes the user's rows from: `holdings`, `realized_positions`, `transactions`, `import_batches`, `watchlist`, `accounts`, `institutions`, `user_profiles`. The Supabase Storage `avatars/<user_id>` asset is also deleted from the `avatars` bucket.
+3. **Items NOT yet covered by the cascade** (Q3 2026 roadmap fix, tracked in the same milestone as consumer MFA):
+   - `plaid_items` rows holding `access_token` values are not removed by the current RPC. Users are prompted in the UI to disconnect every Plaid Item from Settings (which DOES call Plaid's `/item/remove` immediately) prior to triggering account-wide deletion. Once the cascade is wired, the RPC will both call `/item/remove` against Plaid and delete the `plaid_items` row.
+   - The `auth.users` row is not removed by the current RPC. The user account can still authenticate but will see an empty portfolio. Permanent auth account removal will be added via a Vercel Edge Function calling Supabase's Admin API (`auth.admin.deleteUser`) in the same Q3 2026 milestone.
+   - User-entered custom assets (real estate, metals, collectibles) live on a separate legacy backend service (base44). Their deletion is performed by the base44 entity-delete API call from the frontend during account cleanup, not by the Supabase RPC. A unified server-side cascade is on the same roadmap milestone.
+4. **Plaid `access_token` revocation today:** when a user explicitly disconnects a Plaid Item from Settings, Unifolio calls Plaid's `/item/remove` immediately, terminating the connection at both the Unifolio and the bank end.
+5. Local browser caches (theme, currency, watchlist, profile picture cache) are cleared by the frontend.
+6. The deletion is captured in Supabase's built-in audit infrastructure (see §3.4): the RPC invocation is logged in Supabase Postgres logs, and the HTTP request is logged in Vercel function logs. Unifolio does not currently maintain an additional application-level audit row beyond these vendor-managed logs.
 
 ### 3.2 Account-level deletion (Accounts page)
 
@@ -114,7 +115,7 @@ These are generated client-side from the user's own data and downloaded directly
 
 ## 7. Verification & monitoring
 
-- After every account-deletion request, the CEO spot-checks the `audit_log` weekly to confirm deletion events succeeded and no orphaned records remain.
+- After every account-deletion request, the CEO spot-checks Supabase's `auth.audit_log_entries` and Postgres RPC logs (within their tier-defined retention window) to confirm the deletion event succeeded and no orphaned records remain.
 - A quarterly query is run to detect any potential orphans:
   ```sql
   -- Holdings without a matching auth.users row
