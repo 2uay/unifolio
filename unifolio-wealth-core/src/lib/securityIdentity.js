@@ -55,9 +55,27 @@ function normalizeExchange(value) {
   if (!exch) return '';
   if (/NEO|CBOE\s*CANADA/.test(exch)) return 'NEO';
   if (/TSX|TORONTO|XTSE/.test(exch)) return 'TSX';
+  if (/TSXV|VENTURE/.test(exch)) return 'TSXV';
+  if (/CSE|CNSX|XCNQ/.test(exch)) return 'CSE';
   if (/NASDAQ|XNAS/.test(exch)) return 'NASDAQ';
-  if (/NYSE|XNYS|ARCA/.test(exch)) return 'NYSE';
+  if (/NYSE|XNYS|ARCA|NYSEARCA/.test(exch)) return 'NYSE';
+  if (/BATS|BATY/.test(exch)) return 'BATS';
+  if (/IEX|XIEX/.test(exch)) return 'IEX';
+  if (/AMEX|XASE/.test(exch)) return 'AMEX';
   return exch;
+}
+
+// Listing exchange → canonical trading currency. The most reliable source of
+// truth: NASDAQ-listed = USD, regardless of what the broker row says. This
+// catches the IBKR/Wealthsimple bug where a USD security held in a CAD-base
+// account inherits the account's base currency on its row.
+const US_EXCHANGES = new Set(['NASDAQ', 'NYSE', 'NYSEARCA', 'ARCA', 'BATS', 'IEX', 'AMEX']);
+const CA_EXCHANGES = new Set(['TSX', 'NEO', 'TSXV', 'CSE']);
+function currencyForExchange(exchange) {
+  const exch = upper(exchange);
+  if (US_EXCHANGES.has(exch)) return 'USD';
+  if (CA_EXCHANGES.has(exch)) return 'CAD';
+  return null;
 }
 
 function hasFullBrokerIdentity(row = {}) {
@@ -117,16 +135,26 @@ function candidateFor(row = {}) {
     const exch = normalizeExchange(row.listing_exchange || row.listingExchange || row.exchange);
     const isCdr = exch === 'NEO' || (exch === 'TSX' && hasCdrText(row));
     const isTsxNative = exch === 'TSX' && !isCdr;
+    // Trust the listing exchange over the broker's row-level currency tag.
+    // IBKR/Wealthsimple often emit `account.currency` (CAD-base account) on
+    // POST/TRFR rows for USD-listed securities when CurrencyPrimary is blank.
+    // The exchange is the unambiguous source of truth — NASDAQ = USD, full
+    // stop. Only fall back to the row's currency for exchanges we don't
+    // recognize (e.g. LSE, JPX, etc.).
+    const exchangeImpliedCurrency = currencyForExchange(exch);
+    const finalCurrency = exchangeImpliedCurrency || currency;
     return makeIdentity({
       ticker,
       underlying: baseTicker,
       exchange: exch,
-      currency,
+      currency: finalCurrency,
       identity: isCdr ? 'cdr' : (isTsxNative ? 'tsx' : 'us'),
       quoteSymbol: ticker,
       display: ticker,
       confidence: 'high',
-      reason: 'Broker statement specifies listing exchange and currency',
+      reason: exchangeImpliedCurrency && currency && exchangeImpliedCurrency !== currency
+        ? `Broker said ${exch} ${currency}; corrected to ${exch} ${exchangeImpliedCurrency} (exchange listing currency).`
+        : 'Broker statement specifies listing exchange and currency',
       conid: row.conid || row.Conid || null,
     });
   }
@@ -204,9 +232,17 @@ function candidateFor(row = {}) {
 
 export function resolveSecurityIdentity(row = {}) {
   const resolved = candidateFor(row);
+  // Force the row's `currency` field to match the resolved listing_currency
+  // when the resolver corrected it (e.g. NASDAQ → USD over a broker's
+  // CAD-account-base tag). Downstream callers read `row.currency` directly
+  // (transactionEngine grouping, importPersistence column writes), so just
+  // spreading `resolved` isn't enough — the original `currency` field would
+  // otherwise leak through.
+  const finalCurrency = resolved.listing_currency || row.currency;
   return {
     ...row,
     ...resolved,
+    currency: finalCurrency,
     ticker: resolved.display_ticker || row.ticker,
     raw_ticker: row.raw_ticker || row.ticker || '',
   };

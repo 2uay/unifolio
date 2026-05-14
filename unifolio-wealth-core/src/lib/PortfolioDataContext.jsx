@@ -89,15 +89,29 @@ function mergeEngineRecomputation(holdings, transactions, { historicalPrices = {
       };
     }
 
+    // When the engine reconstructs cost basis as 0 (e.g. transferred-in
+    // shares with no source-broker price chain AND no historical-price
+    // fallback hit), but the broker statement DID report a real cost basis
+    // (IBKR's POST.CostBasisMoney for a transfer-in with a basis carryover),
+    // keep the broker's number. Replacing $2,465 with $0 is always wrong.
+    const brokerCost = safeNumber(h.cost_basis ?? h.costBasis);
+    const engineCost = safeNumber(eng.cost_basis);
+    const useBrokerCost = engineCost <= 0 && brokerCost > 0;
+    const finalCost = useBrokerCost ? brokerCost : engineCost;
+    const finalAvg = useBrokerCost
+      ? safeNumber(h.average_price ?? h.avgPrice ?? (eng.quantity > 0 ? brokerCost / eng.quantity : 0))
+      : eng.avg_price;
+    const finalAvgClean = useBrokerCost ? finalAvg : eng.avg_price_clean;
+
     return {
       ...h,
       quantity: eng.quantity,
-      cost_basis: eng.cost_basis,
-      costBasis: eng.cost_basis,
-      average_price: eng.avg_price,
-      avg_price: eng.avg_price,
-      avgPrice: eng.avg_price,
-      avg_price_clean: eng.avg_price_clean,
+      cost_basis: finalCost,
+      costBasis: finalCost,
+      average_price: finalAvg,
+      avg_price: finalAvg,
+      avgPrice: finalAvg,
+      avg_price_clean: finalAvgClean,
       realized_gain_loss_amount: eng.realized_gain_loss_amount,
       realizedAmt: eng.realized_gain_loss_amount,
       dividends_received: eng.dividends_native,
@@ -106,6 +120,7 @@ function mergeEngineRecomputation(holdings, transactions, { historicalPrices = {
       total_fees: eng.fees,
       _engine_lots: eng.lots,
       _engine_computed: true,
+      _broker_cost_preserved: useBrokerCost ? true : false,
     };
   });
 }
@@ -120,6 +135,19 @@ function withTimeout(promise, ms, label) {
   ]).finally(() => clearTimeout(timer));
 }
 
+// Listing exchange → canonical trading currency. Used to correct rows
+// already persisted in Supabase before the upstream import-time fix landed.
+// Keep in sync with the same map in src/lib/securityIdentity.js.
+const US_LISTING_EXCHANGES = new Set(['NASDAQ', 'NYSE', 'NYSEARCA', 'ARCA', 'BATS', 'IEX', 'AMEX', 'XNAS', 'XNYS']);
+const CA_LISTING_EXCHANGES = new Set(['TSX', 'NEO', 'TSXV', 'CSE', 'XTSE', 'XCNQ', 'CBOE CANADA']);
+function correctedCurrencyForExchange(exchange, fallback) {
+  if (!exchange) return fallback;
+  const e = String(exchange).toUpperCase();
+  if (US_LISTING_EXCHANGES.has(e) || /NASDAQ|NYSE|ARCA|BATS|IEX|AMEX/.test(e)) return 'USD';
+  if (CA_LISTING_EXCHANGES.has(e) || /TSX|NEO|TSXV|CSE/.test(e)) return 'CAD';
+  return fallback;
+}
+
 function withAliases(holding, accountMap = {}) {
   const qty = safeNumber(holding.quantity ?? holding.position);
   const avg = safeNumber(holding.average_price ?? holding.avgPrice);
@@ -128,6 +156,13 @@ function withAliases(holding, accountMap = {}) {
   const costBasis = safeNumber(holding.cost_basis ?? holding.costBasis ?? qty * avg);
   const unrealized = safeNumber(holding.unrealized_gain_loss_amount ?? holding.unrealizedAmt ?? marketValue - costBasis);
   const account = accountMap[holding.account_id ?? holding.accountId];
+  // Defence-in-depth currency override for already-persisted rows. If the
+  // listing exchange is one we recognize as US-only or CA-only, force the
+  // currency to match the exchange — the broker's row-level currency tag
+  // (often the account base currency) is unreliable.
+  const exchHint = holding.listing_exchange ?? holding.listingExchange ?? holding.exchange ?? '';
+  const rawCurrency = holding.listing_currency ?? holding.listingCurrency ?? holding.currency ?? account?.base_currency ?? 'USD';
+  const correctedCurrency = correctedCurrencyForExchange(exchHint, rawCurrency);
   return {
     ...holding,
     id: holding.id,
@@ -138,8 +173,12 @@ function withAliases(holding, accountMap = {}) {
     securityKey: securityKey(holding),
     display_ticker: displayTicker(holding) || holding.ticker,
     quote_symbol: holding.quote_symbol ?? holding.quoteSymbol ?? holding.ticker,
-    listing_exchange: holding.listing_exchange ?? holding.listingExchange ?? holding.exchange ?? '',
-    listing_currency: holding.listing_currency ?? holding.listingCurrency ?? holding.currency ?? account?.base_currency ?? 'USD',
+    listing_exchange: exchHint,
+    // Force corrected currency on both the trade-currency field and the
+    // listing-currency field so downstream `convert(..., holding.currency)`
+    // and FX summary calls see the right unit.
+    currency: correctedCurrency,
+    listing_currency: correctedCurrency,
     security_identity: holding.security_identity ?? holding.securityIdentity ?? '',
     identity_confidence: holding.identity_confidence ?? holding.identityConfidence ?? '',
     underlying_ticker: holding.underlying_ticker ?? holding.underlyingTicker ?? holding.ticker,
@@ -179,6 +218,8 @@ function withAliases(holding, accountMap = {}) {
 
 function normalizeTransaction(row) {
   const type = row.transaction_type ?? row.type ?? 'Other';
+  const exch = row.listing_exchange ?? row.listingExchange ?? '';
+  const correctedCurrency = correctedCurrencyForExchange(exch, row.currency ?? 'USD');
   return {
     ...row,
     account_id: row.account_id ?? row.accountId,
@@ -187,8 +228,8 @@ function normalizeTransaction(row) {
     securityKey: securityKey(row),
     display_ticker: displayTicker(row) || row.ticker,
     quote_symbol: row.quote_symbol ?? row.quoteSymbol ?? row.ticker,
-    listing_exchange: row.listing_exchange ?? row.listingExchange ?? '',
-    listing_currency: row.listing_currency ?? row.listingCurrency ?? row.currency ?? 'USD',
+    listing_exchange: exch,
+    listing_currency: correctedCurrency,
     security_identity: row.security_identity ?? row.securityIdentity ?? '',
     identity_confidence: row.identity_confidence ?? row.identityConfidence ?? '',
     underlying_ticker: row.underlying_ticker ?? row.underlyingTicker ?? row.ticker,
@@ -200,7 +241,7 @@ function normalizeTransaction(row) {
     total: safeNumber(row.total_amount ?? row.total),
     total_amount: safeNumber(row.total_amount ?? row.total),
     fees: safeNumber(row.fees),
-    currency: row.currency ?? 'USD',
+    currency: correctedCurrency,
     transfer_direction: row.transfer_direction ?? row.transferDirection ?? '',
     source_account_id: row.source_account_id ?? row.sourceAccount ?? '',
     destination_account_id: row.destination_account_id ?? row.destinationAccount ?? '',
@@ -214,6 +255,8 @@ function normalizeRealized(row) {
   const cost = safeNumber(row.total_cost_basis ?? row.cost_basis);
   const proceeds = safeNumber(row.total_sale_value ?? row.proceeds);
   const gl = safeNumber(row.realized_gain_loss_amount ?? proceeds - cost);
+  const exch = row.listing_exchange ?? row.listingExchange ?? row.exchange ?? '';
+  const correctedCurrency = correctedCurrencyForExchange(exch, row.currency ?? 'USD');
   return {
     ...row,
     account_id: row.account_id ?? row.accountId,
@@ -223,8 +266,8 @@ function normalizeRealized(row) {
     securityKey: securityKey(row),
     display_ticker: displayTicker(row) || row.ticker,
     quote_symbol: row.quote_symbol ?? row.quoteSymbol ?? row.ticker,
-    listing_exchange: row.listing_exchange ?? row.listingExchange ?? row.exchange ?? '',
-    listing_currency: row.listing_currency ?? row.listingCurrency ?? row.currency ?? 'USD',
+    listing_exchange: exch,
+    listing_currency: correctedCurrency,
     security_identity: row.security_identity ?? row.securityIdentity ?? '',
     identity_confidence: row.identity_confidence ?? row.identityConfidence ?? '',
     underlying_ticker: row.underlying_ticker ?? row.underlyingTicker ?? row.ticker,
@@ -232,7 +275,7 @@ function normalizeRealized(row) {
     asset_class: row.asset_class ?? row.assetClass ?? 'Stock',
     assetClass: row.asset_class ?? row.assetClass ?? 'Stock',
     sector: row.sector ?? 'Unknown',
-    currency: row.currency ?? 'USD',
+    currency: correctedCurrency,
     quantity: qty,
     total_cost_basis: cost,
     total_sale_value: proceeds,
