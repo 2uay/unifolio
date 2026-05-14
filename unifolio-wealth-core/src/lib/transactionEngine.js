@@ -204,17 +204,39 @@ export function buildHoldingsFromTransactions({
         realizedNative -= fees;
         feesNative += fees;
       } else if (type === TX_TRANSFER_IN) {
-        // Shares received. Prefer the linked source's original buy price
-        // (set by transferLinker.linkTransferTransactions when a matching
-        // transfer-out + buy chain exists in another broker). Fall back to
-        // the broker-implied price (totalCash / qty) if the chain isn't
-        // resolvable.
+        // Shares received. Pricing precedence:
+        //   1. Linked source's original buy price (set by
+        //      transferLinker.linkTransferTransactions when a matching
+        //      transfer-out + buy chain exists in another broker).
+        //   2. Broker-implied price (totalCash / qty) if the broker actually
+        //      reported a value with the transfer line.
+        //   3. Historical close on the transfer date (Yahoo /api/chart),
+        //      treating the transfer as a "fictional buy" at market on the
+        //      day the shares landed. This prevents 0-cost VOO/TTWO style
+        //      bugs when neither broker chain nor totalCash exists.
         const linked = tx._linkedSource;
         const linkedPrice = safeNumber(linked?.price);
         const linkedDate = linked?.date || date;
-        const fallbackPrice = qty !== 0 ? Math.abs(totalCash) / Math.abs(qty) : 0;
-        const lotPrice = linkedPrice > 0 ? linkedPrice : fallbackPrice;
-        const lotDate = linkedPrice > 0 ? linkedDate : date;
+        const cashFallbackPrice = qty !== 0 ? Math.abs(totalCash) / Math.abs(qty) : 0;
+        const histFallbackPrice = (linkedPrice <= 0 && cashFallbackPrice <= 0)
+          ? safeNumber(priceFor(historicalPrices, ticker, date))
+          : 0;
+
+        let lotPrice = 0;
+        let lotDate = date;
+        let pricingSource = null;
+        if (linkedPrice > 0) {
+          lotPrice = linkedPrice;
+          lotDate = linkedDate;
+          pricingSource = 'linked_source';
+        } else if (cashFallbackPrice > 0) {
+          lotPrice = cashFallbackPrice;
+          pricingSource = 'broker_total_cash';
+        } else if (histFallbackPrice > 0) {
+          lotPrice = histFallbackPrice;
+          pricingSource = 'historical_close_on_transfer_date';
+        }
+
         lots.push({
           qty: Math.abs(qty),
           price: lotPrice,
@@ -225,6 +247,7 @@ export function buildHoldingsFromTransactions({
           is_transfer: true,
           linked_source: linked || null,
           transfer_date: date, // when it landed in this account
+          pricing_source: pricingSource,
         });
       } else if (type === TX_TRANSFER_OUT) {
         // Shares delivered out — consume FIFO without realizing P/L (cost

@@ -34,13 +34,17 @@ function transactionEngineEnabled() {
 // We trust the engine for cost_basis, avg_price, quantity, realized P/L,
 // dividends — but keep broker metadata (sector, country, logos, IDs) and let
 // downstream enrichment fill in the live current_price.
-function mergeEngineRecomputation(holdings, transactions) {
+function mergeEngineRecomputation(holdings, transactions, { historicalPrices = {} } = {}) {
   if (!transactionEngineEnabled()) return holdings;
   if (!Array.isArray(transactions) || transactions.length === 0) return holdings;
   // Link cross-broker transfer chains so the engine can carry original cost
   // basis from the source-account BUY through to the destination's TX_TRANSFER_IN.
   const linkedTransactions = linkTransferTransactions(transactions);
-  const engineRows = buildHoldingsFromTransactions({ transactions: linkedTransactions, baseCurrency: 'USD' });
+  const engineRows = buildHoldingsFromTransactions({
+    transactions: linkedTransactions,
+    baseCurrency: 'USD',
+    historicalPrices,
+  });
   if (engineRows.length === 0) return holdings;
   // Index by (account_id, ticker_upper) — fall back to ticker-only when account
   // is missing on either side (rare).
@@ -614,9 +618,47 @@ function loadLocalImportedBundle() {
   }
 }
 
+// Find transfer-in transactions whose price would resolve to 0 (no linked
+// source price, no broker totalCash). For those tickers we fetch historical
+// closes back to the earliest needing-backfill transfer date so the engine
+// can use the market price on that date as the cost basis.
+function transfersNeedingHistoricalBackfill(transactions) {
+  if (!Array.isArray(transactions)) return { tickers: [], earliestDate: null };
+  const TRANSFER_TYPES = new Set(['transfer_in', 'transferin', 'position_transfer_in', 'ipd', 'aton']);
+  const needs = transactions.filter(tx => {
+    if (!tx) return false;
+    const type = String(tx.transaction_type || tx.type || '').toLowerCase().replace(/[\s-]+/g, '_');
+    if (!TRANSFER_TYPES.has(type)) return false;
+    const linkedPrice = safeNumber(tx._linkedSource?.price);
+    const cash = Math.abs(safeNumber(tx.total_cash ?? tx.totalCash ?? 0));
+    const qty = Math.abs(safeNumber(tx.quantity ?? tx.qty ?? 0));
+    const cashImpliedPrice = qty > 0 ? cash / qty : 0;
+    return linkedPrice <= 0 && cashImpliedPrice <= 0;
+  });
+  if (needs.length === 0) return { tickers: [], earliestDate: null };
+  const tickers = [...new Set(needs.map(tx => String(tx.quote_symbol || tx.ticker || '').toUpperCase()).filter(Boolean))];
+  const dates = needs.map(tx => String(tx.date || tx.transaction_date || '').slice(0, 10)).filter(Boolean).sort();
+  return { tickers, earliestDate: dates[0] || null };
+}
+
+async function mergeEngineWithHistoricalBackfill(holdings, transactions) {
+  if (!transactionEngineEnabled()) return mergeEngineRecomputation(holdings, transactions);
+  const { tickers, earliestDate } = transfersNeedingHistoricalBackfill(transactions);
+  if (tickers.length === 0 || !earliestDate) {
+    return mergeEngineRecomputation(holdings, transactions);
+  }
+  let historicalPrices = {};
+  try {
+    historicalPrices = await fetchHistoricalPricesForTickers(tickers, earliestDate);
+  } catch (err) {
+    console.warn('[PortfolioData] Historical-price backfill for transfer-in cost basis failed:', err?.message || err);
+  }
+  return mergeEngineRecomputation(holdings, transactions, { historicalPrices });
+}
+
 async function enrichImportedBundle(bundle) {
   if (!bundle?.hasImportedPortfolio) return bundle;
-  const engineMerged = mergeEngineRecomputation(bundle.holdings || [], bundle.transactions || []);
+  const engineMerged = await mergeEngineWithHistoricalBackfill(bundle.holdings || [], bundle.transactions || []);
   const holdings = await enrichHoldingsWithMarketData(engineMerged);
   return {
     ...bundle,
@@ -678,7 +720,7 @@ export function PortfolioDataProvider({ children }) {
       const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
       const transactions = (transactionsRes.data || []).filter(keepAccount).map(normalizeTransaction);
       const transferAdjusted = applyTransferContextToHoldings(holdingsRaw.map(h => withAliases(h, accountMap)), transactions, accounts);
-      const engineMerged = mergeEngineRecomputation(transferAdjusted, transactions);
+      const engineMerged = await mergeEngineWithHistoricalBackfill(transferAdjusted, transactions);
       const holdings = await enrichHoldingsWithMarketData(engineMerged);
       const realizedPositions = realizedRes.error ? [] : (realizedRes.data || []).filter(keepAccount).map(normalizeRealized);
       const accountTypes = [...new Set(accounts.map(a => a.account_type).filter(Boolean))];
