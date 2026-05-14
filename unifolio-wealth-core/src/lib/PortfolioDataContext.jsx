@@ -135,17 +135,56 @@ function withTimeout(promise, ms, label) {
   ]).finally(() => clearTimeout(timer));
 }
 
-// Listing exchange → canonical trading currency. Used to correct rows
-// already persisted in Supabase before the upstream import-time fix landed.
-// Keep in sync with the same map in src/lib/securityIdentity.js.
+// Canonical trading currency inference. Used to correct rows already
+// persisted in Supabase before the upstream import-time fix landed.
+// Tries every reliable signal in priority order:
+//   1. security_identity ('us'|'tsx'|'cdr') — set during import by
+//      resolveSecurityIdentity, present on every row that went through it.
+//   2. Listing exchange (NASDAQ/NYSE → USD, TSX/NEO → CAD).
+//   3. Issuer country (US → USD, CA → CAD).
+//   4. Ticker suffix (.TO/.NE/.V/.CN → CAD).
+//   5. Bare ticker with no Canadian signal → USD (mirrors securityIdentity
+//      Phase 3b: a bare ticker with no CDR text is, by overwhelming
+//      empirical default, a US listing).
+//   6. Fallback to whatever currency was passed in.
 const US_LISTING_EXCHANGES = new Set(['NASDAQ', 'NYSE', 'NYSEARCA', 'ARCA', 'BATS', 'IEX', 'AMEX', 'XNAS', 'XNYS']);
 const CA_LISTING_EXCHANGES = new Set(['TSX', 'NEO', 'TSXV', 'CSE', 'XTSE', 'XCNQ', 'CBOE CANADA']);
-function correctedCurrencyForExchange(exchange, fallback) {
-  if (!exchange) return fallback;
-  const e = String(exchange).toUpperCase();
-  if (US_LISTING_EXCHANGES.has(e) || /NASDAQ|NYSE|ARCA|BATS|IEX|AMEX/.test(e)) return 'USD';
-  if (CA_LISTING_EXCHANGES.has(e) || /TSX|NEO|TSXV|CSE/.test(e)) return 'CAD';
+
+function inferCanonicalCurrency({ exchange, country, ticker, identity, fallback }) {
+  // 1. security_identity — most reliable, set at import time.
+  if (identity === 'us') return 'USD';
+  if (identity === 'cdr' || identity === 'tsx') return 'CAD';
+
+  // 2. Listing exchange.
+  if (exchange) {
+    const e = String(exchange).toUpperCase();
+    if (US_LISTING_EXCHANGES.has(e) || /NASDAQ|NYSE|ARCA|BATS|IEX|AMEX/.test(e)) return 'USD';
+    if (CA_LISTING_EXCHANGES.has(e) || /TSX|NEO|TSXV|CSE/.test(e)) return 'CAD';
+  }
+
+  // 3. Issuer country (IBKR populates this reliably on POST.IssuerCountryCode).
+  if (country) {
+    const c = String(country).toUpperCase();
+    if (c === 'US' || c === 'USA') return 'USD';
+    if (c === 'CA' || c === 'CAN') return 'CAD';
+  }
+
+  // 4. Ticker suffix.
+  if (ticker) {
+    const t = String(ticker).toUpperCase().trim();
+    if (/\.(TO|NE|NEO|TSX|V|CN)$/.test(t) || /:NEO$|:TSX$/.test(t)) return 'CAD';
+    // 5. Bare ticker with no Canadian suffix → US default.
+    if (/^[A-Z]{1,5}$/.test(t)) return 'USD';
+  }
+
+  // 6. Fallback.
   return fallback;
+}
+
+function correctedCurrencyForExchange(exchange, fallback) {
+  // Backwards-compatible shim for the few call sites that only have an
+  // exchange string. Prefer inferCanonicalCurrency() with full context.
+  return inferCanonicalCurrency({ exchange, fallback });
 }
 
 function withAliases(holding, accountMap = {}) {
@@ -156,13 +195,19 @@ function withAliases(holding, accountMap = {}) {
   const costBasis = safeNumber(holding.cost_basis ?? holding.costBasis ?? qty * avg);
   const unrealized = safeNumber(holding.unrealized_gain_loss_amount ?? holding.unrealizedAmt ?? marketValue - costBasis);
   const account = accountMap[holding.account_id ?? holding.accountId];
-  // Defence-in-depth currency override for already-persisted rows. If the
-  // listing exchange is one we recognize as US-only or CA-only, force the
-  // currency to match the exchange — the broker's row-level currency tag
-  // (often the account base currency) is unreliable.
+  // Defence-in-depth currency override for already-persisted rows. The
+  // broker's row-level currency tag is often the account base currency
+  // (CAD for the user's CAD-base IBKR account), not the security's actual
+  // listing currency. We use every reliable signal we have to override.
   const exchHint = holding.listing_exchange ?? holding.listingExchange ?? holding.exchange ?? '';
   const rawCurrency = holding.listing_currency ?? holding.listingCurrency ?? holding.currency ?? account?.base_currency ?? 'USD';
-  const correctedCurrency = correctedCurrencyForExchange(exchHint, rawCurrency);
+  const correctedCurrency = inferCanonicalCurrency({
+    exchange: exchHint,
+    country: holding.country ?? holding.issuerCountry ?? holding.issuer_country_code ?? '',
+    ticker: holding.ticker ?? holding.symbol ?? '',
+    identity: holding.security_identity ?? holding.securityIdentity ?? '',
+    fallback: rawCurrency,
+  });
   return {
     ...holding,
     id: holding.id,
@@ -219,7 +264,13 @@ function withAliases(holding, accountMap = {}) {
 function normalizeTransaction(row) {
   const type = row.transaction_type ?? row.type ?? 'Other';
   const exch = row.listing_exchange ?? row.listingExchange ?? '';
-  const correctedCurrency = correctedCurrencyForExchange(exch, row.currency ?? 'USD');
+  const correctedCurrency = inferCanonicalCurrency({
+    exchange: exch,
+    country: row.country ?? row.issuerCountry ?? row.issuer_country_code ?? '',
+    ticker: row.ticker ?? row.symbol ?? '',
+    identity: row.security_identity ?? row.securityIdentity ?? '',
+    fallback: row.currency ?? 'USD',
+  });
   return {
     ...row,
     account_id: row.account_id ?? row.accountId,
@@ -256,7 +307,13 @@ function normalizeRealized(row) {
   const proceeds = safeNumber(row.total_sale_value ?? row.proceeds);
   const gl = safeNumber(row.realized_gain_loss_amount ?? proceeds - cost);
   const exch = row.listing_exchange ?? row.listingExchange ?? row.exchange ?? '';
-  const correctedCurrency = correctedCurrencyForExchange(exch, row.currency ?? 'USD');
+  const correctedCurrency = inferCanonicalCurrency({
+    exchange: exch,
+    country: row.country ?? row.issuerCountry ?? row.issuer_country_code ?? '',
+    ticker: row.ticker ?? row.symbol ?? '',
+    identity: row.security_identity ?? row.securityIdentity ?? '',
+    fallback: row.currency ?? 'USD',
+  });
   return {
     ...row,
     account_id: row.account_id ?? row.accountId,
