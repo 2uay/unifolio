@@ -247,9 +247,9 @@ export default function Accounts() {
             <Button size="sm" variant="outline" onClick={() => navigate('/import')} className="gap-1.5">
               <Upload className="w-3.5 h-3.5" /> Import CSV
             </Button>
-            <Button size="sm" onClick={() => setShowModal(true)} className="gap-1.5">
-              <Plus className="w-3.5 h-3.5" /> Add Custom Asset
-            </Button>
+            {/* "Add Custom Asset" hidden — base44 backend has been retired and
+                a Supabase-backed custom_assets implementation is on the 2026
+                roadmap. Re-enable when the schema + RLS table land. */}
           </div>
         }
       />

@@ -18,7 +18,7 @@ This policy defines how long Unifolio retains each category of user data, when a
 | Data class | Examples | Retained while account active? | Retention after deletion request | Backup retention |
 |---|---|---|---|---|
 | **Account identity** | Email, name, password hash, profile photo | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
-| **Portfolio data** | Holdings, transactions, realized positions, custom assets, ACB history | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
+| **Portfolio data** | Holdings, transactions, realized positions, ACB history | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
 | **Plaid connection data** | `item_id`, `access_token`, institution metadata | Yes | Database record hard-deleted within **24 hours** by the full-account-delete cascade. The `access_token` is simultaneously revoked via Plaid's `/item/remove` API by the `/api/account/delete-all` serverless function — terminating the connection at the bank end as well. | Per Supabase tier (currently 7 days on Free) |
 | **Imported broker files** | Raw CSV/Flex/PDF uploads | **Never stored** — only parsed positions/transactions are saved | N/A | N/A |
 | **Profile picture asset** | Image file in Supabase Storage | Yes | Deleted from Storage immediately on account deletion | Per Supabase tier (currently 7 days on Free) |
@@ -44,9 +44,8 @@ The flow:
    - **Hard-delete of all `plaid_items` rows** belonging to the user from Supabase.
    - **Permanent removal of the `auth.users` record** via `supabase.auth.admin.deleteUser()`. After this completes, the user cannot authenticate; the account no longer exists.
 4. The frontend then calls `supabase.auth.signOut()` to terminate any remaining local session and dispatches a portfolio-deleted event so the UI lands on the public Welcome page.
-5. User-entered custom assets (real estate, metals, collectibles) live on a separate legacy backend service (base44). Their deletion is performed by the base44 entity-delete API call from the frontend during account cleanup, in parallel with the steps above. Unification of base44 custom assets into Supabase is on the 2026 roadmap.
-6. Local browser caches (theme, currency, watchlist, profile picture cache) are cleared by the frontend.
-7. The deletion is captured in Supabase's built-in audit infrastructure (see §3.4): the RPC invocation is logged in Supabase Postgres logs, the HTTP request is logged in Vercel function logs, and the `auth.admin.deleteUser` call is logged in `auth.audit_log_entries`. Unifolio does not currently maintain an additional application-level audit row beyond these vendor-managed logs.
+5. Local browser caches (theme, currency, watchlist, profile picture cache) are cleared by the frontend.
+6. The deletion is captured in Supabase's built-in audit infrastructure (see §3.4): the RPC invocation is logged in Supabase Postgres logs, the HTTP request is logged in Vercel function logs, and the `auth.admin.deleteUser` call is logged in `auth.audit_log_entries`. Unifolio does not currently maintain an additional application-level audit row beyond these vendor-managed logs.
 
 ### 3.2 Account-level deletion (Accounts page)
 

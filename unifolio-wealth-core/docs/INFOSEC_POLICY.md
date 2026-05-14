@@ -48,7 +48,7 @@ Unifolio classifies data by sensitivity:
 
 ### 4.1 User-facing access
 - Authentication via **Supabase Auth** (email + password); minimum 8-character password length and rate-limited authentication attempts to defeat brute-force guessing. HaveIBeenPwned breach-corpus checking is a Supabase Pro feature and will be enabled when Unifolio upgrades from Free (Q3 2026 roadmap, same milestone as consumer MFA).
-- Postgres **Row-Level Security (RLS)** policies on every Supabase table containing Class A or B data — confirmed enabled on `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `watchlist`. Each policy enforces `user_id = auth.uid()`. (User-entered custom assets — real estate, metals, collectibles — are stored in a separate legacy backend service [base44] with its own per-user authorization; migration to Supabase RLS is on the 2026 roadmap.)
+- Postgres **Row-Level Security (RLS)** policies on every Supabase table containing Class A or B data — confirmed enabled on `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `watchlist`. Each policy enforces `user_id = auth.uid()`. (Manually-entered "custom assets" — non-brokerage holdings such as real estate, precious metals, or collectibles — are not currently a supported data type; the feature is on the 2026 roadmap pending design of the storage schema.)
 - MFA via TOTP is on the roadmap (Q3 2026). Email verification is currently required before any account can be activated or connected to Plaid Link.
 
 ### 4.2 Administrative access
