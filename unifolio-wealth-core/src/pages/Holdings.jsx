@@ -527,11 +527,12 @@ export default function Holdings() {
    filteredRealized.forEach(r => {
      const rTicker = (r.security_key || r.securityKey || r.ticker)?.toUpperCase();
      const rAccount = r.account_id ?? r.accountId;
+     const rUnderlying = (r.underlying_ticker || '').toUpperCase();
 
      // A realized position should only nest under an active holding that shares
      // the same account — prevents IBKR closed LLY from nesting under a
      // Wealthsimple active LLY that happens to share the same ticker string.
-     const matchingActive = displayHoldings.find(h => {
+     let matchingActive = displayHoldings.find(h => {
        if ((h.security_key || h.securityKey || h.ticker)?.toUpperCase() !== rTicker) return false;
        if (h._isStacked && h._stackedChildren) {
          return h._stackedChildren.some(c =>
@@ -541,6 +542,21 @@ export default function Holdings() {
        }
        return (h.account_id ?? h.accountId) === rAccount;
      });
+
+     // Cross-listing fallback: when "Stack CDRs" is on, a closed US listing
+     // (e.g. realized LLY @NYSE:USD) should nest under the open CDR group
+     // (e.g. active LLY + LLY CDR row) that shares the same underlying — even
+     // if they're in different accounts, because the CDR group itself spans
+     // accounts. Without this, the closed LLY ends up alone at the bottom in
+     // "unmatched", which doesn't reflect the user's mental model.
+     if (!matchingActive && stackCDRs && rUnderlying) {
+       matchingActive = displayHoldings.find(h => {
+         if (h._isCDRGroup && Array.isArray(h._stackedChildren)) {
+           return h._stackedChildren.some(c => (c.underlying_ticker || '').toUpperCase() === rUnderlying);
+         }
+         return (h.underlying_ticker || '').toUpperCase() === rUnderlying;
+       });
+     }
 
      if (matchingActive) {
        if (!byActive[matchingActive.id]) byActive[matchingActive.id] = [];
@@ -559,7 +575,7 @@ export default function Holdings() {
    unmatched.sort((a, b) => new Date(b.close_date) - new Date(a.close_date));
 
    return { realizedByActive: byActive, realizedUnmatched: unmatched };
-  }, [showRealized, filteredRealized, displayHoldings]);
+  }, [showRealized, filteredRealized, displayHoldings, stackCDRs]);
 
   const realizedUnmatchedGroups = useMemo(() => buildRealizedTickerGroups(realizedUnmatched), [realizedUnmatched]);
 
