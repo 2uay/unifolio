@@ -1,1 +1,7 @@
 .vercel
+
+# Personal / strategic docs (not for public repo — kept locally in ../private-docs/)
+private-docs/
+unifolio-wealth-core/CLAUDE.md
+unifolio-wealth-core/EXPENDITURES.md
+unifolio-wealth-core/UNIFOLIO_STRATEGIC_MASTER_DOCUMENT*
