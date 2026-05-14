@@ -69,7 +69,7 @@ Per §2.2 above, even a perfect compromise of a Unifolio account does not enable
 Unifolio uses Plaid only for the read-only Investments and Transactions products. We do not use Plaid Auth, Transfer, Income, or any of the money-movement-capable products. A compromised Unifolio account cannot initiate a Plaid-mediated transfer because no such code path exists in the product.
 
 ### 3.8 User self-service deletion
-A user who suspects their account has been compromised can permanently delete all their Unifolio data in three clicks (Settings → Privacy & Data → Delete All Data) without contacting support. The database row holding any active Plaid `access_token` is hard-deleted within 24 hours; the user-facing flow prompts the user to first disconnect any Plaid Item from Settings (which calls Plaid's `/item/remove` immediately and terminates the connection at the bank end). Cascading API-side revocation on full-account-delete is a Q3 2026 roadmap item — see DATA_RETENTION_POLICY.md §5.
+A user who suspects their account has been compromised can permanently delete all their Unifolio data in three clicks (Settings → Privacy & Data → Delete All Data) without contacting support. The full-account-delete cascade clears every app-data table, hard-deletes the `plaid_items` rows, calls Plaid's `/item/remove` API for each Item (terminating the connection at the bank end), and removes the `auth.users` record so the account cannot be signed back into. See DATA_RETENTION_POLICY.md §3.1 for the exact server-side flow.
 
 ---
 

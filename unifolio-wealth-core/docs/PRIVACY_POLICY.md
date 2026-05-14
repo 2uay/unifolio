@@ -162,8 +162,8 @@ We will notify users of material changes to this policy at least **30 days in ad
 
 **Privacy questions, rights requests, or complaints:**
 - Email: **privacy@unifolio.ca**
-- Mailing address: Unifolio Inc., [to be added once Canadian business address is registered]
 - Response time: 5 business days for acknowledgement; 30 days for substantive response.
+- Postal correspondence: available on request via the email above.
 
 **Security vulnerabilities or incidents:**
 - Email: **security@unifolio.ca**
