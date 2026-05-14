@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { writeAudit } from '@/lib/auditLog';
 
 const AuthContext = createContext();
 
@@ -249,6 +250,7 @@ export const AuthProvider = ({ children }) => {
     if (data.session?.user) {
       await upsertUserProfile(data.session.user, fullName);
     }
+    writeAudit('auth_signup', { has_session: !!data.session });
     return data;
   };
 
@@ -260,6 +262,7 @@ export const AuthProvider = ({ children }) => {
       setAuthError(error.message);
       throw error;
     }
+    writeAudit('auth_signin', {});
     return data;
   };
 
@@ -285,11 +288,14 @@ export const AuthProvider = ({ children }) => {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
     }
+    writeAudit('email_changed', {});
   };
 
   const logout = async () => {
     setAuthError(null);
     setAuthNotice(null);
+    // Audit BEFORE the signOut so the JWT is still valid for the audit POST.
+    writeAudit('auth_signout', {});
     try {
       await withTimeout(supabase.auth.signOut({ scope: 'local' }), 3000, 'Sign out');
     } catch (error) {
@@ -323,6 +329,10 @@ export const AuthProvider = ({ children }) => {
       : 'https://unifolio.ca/reset-password';
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
+    // Reset is requested while signed-out — auditLog skips silently when no
+    // session is available, but if the user requests reset while signed in
+    // (e.g. from /profile) it captures the event.
+    writeAudit('password_reset_requested', {});
   };
 
   const fullName = user?.user_metadata?.full_name || user?.full_name || user?.email || '';

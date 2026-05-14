@@ -6,7 +6,7 @@ import PageHeader from '@/components/shared/PageHeader';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { Button } from '@/components/ui/button';
-import { base44 } from '@/api/base44Client';
+import { writeAudit } from '@/lib/auditLog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AssetAppraisalModal from '@/components/accounts/AssetAppraisalModal';
 import MetalsBreakdownSection from '@/components/accounts/MetalsBreakdownSection';
@@ -122,28 +122,89 @@ export default function Accounts() {
     }
   };
 
+  // Custom assets are stored in Supabase. Core columns hold the headline
+  // values (name, type, value, currency, liability, included-in-net-value,
+  // notes); the long appraisal/valuation tail (purchase_price, location,
+  // appraisal_low/mid/high, etc.) lives in `metadata` jsonb so the schema
+  // doesn't need to churn as the form evolves.
+  //
+  // We marshal in both directions so the rest of the page (table, modal,
+  // NetValueSummary) keeps its existing shape.
+  const fromRow = (row) => row ? ({
+    ...row,
+    ...(row.metadata || {}),
+    asset_name: row.asset_name,
+    asset_type: row.asset_type,
+    estimated_value: Number(row.estimated_value) || 0,
+    chosen_value: Number(row.metadata?.chosen_value ?? row.estimated_value) || 0,
+    liability_amount: Number(row.liability_amount) || 0,
+    currency: row.currency || 'CAD',
+    include_in_net_value: row.include_in_net_value !== false,
+    created_date: row.created_at,
+    updated_date: row.updated_at,
+  }) : null;
+
+  const toRow = (asset) => {
+    const {
+      id, asset_name, asset_type, estimated_value, currency,
+      liability_amount, include_in_net_value, notes,
+      created_at, updated_at, created_date, updated_date,
+      created_by, user_id,
+      ...rest
+    } = asset || {};
+    return {
+      asset_name: asset_name || '',
+      asset_type: asset_type || 'Other',
+      estimated_value: Number(estimated_value) || 0,
+      currency: currency || 'CAD',
+      liability_amount: Number(liability_amount) || 0,
+      include_in_net_value: include_in_net_value !== false,
+      notes: notes || null,
+      metadata: rest,
+    };
+  };
+
   const { data: customAssetsRaw = [] } = useQuery({
-    queryKey: ['customAssets'],
+    queryKey: ['customAssets', user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
-      try {
-        const list = await base44?.entities?.CustomAsset?.list?.('-created_date');
-        return Array.isArray(list) ? list : [];
-      } catch (err) {
-        console.warn('[Accounts] custom assets unavailable:', err?.message || err);
+      const { data, error } = await supabase
+        .from('custom_assets')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.warn('[Accounts] custom_assets fetch failed:', error.message);
         return [];
       }
+      return (Array.isArray(data) ? data : []).map(fromRow).filter(Boolean);
     },
   });
   const customAssets = Array.isArray(customAssetsRaw) ? customAssetsRaw.filter(Boolean) : [];
 
   const saveMutation = useMutation({
-    mutationFn: (asset) => {
-      if (!base44?.entities?.CustomAsset) throw new Error('Custom assets service unavailable');
-      if (asset.id) {
-        const { id, created_date, updated_date, created_by, ...data } = asset;
-        return base44.entities.CustomAsset.update(id, data);
+    mutationFn: async (asset) => {
+      if (!user?.id) throw new Error('Sign in to save custom assets.');
+      const row = toRow(asset);
+      if (asset?.id) {
+        const { data, error } = await supabase
+          .from('custom_assets')
+          .update({ ...row, updated_at: new Date().toISOString() })
+          .eq('id', asset.id)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+        if (error) throw error;
+        writeAudit('custom_asset_updated', { id: asset.id });
+        return fromRow(data);
       }
-      return base44.entities.CustomAsset.create(asset);
+      const { data, error } = await supabase
+        .from('custom_assets')
+        .insert({ ...row, user_id: user.id })
+        .select()
+        .single();
+      if (error) throw error;
+      writeAudit('custom_asset_created', { id: data?.id, asset_type: row.asset_type });
+      return fromRow(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customAssets'] });
@@ -153,9 +214,15 @@ export default function Accounts() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => {
-      if (!base44?.entities?.CustomAsset) throw new Error('Custom assets service unavailable');
-      return base44.entities.CustomAsset.delete(id);
+    mutationFn: async (id) => {
+      if (!user?.id) throw new Error('Sign in to delete custom assets.');
+      const { error } = await supabase
+        .from('custom_assets')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      writeAudit('custom_asset_deleted', { id });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customAssets'] }),
   });
@@ -247,9 +314,9 @@ export default function Accounts() {
             <Button size="sm" variant="outline" onClick={() => navigate('/import')} className="gap-1.5">
               <Upload className="w-3.5 h-3.5" /> Import CSV
             </Button>
-            {/* "Add Custom Asset" hidden — base44 backend has been retired and
-                a Supabase-backed custom_assets implementation is on the 2026
-                roadmap. Re-enable when the schema + RLS table land. */}
+            <Button size="sm" onClick={() => { setEditingAsset(null); setShowModal(true); }} className="gap-1.5">
+              <Plus className="w-3.5 h-3.5" /> Add Custom Asset
+            </Button>
           </div>
         }
       />

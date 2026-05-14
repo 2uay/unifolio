@@ -18,7 +18,7 @@ This policy defines how long Unifolio retains each category of user data, when a
 | Data class | Examples | Retained while account active? | Retention after deletion request | Backup retention |
 |---|---|---|---|---|
 | **Account identity** | Email, name, password hash, profile photo | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
-| **Portfolio data** | Holdings, transactions, realized positions, ACB history | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
+| **Portfolio data** | Holdings, transactions, realized positions, custom assets (real estate, metals, collectibles, etc.), ACB history | Yes | Hard-deleted within **24 hours** | Per Supabase tier (currently 7 days on Free) |
 | **Plaid connection data** | `item_id`, `access_token`, institution metadata | Yes | Database record hard-deleted within **24 hours** by the full-account-delete cascade. The `access_token` is simultaneously revoked via Plaid's `/item/remove` API by the `/api/account/delete-all` serverless function — terminating the connection at the bank end as well. | Per Supabase tier (currently 7 days on Free) |
 | **Imported broker files** | Raw CSV/Flex/PDF uploads | **Never stored** — only parsed positions/transactions are saved | N/A | N/A |
 | **Profile picture asset** | Image file in Supabase Storage | Yes | Deleted from Storage immediately on account deletion | Per Supabase tier (currently 7 days on Free) |
@@ -63,12 +63,21 @@ Currently we do **not** auto-delete inactive accounts. If we introduce auto-expi
 
 ### 3.4 Audit trail
 
-Unifolio relies on Supabase's built-in audit infrastructure rather than maintaining a custom `audit_log` table. Specifically:
-- **Supabase Auth** logs every sign-in, sign-out, password change, and account-deletion event with timestamp and IP (visible at `https://supabase.com/dashboard/project/<id>/auth/users` and via the Postgres `auth.audit_log_entries` table managed by gotrue).
-- **Supabase Postgres logs** capture every API call hitting `delete_unifolio_user_data` and `delete_unifolio_account` RPCs (visible at `https://supabase.com/dashboard/project/<id>/logs/postgres-logs`).
-- **Vercel function logs** capture every HTTP request, including the deletion request that triggers the RPC call.
+Unifolio writes a structured `audit_log` row for every security-relevant event the user takes:
+- **Auth events**: `auth_signin`, `auth_signout`, `auth_signup`, `email_changed`, `password_reset_requested`.
+- **Multi-factor authentication**: `mfa_enrolled`, `mfa_unenrolled`, `mfa_challenge_succeeded`, `mfa_challenge_failed` (added once consumer MFA ships).
+- **Data lifecycle**: `account_deleted`, `account_partial_delete`, `data_export_csv`, `data_export_json`.
+- **Plaid lifecycle**: `plaid_token_revoked`, `plaid_item_disconnected`, `plaid_webhook_received`, `plaid_item_error_state`, `plaid_item_reconnected`.
+- **Custom asset CRUD**: `custom_asset_created`, `custom_asset_updated`, `custom_asset_deleted`.
 
-Retention is governed by Supabase's tier policy (currently 7 days on Free; longer on Pro). When Unifolio upgrades to Supabase Pro, log retention will extend automatically. A dedicated application-level audit table writing structured event rows is on the 2026 roadmap and will be added before any contractor onboarding.
+Each row contains: `user_id` (UUID, not the email), `event_type` (allowlisted), `actor` ('self' | 'system'), `metadata` (small JSON tag with non-PII context such as item IDs, counts, asset types), `ip`, `user_agent`, and `created_at`. Writes go through the `/api/audit/write` Vercel serverless function using a service-role Supabase client; clients cannot insert directly (the RLS policy is read-only for the authenticated user).
+
+In addition to the application audit table, Unifolio relies on:
+- **Supabase Auth's built-in `auth.audit_log_entries` table** (managed by gotrue) for sign-in / password-change / email-change events with full IP context.
+- **Supabase Postgres logs** for every API call hitting our deletion RPCs.
+- **Vercel function logs** for every HTTP request, including the deletion endpoint.
+
+The `audit_log` table itself is retained indefinitely while the user's account is active and is hard-deleted along with the user's other data when the account is deleted (rows reference `auth.users` with `on delete set null`, so historical security investigations remain possible at the operator level for reasonable forensic timeframes).
 
 ---
 

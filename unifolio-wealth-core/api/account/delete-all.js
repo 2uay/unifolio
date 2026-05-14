@@ -50,6 +50,14 @@ export default async function handler(req, res) {
     try {
       await plaid.itemRemove({ access_token: item.access_token });
       result.plaidItemsRevoked += 1;
+      // Best-effort audit row per revocation. Failure does not block the
+      // cascade; service-role insert directly into audit_log.
+      await supabase.from('audit_log').insert({
+        user_id: user.id,
+        event_type: 'plaid_token_revoked',
+        actor: 'system',
+        metadata: { item_id: item.item_id, source: 'account_delete_cascade' },
+      }).then(() => {}).catch(() => {});
     } catch (err) {
       // Plaid may return ITEM_NOT_FOUND if the item was already removed; treat
       // as a soft failure — we'll still delete the local row.

@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import { deleteAllUserPortfolioData } from '@/lib/dataDeletion';
+import { writeAudit } from '@/lib/auditLog';
 
 const ReadOnlyBadge = () => (
   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-400">
@@ -153,6 +154,7 @@ export default function PrivacyAndData() {
     a.download = `unifolio-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    writeAudit('data_export_json', { format: 'json' });
   };
 
   const handleDeleteAll = async () => {

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
+import { writeAudit } from '@/lib/auditLog';
 
 const IMPORT_PORTFOLIO_KEY = 'unifolio_latest_imported_portfolio';
 const IMPORT_HISTORY_KEY = 'unifolio_import_history';
@@ -229,6 +230,7 @@ export async function deleteImportedAccountData(accountId, userId) {
   markAccountDeletedLocally(accountId);
   removeLocalAccountData(accountId);
   window.dispatchEvent(new CustomEvent('unifolio:portfolio-imported', { detail: { deletedAccountId: accountId } }));
+  writeAudit('account_partial_delete', { account_id: accountId });
 
   void (async () => {
     try {
@@ -281,6 +283,9 @@ export async function deleteAllUserPortfolioData(userId) {
   markAllDeletedLocally(userId);
   clearLocalPortfolioData();
   window.dispatchEvent(new CustomEvent('unifolio:portfolio-imported', { detail: { deletedAll: true } }));
+  // Fire-and-forget audit row BEFORE we sign out the session (writeAudit
+  // needs the JWT, which is invalidated by the auth.signOut at the end).
+  writeAudit('account_deleted', {});
 
   void (async () => {
     // Step 1: clear app data tables via the Postgres RPC (or client fallback).

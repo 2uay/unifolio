@@ -46,8 +46,8 @@ Email verification is **required** before any account is activated; the user can
 
 ### 3.2 Authorization
 Every Postgres table containing Class A or Class B data has **Row-Level Security (RLS) policies enabled**. Each policy enforces `user_id = auth.uid()` so that even if a malicious browser client crafted a query, the database engine would refuse to return rows belonging to other users. RLS is enabled on every Supabase table holding Class A or B data:
-- `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `watchlist`, and related tables (see `supabase/schema.sql` for the canonical list — 22 RLS policies as of this writing).
-- A "custom assets" feature for non-brokerage holdings (real estate, precious metals, collectibles) is on the 2026 roadmap and is not currently a supported data type. No such records are persisted by the application today.
+- `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `watchlist`, `custom_assets`, `audit_log`, and related tables (see `supabase/schema.sql` for the canonical list).
+- User-entered custom assets (real estate, precious metals, collectibles, etc.) live in the `custom_assets` table with the same per-user RLS guarantee as every other Class A/B table.
 
 ### 3.3 Session management
 - Sessions are managed by Supabase Auth's JWT-based access tokens with short expiry (1 hour) and refresh tokens (7 days).

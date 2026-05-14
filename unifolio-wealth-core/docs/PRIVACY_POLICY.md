@@ -23,6 +23,7 @@ This policy complies with Canada's **Personal Information Protection and Electro
 ### 1.2 Financial data (provided by you, directly or through Plaid)
 - **Imported broker statements** (CSV, IBKR Flex Query, Wealthsimple activity exports, etc.) — including account names, holding positions, transactions, dividends, realized gains.
 - **Plaid-connected account data** (when you authorize Plaid Link) — account balances, holdings, transactions; Plaid handles the underlying credentials and shares only authorized data tokens with us.
+- **Manually entered custom assets** — non-brokerage holdings (real estate, vehicles, precious metals, crypto wallets, collectibles, private investments, etc.) that you choose to track. You enter the value and asset type yourself; we never independently appraise.
 
 ### 1.3 Usage data (collected automatically)
 - Browser type and version (User-Agent string)

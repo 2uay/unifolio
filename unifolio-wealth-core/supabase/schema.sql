@@ -259,6 +259,49 @@ create policy "users read own plaid items" on plaid_items
   for select using (auth.uid() = user_id);
 
 -- ──────────────────────────────────────────────────────────────────────────────
+-- audit_log — application-level audit trail for security-relevant events.
+-- Inserts only via the /api/audit/write Vercel function (service-role).
+-- Users can read their own rows; UI can display "your recent activity" later.
+create table if not exists audit_log (
+  id          bigserial primary key,
+  user_id     uuid references auth.users(id) on delete set null,
+  event_type  text not null,
+  actor       text not null default 'self',
+  metadata    jsonb default '{}'::jsonb,
+  ip          text,
+  user_agent  text,
+  created_at  timestamptz default now()
+);
+alter table audit_log enable row level security;
+create policy "users read own audit rows" on audit_log
+  for select using (auth.uid() = user_id);
+create index if not exists audit_log_user_time on audit_log(user_id, created_at desc);
+create index if not exists audit_log_event_time on audit_log(event_type, created_at desc);
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- custom_assets — non-brokerage holdings (real estate, vehicles, metals, etc.).
+-- Replaces the deprecated base44 backend. Long appraisal/valuation tail goes
+-- in `metadata` jsonb to avoid schema churn as the feature evolves.
+create table if not exists custom_assets (
+  id                    text primary key default gen_random_uuid()::text,
+  user_id               uuid not null references auth.users(id) on delete cascade,
+  asset_name            text not null,
+  asset_type            text not null,            -- 'Real Estate' | 'Vehicle' | 'Crypto Wallet' | 'Precious Metals' | 'Private Investment' | 'Collectible' | 'Cash' | 'Private Business' | 'Other'
+  estimated_value       numeric not null default 0,
+  currency              text not null default 'CAD',
+  liability_amount      numeric default 0,
+  include_in_net_value  boolean default true,
+  notes                 text,
+  metadata              jsonb default '{}'::jsonb,
+  created_at            timestamptz default now(),
+  updated_at            timestamptz default now()
+);
+alter table custom_assets enable row level security;
+create policy "users own custom assets" on custom_assets
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create index if not exists custom_assets_user on custom_assets(user_id);
+
+-- ──────────────────────────────────────────────────────────────────────────────
 -- ADMIN: Grant a specific user a Pro or Lifetime plan
 -- Run one of these in the Supabase SQL editor, substituting the real email:
 --
@@ -379,6 +422,10 @@ begin
   delete from import_batches where user_id = v_user_id;
   get diagnostics v_deleted = row_count;
   v_counts := v_counts || jsonb_build_object('import_batches', v_deleted);
+
+  delete from custom_assets where user_id = v_user_id;
+  get diagnostics v_deleted = row_count;
+  v_counts := v_counts || jsonb_build_object('custom_assets', v_deleted);
 
   delete from watchlist where user_id = v_user_id;
   get diagnostics v_deleted = row_count;
