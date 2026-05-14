@@ -3,11 +3,19 @@ import React, { useState, useMemo, useEffect, useRef, Component } from 'react';
 class RowErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(error, errorInfo) {
+    // Surface the real cause to the browser console so we can debug
+    // expanded-row failures without re-deploying instrumented builds.
+    console.error('[HoldingDetailRow] crash:', error, errorInfo?.componentStack);
+  }
   render() {
     if (this.state.error) {
+      const msg = this.state.error?.message || String(this.state.error);
       return (
         <tr><td colSpan={100} className="p-3 text-xs text-muted-foreground bg-secondary/10 border-b border-border">
-          Unable to load detail for this position.
+          <span className="text-destructive font-medium">Unable to load detail:</span>{' '}
+          <span className="font-mono text-foreground/80">{msg}</span>{' '}
+          <span className="text-muted-foreground/70">(open the browser console for the full stack trace)</span>
         </td></tr>
       );
     }
