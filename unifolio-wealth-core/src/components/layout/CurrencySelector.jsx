@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Check, ChevronDown, AlertTriangle } from 'lucide-react';
-import { useCurrency } from '@/lib/CurrencyContext';
+import { Check, ChevronDown, AlertTriangle, Globe } from 'lucide-react';
+import { useCurrency, NATIVE_CURRENCY } from '@/lib/CurrencyContext';
 import { hasRate } from '@/lib/exchangeRates';
 import { cn } from '@/lib/utils';
 
@@ -14,7 +14,7 @@ function formatRelativeTime(isoString) {
 }
 
 export default function CurrencySelector({ collapsed = false, openUpward = false }) {
-  const { displayCurrency, setDisplayCurrency, enabledCurrencies, allCurrencies, bothMode, setBothMode, fxRates } = useCurrency();
+  const { displayCurrency, setDisplayCurrency, enabledCurrencies, allCurrencies, bothMode, setBothMode, fxRates, isNativeMode } = useCurrency();
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -30,10 +30,12 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
     }
   }, [open]);
 
-  const visibleCurrencies = allCurrencies.filter(c => enabledCurrencies.includes(c.code));
+  // NATIVE is always available — it's a render mode, not a currency that
+  // needs an FX rate. Show it alongside any enabled real currencies.
+  const visibleCurrencies = allCurrencies.filter(c => c.isNative || enabledCurrencies.includes(c.code));
 
   const handleSelect = (code) => {
-    if (!hasRate(code)) return; // block unsupported
+    if (code !== NATIVE_CURRENCY && !hasRate(code)) return; // block unsupported real currencies
     setDisplayCurrency(code);
     setOpen(false);
   };
@@ -48,7 +50,7 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
           collapsed ? 'p-2 justify-center w-full' : 'px-2.5 py-1.5'
         )}
       >
-        <span>{bothMode ? `${displayCurrency}+${displayCurrency === 'CAD' ? 'USD' : 'CAD'}` : displayCurrency}</span>
+        <span>{isNativeMode ? 'NTV' : (bothMode ? `${displayCurrency}+${displayCurrency === 'CAD' ? 'USD' : 'CAD'}` : displayCurrency)}</span>
         {!collapsed && <ChevronDown className={cn('w-3 h-3 text-muted-foreground transition-transform', open && 'rotate-180')} />}
       </button>
 
@@ -62,24 +64,28 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
           </div>
           <div className="px-3 py-2 border-b border-border/50">
             <button
-              onClick={() => setBothMode(b => !b)}
+              onClick={() => !isNativeMode && setBothMode(b => !b)}
+              disabled={isNativeMode}
+              title={isNativeMode ? 'Disabled in Native mode — switch to a single currency to compare side-by-side.' : undefined}
               className={cn(
                 'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-colors',
+                isNativeMode ? 'opacity-40 cursor-not-allowed text-muted-foreground' :
                 bothMode ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground hover:bg-secondary'
               )}
             >
               <span>Show Both Currencies</span>
               <span className={cn(
                 'text-[10px] font-mono px-1.5 py-0.5 rounded',
-                bothMode ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'
+                bothMode && !isNativeMode ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'
               )}>
-                {bothMode ? 'ON' : 'OFF'}
+                {bothMode && !isNativeMode ? 'ON' : 'OFF'}
               </span>
             </button>
           </div>
           <div className="py-1">
             {visibleCurrencies.map(c => {
-              const available = hasRate(c.code);
+              const isNativeOption = c.isNative;
+              const available = isNativeOption || hasRate(c.code);
               const isActive = displayCurrency === c.code;
               return (
                 <button
@@ -96,10 +102,10 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
                     'w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-mono font-bold flex-shrink-0',
                     isActive ? 'bg-primary text-white' : 'bg-secondary text-foreground'
                   )}>
-                    {c.code.slice(0, 2)}
+                    {isNativeOption ? <Globe className="w-3.5 h-3.5" /> : c.code.slice(0, 2)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={cn('text-xs font-semibold', isActive ? 'text-primary' : 'text-foreground')}>{c.code}</p>
+                    <p className={cn('text-xs font-semibold', isActive ? 'text-primary' : 'text-foreground')}>{isNativeOption ? 'Native' : c.code}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{c.name}</p>
                   </div>
                   <div className="flex-shrink-0">
@@ -114,10 +120,16 @@ export default function CurrencySelector({ collapsed = false, openUpward = false
               );
             })}
           </div>
-          {!hasRate(displayCurrency) && (
+          {!isNativeMode && !hasRate(displayCurrency) && (
             <div className="px-3 py-2 border-t border-border/50 flex items-center gap-1.5 bg-amber-500/5">
               <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
               <p className="text-[10px] text-amber-400">No rate available for {displayCurrency}</p>
+            </div>
+          )}
+          {isNativeMode && (
+            <div className="px-3 py-2 border-t border-border/50 flex items-center gap-1.5 bg-primary/5">
+              <Globe className="w-3 h-3 text-primary flex-shrink-0" />
+              <p className="text-[10px] text-muted-foreground leading-snug">Each position renders in its own native currency. Cross-currency totals are not converted.</p>
             </div>
           )}
 

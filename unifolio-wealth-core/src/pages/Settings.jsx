@@ -182,7 +182,7 @@ export default function Settings() {
           <p className="text-xs font-semibold text-foreground mb-1">Available in Currency Switcher</p>
           <p className="text-[11px] text-muted-foreground mb-3">Choose which currencies appear in the global switcher. CAD and USD are always enabled.</p>
           <div className="space-y-2">
-            {allCurrencies.map(c => {
+            {allCurrencies.filter(c => !c.isNative).map(c => {
               const isEnabled = enabledCurrencies.includes(c.code);
               const isLocked  = c.code === 'CAD' || c.code === 'USD';
               const rateInfo  = fxRates.find(r => r.code === c.code);

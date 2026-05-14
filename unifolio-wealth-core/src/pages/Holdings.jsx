@@ -83,11 +83,20 @@ function formatMMDDYYYY(date) {
   return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 }
 
-function buildRealizedTickerGroups(rows) {
+// Group realized rows by ticker. When `convert` + `displayCurrency` are passed
+// (the normal Holdings-table path), every aggregated money value lands in the
+// active display currency so that the table always reflects the currency
+// selector. Per-instance native values are preserved on `_realizedInstances`
+// for the expanded-row drill-down (the renderer converts those individually).
+function buildRealizedTickerGroups(rows, { convert, displayCurrency } = {}) {
   const groups = {};
+  const conv = typeof convert === 'function' ? convert : (v) => v;
+  const groupCurrency = displayCurrency || null; // null => sums stay in native currency (legacy callers)
+
   rows.forEach(row => {
     const ticker = (row.security_key || row.securityKey || row.ticker)?.toUpperCase();
     if (!ticker) return;
+    const rowCurrency = row.currency || 'USD';
     if (!groups[ticker]) {
       groups[ticker] = {
         ...row,
@@ -105,11 +114,22 @@ function buildRealizedTickerGroups(rows) {
     const group = groups[ticker];
     group._realizedInstances.push(row);
     group.quantity += safeNumber(row.quantity);
-    group.total_cost_basis += safeNumber(row.total_cost_basis);
-    group.total_sale_value += safeNumber(row.total_sale_value);
-    group.realized_gain_loss_amount += safeNumber(row.realized_gain_loss_amount);
+    if (groupCurrency) {
+      // Convert each instance into display currency before summing so the
+      // stack total is coherent across multi-currency realized lots.
+      group.total_cost_basis += conv(safeNumber(row.total_cost_basis), rowCurrency);
+      group.total_sale_value += conv(safeNumber(row.total_sale_value), rowCurrency);
+      group.realized_gain_loss_amount += conv(safeNumber(row.realized_gain_loss_amount), rowCurrency);
+    } else {
+      group.total_cost_basis += safeNumber(row.total_cost_basis);
+      group.total_sale_value += safeNumber(row.total_sale_value);
+      group.realized_gain_loss_amount += safeNumber(row.realized_gain_loss_amount);
+    }
     group.realizedGain = group.realized_gain_loss_amount;
-    group.currency = group.currency || row.currency || 'USD';
+    // When sums are converted, the group's nominal currency is the display
+    // currency (the renderer must NOT convert again). Otherwise track the
+    // first row's native currency for legacy single-currency display.
+    group.currency = groupCurrency || group.currency || rowCurrency;
     group.asset_class = group.asset_class || row.asset_class || row.assetClass || 'Stock';
     group.sector = group.sector || row.sector || 'Unknown';
   });
@@ -121,14 +141,23 @@ function buildRealizedTickerGroups(rows) {
       .sort((a, b) => new Date(a) - new Date(b));
     const latest = dates[dates.length - 1] || null;
     const earliest = dates[0] || null;
+    // Weighted average buy price in the same currency as the group totals.
+    // When `convert` was supplied this is the display currency; otherwise it
+    // matches the group's native currency. Falls back to the first instance's
+    // raw value when quantity is zero (degenerate case — avoids NaN).
+    const weightedAvgBuy = group.quantity > 0
+      ? safeDivide(group.total_cost_basis, group.quantity)
+      : safeNumber(group.average_buy_price);
     return {
       ...group,
       close_date: latest,
       open_date: earliest,
+      average_buy_price: weightedAvgBuy,
       realized_gain_loss_percent: safeDivide(group.realized_gain_loss_amount, group.total_cost_basis) * 100,
       _dateLabel: dates.length > 1 ? `${formatMMDDYYYY(earliest)} - ${formatMMDDYYYY(latest)}` : formatMMDDYYYY(latest),
       _instanceCount: group._realizedInstances.length,
       _realizedInstances: group._realizedInstances.sort((a, b) => new Date(b.close_date) - new Date(a.close_date)),
+      _isInDisplayCurrency: Boolean(groupCurrency),
     };
   }).sort((a, b) => new Date(b.close_date) - new Date(a.close_date));
 }
@@ -577,7 +606,10 @@ export default function Holdings() {
    return { realizedByActive: byActive, realizedUnmatched: unmatched };
   }, [showRealized, filteredRealized, displayHoldings, stackCDRs]);
 
-  const realizedUnmatchedGroups = useMemo(() => buildRealizedTickerGroups(realizedUnmatched), [realizedUnmatched]);
+  const realizedUnmatchedGroups = useMemo(
+    () => buildRealizedTickerGroups(realizedUnmatched, { convert, displayCurrency }),
+    [realizedUnmatched, convert, displayCurrency],
+  );
 
   // Realized rows enriched with _realizedGainContribution for heatmap normalization.
   // Used as visibleHoldings when computing realized-row heatmap styles so intensity is
@@ -1187,10 +1219,10 @@ export default function Holdings() {
                         : (childInst?.name ?? '—');
                       const childCurrency = child.currency || 'USD';
                       const childMarketValue = convert(safeNumber(child.market_value ?? child.marketValue), childCurrency);
-                      const childUnrealized = safeNumber(child.unrealized_gain_loss_amount ?? child.unrealizedAmt);
-                      const childDailyPnl = safeNumber(child.daily_pnl_amount ?? child.dailyPnl);
+                      const childUnrealized = convert(safeNumber(child.unrealized_gain_loss_amount ?? child.unrealizedAmt), childCurrency);
+                      const childDailyPnl = convert(safeNumber(child.daily_pnl_amount ?? child.dailyPnl), childCurrency);
                       const childQty = safeNumber(child.quantity ?? child.position);
-                      const childAvgPrice = safeNumber(child.average_price ?? child.avgPrice);
+                      const childAvgPrice = convert(safeNumber(child.average_price ?? child.avgPrice), childCurrency);
                       const childPctOfStack = stackedMarketValue > 0
                         ? safeDivide(safeNumber(child.market_value ?? child.marketValue), stackedMarketValue) * 100
                         : 0;
@@ -1234,7 +1266,7 @@ export default function Holdings() {
 
                   // Add nested realized rows for this active holding
                   const nestedRealized = realizedByActive[h.id] || [];
-                  const nestedRealizedGroups = buildRealizedTickerGroups(nestedRealized);
+                  const nestedRealizedGroups = buildRealizedTickerGroups(nestedRealized, { convert, displayCurrency });
                   nestedRealizedGroups.forEach(r => {
                     const rAcc = getAccount(r.account_id);
                     const rInst = getInstitutionForAccount(r.account_id);
@@ -1308,6 +1340,7 @@ export default function Holdings() {
 
                     if (isNestedRealizedExpanded) {
                       r._realizedInstances.forEach(instance => {
+                        const instCcy = instance.currency || 'USD';
                         rows.push(
                           <tr key={`${r.id}-${instance.id}`} className="border-b border-border/20 bg-secondary/10">
                             <td colSpan={visibleColumns.length} className="px-5 py-2">
@@ -1315,10 +1348,10 @@ export default function Holdings() {
                                 <span><span className="text-muted-foreground/60">Closed</span> <span className="font-mono text-foreground/80">{formatMMDDYYYY(instance.close_date)}</span></span>
                                 <span><span className="text-muted-foreground/60">Opened</span> <span className="font-mono">{formatMMDDYYYY(instance.open_date)}</span></span>
                                 <span><span className="text-muted-foreground/60">Qty</span> <span className="font-mono">{safeNumber(instance.quantity).toFixed(4)}</span></span>
-                                <span><span className="text-muted-foreground/60">Buy</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(safeNumber(instance.average_buy_price))}</span></span>
-                                <span><span className="text-muted-foreground/60">Sell</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(safeNumber(instance.average_sell_price))}</span></span>
-                                <span><span className="text-muted-foreground/60">Cost</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(safeNumber(instance.total_cost_basis))}</span></span>
-                                <span><span className="text-muted-foreground/60">P&L</span> <PnlValue value={instance.realized_gain_loss_amount} className="text-[11px]" /></span>
+                                <span><span className="text-muted-foreground/60">Buy</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(convert(safeNumber(instance.average_buy_price), instCcy))}</span></span>
+                                <span><span className="text-muted-foreground/60">Sell</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(convert(safeNumber(instance.average_sell_price), instCcy))}</span></span>
+                                <span><span className="text-muted-foreground/60">Cost</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(convert(safeNumber(instance.total_cost_basis), instCcy))}</span></span>
+                                <span><span className="text-muted-foreground/60">P&L</span> <PnlValue value={convert(safeNumber(instance.realized_gain_loss_amount), instCcy)} className="text-[11px]" /></span>
                               </div>
                             </td>
                           </tr>
@@ -1420,6 +1453,7 @@ export default function Holdings() {
 
                       if (isTickerExpanded) {
                         r._realizedInstances.forEach(instance => {
+                          const instCcy = instance.currency || 'USD';
                           rows.push(
                             <tr key={`${r.id}-${instance.id}`} className="border-b border-border/20 bg-secondary/10">
                               <td colSpan={visibleColumns.length} className="px-5 py-2">
@@ -1427,10 +1461,10 @@ export default function Holdings() {
                                   <span><span className="text-muted-foreground/60">Closed</span> <span className="font-mono text-foreground/80">{formatMMDDYYYY(instance.close_date)}</span></span>
                                   <span><span className="text-muted-foreground/60">Opened</span> <span className="font-mono">{formatMMDDYYYY(instance.open_date)}</span></span>
                                   <span><span className="text-muted-foreground/60">Qty</span> <span className="font-mono">{safeNumber(instance.quantity).toFixed(4)}</span></span>
-                                  <span><span className="text-muted-foreground/60">Buy</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(safeNumber(instance.average_buy_price))}</span></span>
-                                  <span><span className="text-muted-foreground/60">Sell</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(safeNumber(instance.average_sell_price))}</span></span>
-                                  <span><span className="text-muted-foreground/60">Cost</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(safeNumber(instance.total_cost_basis))}</span></span>
-                                  <span><span className="text-muted-foreground/60">P&L</span> <PnlValue value={instance.realized_gain_loss_amount} className="text-[11px]" /></span>
+                                  <span><span className="text-muted-foreground/60">Buy</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(convert(safeNumber(instance.average_buy_price), instCcy))}</span></span>
+                                  <span><span className="text-muted-foreground/60">Sell</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(convert(safeNumber(instance.average_sell_price), instCcy))}</span></span>
+                                  <span><span className="text-muted-foreground/60">Cost</span> <span className="font-mono">{privacyMode ? PM : formatCurrency(convert(safeNumber(instance.total_cost_basis), instCcy))}</span></span>
+                                  <span><span className="text-muted-foreground/60">P&L</span> <PnlValue value={convert(safeNumber(instance.realized_gain_loss_amount), instCcy)} className="text-[11px]" /></span>
                                 </div>
                               </td>
                             </tr>

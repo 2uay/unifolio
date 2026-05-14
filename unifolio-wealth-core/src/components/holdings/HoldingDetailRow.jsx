@@ -107,9 +107,9 @@ export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal 
             <Dot />
             <span className="text-muted-foreground">Cost <span className="font-mono text-foreground">{privacyMode ? PM : formatCurrency(convert(safeNumber(holding.cost_basis ?? holding.costBasis), nativeCurrency))}</span></span>
             <Dot />
-            <span className="text-muted-foreground">Unreal. <PnlValue value={unrealizedAmt} className="inline" /></span>
+            <span className="text-muted-foreground">Unreal. <PnlValue value={convert(unrealizedAmt, nativeCurrency)} className="inline" /></span>
             <Dot />
-            <span className="text-muted-foreground">Real. <PnlValue value={holding.realized_gain_loss_amount ?? holding.realizedGain} className="inline" /></span>
+            <span className="text-muted-foreground">Real. <PnlValue value={convert(safeNumber(holding.realized_gain_loss_amount ?? holding.realizedGain), nativeCurrency)} className="inline" /></span>
             <Dot />
             {(acc?.account_type ?? acc?.type) && <span className="text-primary font-medium">{acc?.account_type ?? acc?.type}</span>}
             {(acc?.account_type ?? acc?.type) && <Dot />}
