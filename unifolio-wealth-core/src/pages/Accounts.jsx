@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Clock, Plus, Upload, Trash2, Loader2, Pencil } from 'lucide-react';
+import { Clock, Plus, Upload, Trash2, Loader2, Pencil, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency, PnlValue } from '@/components/shared/ValueDisplay';
 import PageHeader from '@/components/shared/PageHeader';
@@ -19,6 +19,8 @@ import InstitutionLogo from '@/components/shared/InstitutionLogo';
 import { useAuth } from '@/lib/AuthContext';
 import { deleteImportedAccountData } from '@/lib/dataDeletion';
 import { supabase } from '@/lib/supabaseClient';
+import { usePlaidItems } from '@/lib/usePlaidItems';
+import PlaidReconnectButton from '@/components/plaid/PlaidReconnectButton';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -62,6 +64,7 @@ export default function Accounts() {
   const { registerTicker, liveHoldings: liveMarketData } = useLiveData();
   const { accounts, holdings, getInstitution, isEmptyPortfolio, refreshPortfolioData, calcContributionTotals } = usePortfolioData();
   const { user } = useAuth();
+  const { byInternalInstitutionId, refresh: refreshPlaidItems } = usePlaidItems();
   const [accountColumnOrder, setAccountColumnOrder] = usePersistentTableColumns(ACCOUNT_TABLE_ID, DEFAULT_ACCOUNT_ORDER);
   const [customAssetColumnOrder, setCustomAssetColumnOrder] = usePersistentTableColumns(CUSTOM_ASSET_TABLE_ID, DEFAULT_CUSTOM_ASSET_ORDER);
   const safeAccounts = useMemo(() => Array.isArray(accounts) ? accounts.filter(Boolean) : [], [accounts]);
@@ -351,6 +354,14 @@ export default function Accounts() {
 
       {Object.entries(grouped).map(([instId, accs]) => {
         const inst = getInstitution(instId);
+        const plaidItem = byInternalInstitutionId?.[instId];
+        const itemStatus = plaidItem?.status;
+        const itemNeedsAttention = itemStatus && itemStatus !== 'active';
+        const errorCopy = itemStatus === 'login_required'
+          ? 'Your bank requires you to sign in again to keep this connection active.'
+          : itemStatus === 'pending_expiration'
+          ? 'This connection will expire soon. Reconnect to keep your data syncing.'
+          : 'This connection is in an error state and stopped syncing.';
         return (
           <div key={instId} className="rounded-2xl border border-border bg-card/70 overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-4 py-4">
@@ -366,6 +377,22 @@ export default function Accounts() {
               </div>
               <p className="text-xs text-muted-foreground">{accs.length} connected account{accs.length === 1 ? '' : 's'}</p>
             </div>
+
+            {itemNeedsAttention && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-3">
+                <div className="flex items-start gap-2 text-amber-200">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <div className="text-xs">
+                    <p className="font-medium">{itemStatus === 'pending_expiration' ? 'Connection expiring soon' : 'Connection needs attention'}</p>
+                    <p className="text-amber-200/80">{errorCopy}</p>
+                  </div>
+                </div>
+                <PlaidReconnectButton
+                  itemId={plaidItem.item_id}
+                  onReconnected={() => { refreshPortfolioData?.(); refreshPlaidItems?.(); }}
+                />
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

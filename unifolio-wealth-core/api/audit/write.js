@@ -20,6 +20,7 @@ const ALLOWED_EVENTS = new Set([
   'account_deleted', 'account_partial_delete',
   'data_export_csv', 'data_export_json',
   'plaid_token_revoked', 'plaid_item_disconnected',
+  'plaid_webhook_received', 'plaid_item_error_state', 'plaid_item_reconnected',
   'custom_asset_created', 'custom_asset_updated', 'custom_asset_deleted',
 ]);
 

@@ -81,6 +81,8 @@ Data is collected only via:
 2. User-initiated CSV/Flex broker import (positions, transactions).
 3. User-authorized Plaid Link connection (via Plaid's consent flow).
 
+Once a Plaid connection exists, Plaid asynchronously notifies Unifolio of new holdings, investment transactions, and item-error events via signed webhooks (`/api/plaid/webhook`). The endpoint verifies every inbound payload using Plaid's JWT signature scheme (ES256, JWK fetched per `kid`) and a SHA-256 hash of the raw request body before any data is read or written; unverified payloads are dropped. Webhook-driven re-syncs reuse the same server-side normalization path as user-initiated syncs, so no new data categories are introduced. Item-error states (`ITEM_LOGIN_REQUIRED`, `PENDING_EXPIRATION`, `USER_PERMISSION_REVOKED`) are surfaced to the affected user with an in-app reconnect affordance backed by Plaid's update-mode link tokens — re-authentication preserves the existing `access_token` and historical data.
+
 ### 6.2 Processing
 All Class A/B processing happens server-side in Vercel serverless functions or Supabase Postgres. No third-party analytics tracker has access to financial data.
 
