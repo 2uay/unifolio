@@ -335,6 +335,76 @@ export const AuthProvider = ({ children }) => {
     writeAudit('password_reset_requested', {});
   };
 
+  // ─── MFA (TOTP) ──────────────────────────────────────────────────────────
+  // Wraps supabase.auth.mfa.* primitives. Supabase handles the TOTP secret
+  // generation, QR-code provisioning URI, and HOTP/TOTP verification — this
+  // layer just routes UI through a single API surface and writes audit rows.
+
+  const listMfaFactors = async () => {
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) throw error;
+    return data; // { all: [...], totp: [...verified...] }
+  };
+
+  const enrollMfa = async (friendlyName = 'Unifolio TOTP') => {
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: 'totp',
+      friendlyName,
+    });
+    if (error) throw error;
+    // Returns { id (factorId), totp: { qr_code, secret, uri } }
+    return data;
+  };
+
+  const verifyMfaEnrollment = async (factorId, code) => {
+    // Step 1: create the challenge for this factor.
+    const { data: challenge, error: challengeError } =
+      await supabase.auth.mfa.challenge({ factorId });
+    if (challengeError) throw challengeError;
+    // Step 2: verify the user-supplied code against that challenge.
+    const { data, error } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challenge.id,
+      code,
+    });
+    if (error) throw error;
+    writeAudit('mfa_enrolled', { factor_id: factorId });
+    return data;
+  };
+
+  const unenrollMfa = async (factorId) => {
+    const { data, error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) throw error;
+    writeAudit('mfa_unenrolled', { factor_id: factorId });
+    return data;
+  };
+
+  const challengeMfa = async (factorId) => {
+    const { data, error } = await supabase.auth.mfa.challenge({ factorId });
+    if (error) throw error;
+    return data; // { id (challengeId), expires_at }
+  };
+
+  const verifyMfaChallenge = async (factorId, challengeId, code) => {
+    const { data, error } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId,
+      code,
+    });
+    if (error) {
+      writeAudit('mfa_challenge_failed', { factor_id: factorId });
+      throw error;
+    }
+    writeAudit('mfa_challenge_succeeded', { factor_id: factorId });
+    return data;
+  };
+
+  const getAuthenticatorAssuranceLevel = async () => {
+    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (error) throw error;
+    return data; // { currentLevel, nextLevel, currentAuthenticationMethods }
+  };
+
   const fullName = user?.user_metadata?.full_name || user?.full_name || user?.email || '';
   const isPro = plan === 'pro' || plan === 'lifetime';
 
@@ -359,6 +429,13 @@ export const AuthProvider = ({ children }) => {
       updateEmail,
       clearAuthNotice,
       sendPasswordReset,
+      listMfaFactors,
+      enrollMfa,
+      verifyMfaEnrollment,
+      unenrollMfa,
+      challengeMfa,
+      verifyMfaChallenge,
+      getAuthenticatorAssuranceLevel,
     }}>
       {children}
     </AuthContext.Provider>

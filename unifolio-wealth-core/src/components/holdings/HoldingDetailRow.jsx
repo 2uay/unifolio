@@ -8,6 +8,7 @@ import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import { calcTrueExposure } from '@/lib/etfOverlapEngine';
 import { normalizeTicker } from '@/lib/etfHoldings';
 import { supabase } from '@/lib/supabaseClient';
+import { cn } from '@/lib/utils';
 
 export default function HoldingDetailRow({ holding, allHoldings, portfolioTotal }) {
   const { privacyMode } = usePrivacy();

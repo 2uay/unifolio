@@ -1,10 +1,18 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePlaidLink } from 'react-plaid-link';
-import { Link2, Loader2 } from 'lucide-react';
+import { Link2, Loader2, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+// MFA mandate cutover. Accounts created on or after this date must have at
+// least one verified TOTP factor before they can connect a Plaid Item.
+// Older accounts are grandfathered (we strongly encourage TOTP in Settings,
+// but don't block them retroactively to avoid forcing existing users to
+// scramble for an authenticator app the next time they sync).
+const MFA_MANDATE_AFTER = new Date('2026-09-30T00:00:00Z');
 
 // Inner component — only rendered when a real link_token is ready.
 // This ensures usePlaidLink is never called with a null token.
@@ -59,14 +67,39 @@ function PlaidLinkOpener({ linkToken, onSuccess, onError, className }) {
 }
 
 export default function PlaidConnectButton({ onSuccess, className }) {
-  const { user, isPro } = useAuth();
+  const { user, isPro, listMfaFactors } = useAuth();
+  const navigate = useNavigate();
   const [linkToken, setLinkToken] = useState(null);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [mfaCheck, setMfaCheck] = useState({ loading: true, blocked: false });
+
+  // Determine if this user must enroll TOTP before connecting Plaid.
+  // Accounts created before MFA_MANDATE_AFTER are grandfathered.
+  useEffect(() => {
+    if (!user) return;
+    const createdAt = user.created_at ? new Date(user.created_at) : new Date();
+    if (createdAt < MFA_MANDATE_AFTER) {
+      setMfaCheck({ loading: false, blocked: false });
+      return;
+    }
+    let cancelled = false;
+    listMfaFactors?.()
+      .then(data => {
+        if (cancelled) return;
+        const verified = (data?.totp || []).some(f => f.status === 'verified');
+        setMfaCheck({ loading: false, blocked: !verified });
+      })
+      .catch(() => {
+        if (!cancelled) setMfaCheck({ loading: false, blocked: false });
+      });
+    return () => { cancelled = true; };
+  }, [user, listMfaFactors]);
 
   useEffect(() => {
     if (!user || !isPro) return;
+    if (mfaCheck.blocked || mfaCheck.loading) return;
     let cancelled = false;
     setFetching(true);
     setError(null);
@@ -87,9 +120,30 @@ export default function PlaidConnectButton({ onSuccess, className }) {
         .finally(() => { if (!cancelled) setFetching(false); });
     });
     return () => { cancelled = true; };
-  }, [user?.id, isPro, attempt]);
+  }, [user?.id, isPro, attempt, mfaCheck.blocked, mfaCheck.loading]);
 
   if (!isPro) return null;
+
+  if (mfaCheck.blocked) {
+    return (
+      <div className={cn('flex flex-col gap-1.5', className)}>
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium">Two-factor authentication required</p>
+            <p className="text-amber-200/80">Enable TOTP in Settings before connecting a brokerage.</p>
+          </div>
+        </div>
+        <Button
+          onClick={() => navigate('/settings')}
+          variant="outline"
+          className="gap-2 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+        >
+          <ShieldAlert className="w-4 h-4" /> Set up 2FA
+        </Button>
+      </div>
+    );
+  }
 
   if (fetching) {
     return (

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { User, Eye, Shield, Bell, RefreshCw, AlertTriangle, LogOut, Download, Lock, Smartphone, Monitor, Coins, CheckCircle2, Clock, Palette, Zap, ArrowRight, Trash2 } from 'lucide-react';
+import { User, Eye, Shield, Bell, RefreshCw, AlertTriangle, LogOut, Download, Lock, Monitor, Coins, CheckCircle2, Clock, Palette, Zap, ArrowRight, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ThemedSwitch from '@/components/ui/switch-themed';
+import MfaEnrollment from '@/components/settings/MfaEnrollment';
 import PageHeader from '@/components/shared/PageHeader';
 import ThemeSelector from '@/components/settings/ThemeSelector';
 import CacheManagement from '@/components/settings/CacheManagement';
@@ -28,7 +29,6 @@ export default function Settings() {
   const [excludedAccounts, setExcludedAccounts] = useState([]);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [priceAlerts, setPriceAlerts] = useState(true);
-  const [twoFactor, setTwoFactor] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
   const [customCursorEnabled, setCustomCursorEnabled] = useState(() => {
     try {
@@ -285,16 +285,7 @@ export default function Settings() {
               {sendingReset ? 'Sending…' : 'Change Password'}
             </Button>
           </div>
-          <div className="flex items-center justify-between py-2 border-b border-border/40">
-            <div className="flex items-center gap-3">
-              <Smartphone className="w-4 h-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium">Two-Factor Authentication</p>
-                <p className="text-xs text-muted-foreground">Coming soon — extra security for your account</p>
-              </div>
-            </div>
-            <ThemedSwitch checked={twoFactor} onCheckedChange={setTwoFactor} disabled className="opacity-50" />
-          </div>
+          <MfaEnrollment />
           <div className="flex items-center justify-between py-2 border-b border-border/40">
             <div className="flex items-center gap-3">
               <Monitor className="w-4 h-4 text-muted-foreground" />

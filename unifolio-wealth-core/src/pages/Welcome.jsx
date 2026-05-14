@@ -11,12 +11,13 @@ import LoginBrandReveal from '@/components/shared/LoginBrandReveal';
 import { useAuth } from '@/lib/AuthContext';
 import { useTheme } from '@/lib/ThemeContext';
 import { cn } from '@/lib/utils';
+import MfaChallenge from '@/components/auth/MfaChallenge';
 
 const REMEMBERED_EMAIL_KEY = 'unifolio_remembered_email';
 
 export default function Welcome() {
   const navigate = useNavigate();
-  const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice, sendPasswordReset } = useAuth();
+  const { signIn, signUp, enterDemoMode, authNotice, clearAuthNotice, sendPasswordReset, getAuthenticatorAssuranceLevel } = useAuth();
   const { setRandomTheme, chartColors } = useTheme();
 
   const [tab, setTab] = useState('signin'); // 'signin' | 'signup' | 'forgot'
@@ -35,6 +36,7 @@ export default function Welcome() {
   });
   const [logoHovered, setLogoHovered] = useState(false);
   const [logoFlung, setLogoFlung] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
 
   useEffect(() => {
     if (!authNotice) return;
@@ -64,7 +66,20 @@ export default function Welcome() {
       } catch {
         // Remember-me is a local convenience only.
       }
-      navigate('/holdings');
+      // If the user has TOTP enrolled, Supabase returns a session at AAL1
+      // until the TOTP code is verified. Check whether AAL2 is required.
+      let needsMfa = false;
+      try {
+        const aal = await getAuthenticatorAssuranceLevel?.();
+        needsMfa = aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2';
+      } catch {
+        // If the AAL probe fails, fall through and let protected routes handle it.
+      }
+      if (needsMfa) {
+        setMfaRequired(true);
+      } else {
+        navigate('/holdings');
+      }
     } catch (err) {
       setError(err.message || 'Sign in failed. Check your email and password.');
     } finally {
@@ -143,8 +158,15 @@ export default function Welcome() {
 
         {/* Main card */}
         <div className="bg-card/72 backdrop-blur-xl border border-border/70 rounded-2xl p-5 sm:p-7 shadow-2xl shadow-primary/10 space-y-5">
+          {/* MFA challenge — replaces the rest of the card while AAL2 is required. */}
+          {mfaRequired && (
+            <MfaChallenge
+              onVerified={() => { setMfaRequired(false); navigate('/holdings'); }}
+              onCancel={() => { setMfaRequired(false); }}
+            />
+          )}
           {/* Tabs */}
-          {tab !== 'forgot' && (
+          {!mfaRequired && tab !== 'forgot' && (
             <div className="flex rounded-lg bg-muted/40 p-0.5 gap-0.5">
               <button
                 onClick={() => { setTab('signin'); setError(''); setSignupSuccess(false); clearAuthNotice?.(); }}
@@ -167,7 +189,7 @@ export default function Welcome() {
             </div>
           )}
 
-          {authNotice && (
+          {!mfaRequired && authNotice && (
             <div
               className={cn(
                 'rounded-lg border px-3 py-2 text-xs leading-relaxed',
@@ -181,7 +203,7 @@ export default function Welcome() {
           )}
 
           {/* Sign in form */}
-          {tab === 'signin' && (
+          {!mfaRequired && tab === 'signin' && (
             <form
               onSubmit={handleSignIn}
               onKeyDown={(event) => {
@@ -238,7 +260,7 @@ export default function Welcome() {
           )}
 
           {/* Sign up form */}
-          {tab === 'signup' && !signupSuccess && (
+          {!mfaRequired && tab === 'signup' && !signupSuccess && (
             <form onSubmit={handleSignUp} className="space-y-3">
               <Input
                 type="text"
@@ -290,7 +312,7 @@ export default function Welcome() {
           )}
 
           {/* Sign up success */}
-          {tab === 'signup' && signupSuccess && (
+          {!mfaRequired && tab === 'signup' && signupSuccess && (
             <div className="text-center py-4 space-y-2">
               <div className="text-2xl">📬</div>
               <p className="text-foreground font-medium">Check your email</p>
@@ -302,7 +324,7 @@ export default function Welcome() {
           )}
 
           {/* Forgot password form */}
-          {tab === 'forgot' && !forgotSent && (
+          {!mfaRequired && tab === 'forgot' && !forgotSent && (
             <form onSubmit={handleForgot} className="space-y-3">
               <div>
                 <p className="text-foreground font-medium text-sm mb-1">Reset your password</p>
@@ -335,7 +357,7 @@ export default function Welcome() {
           )}
 
           {/* Forgot password sent confirmation */}
-          {tab === 'forgot' && forgotSent && (
+          {!mfaRequired && tab === 'forgot' && forgotSent && (
             <div className="text-center py-2 space-y-2">
               <div className="text-2xl">📬</div>
               <p className="text-foreground font-medium">Check your inbox</p>
@@ -353,7 +375,7 @@ export default function Welcome() {
             </div>
           )}
 
-          {tab !== 'forgot' && (
+          {!mfaRequired && tab !== 'forgot' && (
             <>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">

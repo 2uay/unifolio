@@ -47,9 +47,9 @@ Unifolio classifies data by sensitivity:
 ## 4. Access Controls
 
 ### 4.1 User-facing access
-- Authentication via **Supabase Auth** (email + password); minimum 8-character password length and rate-limited authentication attempts to defeat brute-force guessing. HaveIBeenPwned breach-corpus checking is a Supabase Pro feature and will be enabled when Unifolio upgrades from Free (Q3 2026 roadmap, same milestone as consumer MFA).
+- Authentication via **Supabase Auth** (email + password); minimum 8-character password length and rate-limited authentication attempts to defeat brute-force guessing. HaveIBeenPwned breach-corpus checking is a Supabase Pro feature and will be enabled when Unifolio upgrades from Free.
 - Postgres **Row-Level Security (RLS)** policies on every Supabase table containing Class A or B data — confirmed enabled on `accounts`, `holdings`, `transactions`, `realized_positions`, `import_batches`, `user_profiles`, `plaid_items`, `watchlist`, `custom_assets`, `audit_log`. Each policy enforces `user_id = auth.uid()`.
-- MFA via TOTP is on the roadmap (Q3 2026). Email verification is currently required before any account can be activated or connected to Plaid Link.
+- **MFA via TOTP** is available to every user through Supabase Auth's `auth.mfa.*` flow; users enroll an authenticator-app factor from **Settings → Security & Privacy → Two-Factor Authentication**, and authenticated sessions are upgraded to AAL2 via a 6-digit challenge after password sign-in. For accounts created on or after **2026-09-30**, enrollment of at least one verified TOTP factor is **mandatory before the user can connect a Plaid Item**. Accounts created before that date are grandfathered (existing users are encouraged but not forced to enroll, to avoid stranding active connections). Email verification continues to gate account activation for every user regardless of cohort.
 
 ### 4.2 Administrative access
 - Production console access (Vercel, Supabase, GitHub, GoDaddy, Microsoft 365 admin) is restricted to the CEO and protected by **multi-factor authentication on every provider**.
