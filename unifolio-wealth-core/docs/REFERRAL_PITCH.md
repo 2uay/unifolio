@@ -1,17 +1,19 @@
 # Unifolio — Bro-to-Bro Pitch (Canada)
 
-Comprehensive version. Works for the friend with 4 accounts AND the
-friend whose entire net worth is in one Wealthsimple TFSA.
+Audited against the live codebase. Numbers, prices, and features below
+all check out against /src and /docs. Works for the friend with one
+Wealthsimple TFSA AND the friend with four brokers.
 
 ---
 
 ## The text (one friend, any setup)
 
-> Bro. Even if your money's all in ONE Wealthsimple account, your broker
-> is hiding stuff from you — your real ETF exposure, your true sector
-> mix, your ACB across multiple lots, whether you're actually beating
-> inflation. Unifolio shows you all of it in 60 seconds. T5008 done for
-> you in April. Free demo, no signup, no card → **unifolio.ca**. Trust me.
+> Bro. Even if all your money is in ONE Wealthsimple account, your
+> broker is hiding stuff from you — your real ETF exposure, your true
+> sector mix, whether you're actually beating inflation, what trades
+> are gonna get nailed at tax time. Unifolio shows you all of it in
+> 60 seconds, plus does your T5008 in April. Free demo, no signup, no
+> card → **unifolio.ca**. Trust me.
 
 ---
 
@@ -21,21 +23,24 @@ friend whose entire net worth is in one Wealthsimple TFSA.
 > shows you what your broker won't.
 >
 > Even with just one account: it x-rays every ETF you hold so you can
-> see you're secretly 60% in Apple/Microsoft/Nvidia. It tracks your ACB
-> properly through DRIPs, splits and weird lots (Wealthsimple's T5008
-> is wrong the second anything weird happens). It compares your returns
-> against the S&P, TSX, AND Canadian inflation — so you actually know
-> if you're winning. Real-time prices, not the 15-min delay garbage.
+> see you're secretly 60% in Apple/Microsoft/Nvidia. Scores your
+> portfolio out of 100 with 8 factors (concentration, sector mix,
+> currency, cash drag, etc). Flags superficial losses BEFORE the CRA
+> notices. Compares your returns against S&P, TSX, Bitcoin, and
+> Canadian inflation so you actually know if you're winning. Tracks
+> your house, car, gold, crypto, art alongside your brokerage for
+> real net worth. Plus debts/mortgages so you see the actual number.
 >
-> If you DO have multiple accounts (TFSA + RRSP + FHSA + IBKR +
-> whatever), it stitches them all into one portfolio and reconciles
-> transfers so the same shares don't double-count. Full T5008 export
-> per year, hand it to your accountant, done.
+> If you have multiple accounts: it stitches every TFSA / RRSP / FHSA /
+> RESP / RDSP / LIRA / non-reg / margin / IBKR into one portfolio,
+> auto-detects transfers between accounts, reconciles CDRs against
+> their US listings, gives you one T5008 export covering everything.
 >
 > Free demo, no card, no email — just click "Continue without logging
-> in" at **unifolio.ca** and a fake portfolio loads. Pro is $25 CAD/mo
-> (7-day trial, no card till day 8) or $480 CAD one-time Lifetime —
-> Lifetime tier is capped at 500 people and filling up.
+> in" at **unifolio.ca** and a fake portfolio loads so you can feel
+> it. Pro is $25 CAD/year (or $28/mo if you don't commit), 7-day
+> trial, no card till day 8. Lifetime is $480 CAD one-time — capped
+> at 500 founding members and filling up.
 
 ---
 
@@ -49,24 +54,22 @@ holdings.** Big difference.
 Open Wealthsimple. You see XEQT, VFV, ZSP, maybe some individual
 stocks. What you don't see:
 
-- That XEQT + VFV + ZSP combo? You bought Apple FOUR TIMES. ~12% of
-  your "diversified" portfolio is one company.
-- That "1-year return" Wealthsimple proudly shows? It's not
-  annualized, not adjusted for your deposits, and not benchmarked
-  against anything. You have no idea if you're actually winning.
-- That tax loss you harvested in November and rebought in December?
-  **Superficial loss.** CRA disallows it. Your broker won't warn you.
-  You'll find out in April when you owe more than you thought.
-- That T5008 your broker sends? It's correct only if you've never
-  done anything weird. DRIPs, splits, transfers between accounts,
-  multiple lots — every one of those is a chance for the broker math
-  to be wrong, and the CRA blames you, not them.
+- That XEQT + VFV + ZSP combo? You bought Apple FOUR TIMES. A
+  double-digit % of your "diversified" portfolio is one company.
+- That "1-year return" Wealthsimple proudly shows? Not annualized,
+  not adjusted for deposits, not benchmarked against anything.
+  You have no idea if you're actually winning.
+- That tax-loss you harvested in November and rebought in December?
+  **Superficial loss.** CRA disallows it. Your broker won't warn
+  you. You'll find out in April.
 - Your real sector mix, country mix, currency split, asset class,
   cash drag, concentration risk? Not shown. Anywhere.
+- Your actual net worth (brokerage + house + car + gold + crypto −
+  mortgage − loans)? Definitely not. Brokers don't do net worth.
 
-This is true with ONE account. It gets worse with more.
+All of this is true with ONE account. It gets worse with more.
 
-Unifolio fixes all of it.
+Unifolio fixes it.
 
 ---
 
@@ -74,152 +77,173 @@ Unifolio fixes all of it.
 
 Most "portfolio trackers" only make sense if you have a mess of
 accounts. Unifolio is loaded with stuff that pays off even if every
-dollar you have is in one Wealthsimple TFSA.
+dollar is in one Wealthsimple TFSA.
 
 **1. ETF X-Ray** ← *the part that sells itself*
-Click any ETF. Unifolio looks INSIDE it. Then it does it for every
-ETF you hold combined with your direct stocks, and gives you a
-"True Exposure" table: here's your real Apple position, your real
-tech weighting, the >8% concentration you didn't know you had,
-your real Canada-vs-US split. Index investors look at this once
-and go "oh fuck."
+Click any ETF. Unifolio looks INSIDE it. Then does it for every
+ETF you hold combined with your direct stocks, and shows you a
+True Exposure table: here's your real Apple position, your real
+tech weighting, the >8% concentration you didn't know you had.
+Index investors look at this once and go "oh fuck."
 
-**2. Portfolio Health Score**
-A single 0–100 grade with expandable factors: diversification,
-concentration, cash drag, currency mix, sector skew. Think credit
-score, but for your portfolio. Tells you what to fix.
+**2. Portfolio Health Score (0–100, graded A/B/C/D)**
+Eight factors actually scored: concentration risk (top-1 / top-5
+weight), sector diversification (Herfindahl), currency exposure,
+account-type mix, unrealized gain buffer, cash utilization, asset-
+class mix, 30-day performance trend. Click any factor to see why
+your grade is what it is and what to fix.
 
-**3. ACB done correctly**
-Adjusted Cost Base tracked per ticker, per account, automatically.
-Handles DRIPs, splits, multiple buy lots, transfers, return-of-
-capital distributions. Your broker's number is a starting point;
-Unifolio's is what the CRA actually wants.
+**3. ACB across multiple lots**
+Adjusted Cost Base tracked per ticker, per account, across every
+buy lot. Your broker's number is fine if you bought once and never
+moved it; the moment anything's split across multiple buys,
+Unifolio's number is the one you want.
 
 **4. Superficial loss detection**
-Flags every trade that's going to get disallowed at tax time. You
-get to fix it BEFORE the CRA notices.
+Scans for sell-at-loss + buy-back within 30 days on the same
+ticker. Flags every offender in the Tax Report before the CRA
+does, with the date, ticker, and amount.
 
-**5. Real-time prices (free)**
-Live Finnhub feed across every holding and your watchlist.
-Wealthsimple charges extra for this. Questrade charges extra for
-this. IBKR data plans cost money. Unifolio: included.
+**5. T5008-ready CSV export per year**
+ACB, proceeds, gain/loss, currency, account type, settlement date.
+Print, attach, hand to your accountant. 50% inclusion math
+applied automatically.
 
-**6. Performance vs benchmarks that matter**
-Your returns plotted against S&P 500, TSX, Nasdaq, AND **CPI_CA** —
-Canadian inflation. Most Canadians find out for the first time here
+**6. Real benchmarks**
+Plot your returns against S&P 500, Nasdaq, TSX, Bitcoin, Canadian
+CPI (live from Bank of Canada Valet API), US CPI — 10+ benchmarks
+in the dropdown. Most Canadians find out for the first time here
 whether their "great year" actually beat inflation.
 
 **7. Monthly returns table**
-Month-by-month breakdown of your P&L %. Wealthsimple doesn't have
-this. Questrade doesn't have this.
+Month-by-month P&L %. Wealthsimple doesn't have this. Questrade
+doesn't have this.
 
-**8. Heatmap views on your holdings table**
-Color-code your positions by daily P&L, unrealized gain, realized
-gain contribution, portfolio weight, volatility, risk category.
-13+ modes. Spot patterns in your portfolio in 2 seconds.
+**8. 15 heatmap modes on Holdings**
+Color-code positions by portfolio weight, account weight, daily
+P&L $/%, unrealized gain $/%, realized contribution, total
+return, price movement, volatility, custom risk. Spot patterns
+in 2 seconds.
 
-**9. 20+ breakdown donuts**
-Sector, country, currency, asset class, account type, institution,
-concentration, region, risk category, income bucket, ETF
-lookthrough. Every angle on your money you've never seen.
+**9. 23 portfolio breakdown donuts**
+Sector, asset class, currency, account type, institution,
+concentration, country, exchange, registration bucket,
+institution country, cash vs invested, top-5/top-10 + other,
+gain-loss buckets, daily-mover buckets, CAD/USD/other,
+stocks/ETFs/cash/other, region, account size tier, risk category,
+income bucket, ETF lookthrough. Every angle on your money.
 
-**10. Custom assets** — your *real* net worth
-Track your house, car, gold, silver, watches, hockey cards,
-crypto cold storage, private business equity — anything you own —
-alongside your brokerage. With appraisal history. Brokers don't
-do this. Mint is dead.
+**10. Real net worth (custom assets + debts)**
+Track 12 asset types alongside your brokerage: Real Estate,
+Vehicle, Precious Metals, Watches, Jewelry, Collectibles, Art,
+Private Business, Private Investment, Cash, Crypto Wallet,
+Other. With appraisal/valuation history. Plus a dedicated
+Debts & Balances page for mortgage, loans, liabilities. **Brokers
+do not give you a net worth number. Unifolio does.**
 
-**11. AI on your transactions**
-Click any trade, get a plain-English explanation: *"closed your
-TD position, crystallized a $1,240 gain in your non-reg, your
-ACB is now $X on the remaining lots."*
+**11. Watchlist + starred stocks + research windows**
+Track tickers you don't own. Star your favorites. Pop out
+research windows for deep dives without leaving the page. Stock
+news per ticker.
 
-**12. Privacy mode**
+**12. Smart transaction parser**
+Plain-English parsing of your transaction log — auto-extracts
+ticker, qty, price, dates, transfer source/destination from
+broker exports. Auto-links cross-account transfers so the same
+shares don't double-count.
+
+**13. Privacy mode**
 One click hides every dollar in the app. Open it on a plane, at
-the coffee shop, in front of your parents. Brokers don't do this.
+the coffee shop, in front of your parents.
 
-**13. T5008 export, even from one account**
-Pull a tax-ready CSV per year. Hand it to your accountant. Done.
-
-**14. 48+ themes + custom cursor**
-Animated "living" themes for Pro, Liquid Glass for Lifetime.
-Sounds dumb until you spend an hour a day in the app.
+**14. 99 themes including Liquid Glass**
+Custom cursor. Accent bars. Sounds dumb until you spend an hour
+a day in the app.
 
 ---
 
 ### What you get when you have multiple accounts (the bonus)
 
-If your money's split between Wealthsimple, Questrade, your bank's
-direct-investing thing, IBKR, and a CDR account — Unifolio is the
-ONLY thing that gives you the truth across all of them.
+If your money's split between Wealthsimple, Questrade, your bank,
+IBKR, and a CDR account — Unifolio is the ONLY thing that gives
+you the truth across all of them.
 
 - **One reconciled portfolio.** TFSA + RRSP + FHSA + RESP + RDSP +
-  LIRA + non-reg + margin + IBKR, all stitched together. Transfers
-  between accounts are detected so the same shares don't
-  double-count.
+  LIRA + non-reg + margin + IBKR — every Canadian account type,
+  stitched together.
+- **Transfer linker.** Detects when shares moved from one account
+  to another so they don't double-count.
 - **CDR-aware.** Hold Apple as a CDR on Cboe Canada AND Apple on
-  Nasdaq in IBKR? Unifolio knows it's the same company, applies the
-  right FX, gives you your true Apple exposure. Nobody else does
-  this.
-- **Per-account performance.** See which account is actually pulling
-  its weight.
-- **Cross-account ACB.** If you transferred shares between accounts,
-  the cost base follows correctly.
-- **One T5008 export covering every account.** Your accountant will
-  cry tears of joy.
-- **CAD ↔ USD toggle across the entire app.** One click,
-  everything re-denominates.
+  Nasdaq in IBKR? Unifolio treats them as one position with the
+  right FX. The Import wizard has a dedicated Dual-Listing Panel
+  for this.
+- **Per-account performance.** See which account is actually
+  pulling its weight.
+- **One T5008 export covering every account.** Your accountant
+  cries tears of joy.
+- **CAD ↔ USD toggle across the entire app** with live FX.
+
+---
+
+### Importing is easy
+
+- **Plaid Canada** for live broker connections (Pro feature) —
+  holdings sync automatically.
+- **Step-by-step CSV import guides** for every major Canadian
+  broker: Wealthsimple, Questrade, IBKR (with Flex Query template),
+  TD, RBC, BMO, Scotia, CIBC, NBDB — plus Schwab and Chase for
+  cross-border. Logos, screenshots, exact menu paths.
+- **Re-import button** on every past file so you never re-do the
+  work.
 
 ---
 
 ### Why everything else sucks
 
-- **Wealthica** — alive but frozen in 2019. No ETF lookthrough. Tax
-  tools are an afterthought.
-- **Passiv** — rebalancer for Questrade. Different category. Doesn't
-  do tracking.
-- **Sharesight** — Australian. Doesn't speak Canadian tax. No T5008,
-  no CDRs, no Norbert's Gambit, no FHSA.
-- **Your broker dashboards** — silos. Each shows their slice. None
-  shows you what's INSIDE your ETFs.
+- **Wealthica** — alive but frozen. No ETF lookthrough. Tax tools
+  are an afterthought.
+- **Passiv** — rebalancer for Questrade. Different category.
+- **Sharesight** — Australian. No T5008, no CDRs, no FHSA, no
+  Norbert's Gambit.
+- **Broker dashboards** — silos. None shows you what's INSIDE
+  your ETFs. None shows your net worth.
 - **Spreadsheet** — we all said we'd update it. We didn't.
-- **Mint** — dead. Never did investments properly anyway.
-- **Yahoo / Google Finance** — toys. No ACB, no T5008, no tax math.
+- **Mint / Yahoo / Google Finance** — dead, toys, toys.
 
 Unifolio is the only thing that's **Canadian-native + ETF X-Ray +
-real-time + multi-broker + proper tax math.** Nothing else hits
-all five.
+multi-broker + proper tax math + custom assets + debts.** Nothing
+else hits all of them.
 
 ---
 
 ### Why now
 
 - **One Canadian founder.** Ships features every week. Public
-  Discord — you ask, it shows up next week.
-- **Lifetime tier is capped at 500 people.** Once it's full, it's
-  gone. Pro stays, Lifetime closes forever.
-- Pricing is honest:
+  Discord — you ask, it shows up.
+- **Lifetime tier is capped at 500 people.** Once full, gone forever.
+- Honest pricing:
   - **Free demo** — no card, no email, no signup. Just go look.
-  - **Pro: $25 CAD/mo** (or $18 USD annual). 7-day trial. No card
-    until day 8.
-  - **Lifetime: $480 CAD, one time.** Breaks even at ~24 months vs
-    annual, then free for the rest of your life. Comes with
+  - **Pro: $25 CAD/year** (billed annually) or **$28 CAD/mo**.
+    7-day trial, no card until day 8. ($18 USD / $20 USD if you
+    bill in USD.)
+  - **Lifetime: $480 CAD, one time.** Breaks even at ~24 months
+    vs annual, then free for the rest of your life. Comes with
     founding-member badge, dedicated support line to the founder,
-    private beta access to features before they ship, feature-
-    request priority, and free access to anything else Unifolio
-    launches (mobile app, advisor mode, whatever).
+    private beta access, feature-request priority, and free access
+    to anything else Unifolio launches.
 
 ---
 
 ### The move
 
 1. Open **unifolio.ca** on your phone right now.
-2. Hit "Continue without logging in." A realistic fake portfolio
-   loads. Click around for 90 seconds. Open Insights. Look at
-   ETF X-Ray. Look at Health Score. Look at the 20 donut charts.
+2. Hit "Continue without logging in." Fake portfolio loads. 90
+   seconds of clicking — open Insights for ETF X-Ray and Health
+   Score, open Holdings for the 23 donuts, open Performance and
+   add the CPI_CA benchmark.
 3. If your reaction is "oh fuck this is sick" — upload your real
-   CSV/Flex from your broker. Your actual portfolio appears in
-   under a minute.
+   CSV/Flex from your broker (guides for all 11 major institutions
+   included). Your actual portfolio appears.
 4. Forward this to one friend who still pretends he knows what he
    owns. He'll thank you in April.
 
