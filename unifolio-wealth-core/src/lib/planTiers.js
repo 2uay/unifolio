@@ -171,6 +171,8 @@ function priceForBilling(tier, billing, currency) {
  * - `addOn`    = extra-accounts surcharge per month
  * - `total`    = base + addOn (per month, or one-time lifetime)
  * - `isLifetime` = true when billing is the lifetime one-time charge
+ *
+ * @param {{ planId?: string, billing?: string, currency?: string, extraAccounts?: number }} [opts]
  */
 export function calcMonthlyPricing({ planId, billing = 'annual', currency = 'USD', extraAccounts = 0 } = {}) {
   const tier = getTier(planId);
@@ -189,6 +191,8 @@ export function calcMonthlyPricing({ planId, billing = 'annual', currency = 'USD
  * Returns the annual total a user pays at a given setup.
  * For monthly billing: 12 × monthly. For annual billing: 12 × per-month-when-annual.
  * For lifetime: the one-time charge.
+ *
+ * @param {{ planId?: string, billing?: string, currency?: string, extraAccounts?: number }} [opts]
  */
 export function calcAnnualPricing({ planId, billing = 'annual', currency = 'USD', extraAccounts = 0 } = {}) {
   const monthly = calcMonthlyPricing({ planId, billing, currency, extraAccounts });

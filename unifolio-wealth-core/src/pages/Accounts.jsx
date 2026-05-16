@@ -171,9 +171,14 @@ export default function Accounts() {
     queryKey: ['customAssets', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
+      // Belt-and-braces user_id filter. Supabase RLS should already scope
+      // these rows to the current user, but an explicit filter prevents
+      // accidental data leakage if RLS policies are ever weakened or
+      // migrated incorrectly.
       const { data, error } = await supabase
         .from('custom_assets')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       if (error) {
         console.warn('[Accounts] custom_assets fetch failed:', error.message);

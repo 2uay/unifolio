@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { X, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,10 @@ import { cn } from '@/lib/utils';
 export default function ColumnCustomizeModal({ visibleColumns, onClose, onSave }) {
   const [visible, setVisible] = useState(visibleColumns || []);
   const [isDirty, setIsDirty] = useState(false);
+  // Guards against React batching two click events before onClose unmounts
+  // us, which would dispatch two Supabase fire-and-forget writes for the
+  // same column-order update.
+  const savingRef = useRef(false);
 
   const availableColumns = COLUMN_DEFINITIONS.filter(col => !visible.includes(col.id));
 
@@ -45,6 +49,8 @@ export default function ColumnCustomizeModal({ visibleColumns, onClose, onSave }
   };
 
   const handleSave = () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     saveColumnOrder(visible);          // localStorage — instant
     saveColumnOrderToSupabase(visible); // Supabase — async, fire-and-forget
     onSave(visible);

@@ -93,16 +93,25 @@ export default function Institutions() {
       const instAccounts = accounts.filter(a => (a.institution_id ?? a.institutionId) === inst.id);
       const accountIds = instAccounts.map(a => a.id);
 
-      // Cascade delete in dependency order
-      if (accountIds.length > 0) {
-        await supabase.from('holdings').delete().in('account_id', accountIds);
-        await supabase.from('transactions').delete().in('account_id', accountIds);
-        await supabase.from('realized_positions').delete().in('account_id', accountIds).then(() => {});
-        await supabase.from('import_batches').delete().in('account_id', accountIds).then(() => {});
+      // Cascade delete in dependency order. Every delete explicitly filters
+      // on user_id as belt-and-braces against an RLS misconfiguration. The
+      // accountIds list is derived from already-RLS-scoped accounts so the
+      // practical risk is low, but a destructive DELETE without an owner
+      // check is a fragile pattern to leave in production.
+      const ownerId = user?.id;
+      if (!ownerId) {
+        console.warn('[Institutions] Refusing to cascade-delete without an authenticated user id');
+        return;
       }
-      await supabase.from('import_batches').delete().eq('institution_id', inst.id);
-      await supabase.from('accounts').delete().eq('institution_id', inst.id);
-      await supabase.from('institutions').delete().eq('id', inst.id);
+      if (accountIds.length > 0) {
+        await supabase.from('holdings').delete().eq('user_id', ownerId).in('account_id', accountIds);
+        await supabase.from('transactions').delete().eq('user_id', ownerId).in('account_id', accountIds);
+        await supabase.from('realized_positions').delete().eq('user_id', ownerId).in('account_id', accountIds);
+        await supabase.from('import_batches').delete().eq('user_id', ownerId).in('account_id', accountIds);
+      }
+      await supabase.from('import_batches').delete().eq('user_id', ownerId).eq('institution_id', inst.id);
+      await supabase.from('accounts').delete().eq('user_id', ownerId).eq('institution_id', inst.id);
+      await supabase.from('institutions').delete().eq('user_id', ownerId).eq('id', inst.id);
 
       // Prune localStorage
       try {

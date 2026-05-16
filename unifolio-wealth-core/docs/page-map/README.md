@@ -2,6 +2,13 @@
 
 Auto-captured from `https://unifolio.ca` in demo mode. Re-run with `npm run screenshot`.
 
+> **⚠️ STALE — REGENERATE BEFORE RELYING ON THESE.** The PNGs in this folder
+> were captured before the demo-mode persistence fix landed, so every image
+> shows the sign-in page rather than the routed content. The capture script
+> now works correctly thanks to `unifolio_demo_mode_active` in localStorage —
+> just re-run `npm run screenshot` once Playwright Chromium is installed
+> locally (`npx playwright install chromium`).
+
 | Route | Page | Screenshot |
 |-------|------|------------|
 | `/` | Dashboard | ![dashboard](./dashboard.png) |

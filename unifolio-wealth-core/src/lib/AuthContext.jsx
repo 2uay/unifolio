@@ -4,6 +4,28 @@ import { writeAudit } from '@/lib/auditLog';
 
 const AuthContext = createContext();
 
+// Persisted across reloads so that deep links into demo mode (and the
+// `/holdings` etc. routes during the screenshot tooling) survive a full page
+// reload. Without this, anyone hitting a demo-mode URL directly is bounced
+// to the Welcome page.
+const DEMO_MODE_STORAGE_KEY = 'unifolio_demo_mode_active';
+
+function readDemoModeFromStorage() {
+  if (typeof window === 'undefined') return false;
+  try { return window.localStorage.getItem(DEMO_MODE_STORAGE_KEY) === 'true'; } catch { return false; }
+}
+
+function writeDemoModeToStorage(value) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) window.localStorage.setItem(DEMO_MODE_STORAGE_KEY, 'true');
+    else window.localStorage.removeItem(DEMO_MODE_STORAGE_KEY);
+  } catch {
+    // localStorage may be blocked (private browsing, ITP, etc.); demo mode
+    // still works for the current page session even when it can't persist.
+  }
+}
+
 function withTimeout(promise, ms, label) {
   let timer;
   return Promise.race([
@@ -92,7 +114,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(() => readDemoModeFromStorage());
   const [authError, setAuthError] = useState(null);
   const [authNotice, setAuthNotice] = useState(null);
   const [plan, setPlan] = useState('free');
@@ -110,17 +132,24 @@ export const AuthProvider = ({ children }) => {
         setUser(session.user);
         setIsAuthenticated(true);
         setIsDemoMode(false);
+        writeDemoModeToStorage(false);
         // app_metadata.plan is authoritative (set by server, not editable by user)
         const metaPlan = session.user.app_metadata?.plan;
         if (metaPlan) {
           setPlan(metaPlan);
           setIsPlanLoaded(true);
         } else {
-          // Fall back to user_profiles table (legacy / future migration path)
-          supabase.from('user_profiles').select('plan').eq('user_id', session.user.id).single()
-            .then(({ data }) => { if (data?.plan) setPlan(data.plan); })
+          // Fall back to user_profiles table (legacy / future migration path).
+          // Capture the user id so a sign-out mid-flight doesn't apply the
+          // resolved plan to whoever signs in next.
+          const expectedUserId = session.user.id;
+          supabase.from('user_profiles').select('plan').eq('user_id', expectedUserId).single()
+            .then(({ data }) => {
+              if (!mounted) return;
+              if (data?.plan) setPlan(prev => (prev === 'free' ? data.plan : prev));
+            })
             .catch(() => {})
-            .finally(() => setIsPlanLoaded(true));
+            .finally(() => { if (mounted) setIsPlanLoaded(true); });
         }
       } else {
         setUser(null);
@@ -294,14 +323,18 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     setAuthError(null);
     setAuthNotice(null);
-    // Audit BEFORE the signOut so the JWT is still valid for the audit POST.
-    writeAudit('auth_signout', {});
+    // Audit BEFORE the signOut completes so the JWT is still valid for the
+    // audit POST. writeAudit awaits getSession() internally; without the
+    // await here, signOut({scope:'local'}) clears the local session before
+    // writeAudit's getSession resolves and the audit no-ops silently.
+    await writeAudit('auth_signout', {});
     try {
       await withTimeout(supabase.auth.signOut({ scope: 'local' }), 3000, 'Sign out');
     } catch (error) {
       console.warn('[Auth] Sign out did not complete cleanly; clearing local session:', error?.message || error);
     } finally {
       clearSupabaseAuthStorage();
+      writeDemoModeToStorage(false);
       setUser(null);
       setIsAuthenticated(false);
       setIsDemoMode(false);
@@ -312,10 +345,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const enterDemoMode = () => {
+    writeDemoModeToStorage(true);
     setIsDemoMode(true);
   };
 
   const exitDemoMode = () => {
+    writeDemoModeToStorage(false);
     setIsDemoMode(false);
   };
 
