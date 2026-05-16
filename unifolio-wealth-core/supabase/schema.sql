@@ -552,3 +552,144 @@ create index if not exists billing_orders_status on billing_orders(status, creat
 alter table user_profiles add column if not exists stripe_customer_id text;
 alter table user_profiles add column if not exists stripe_subscription_id text;
 
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- Households (Sprint 3: spousal linking)
+--
+-- CRA's superficial-loss rule (ITA section 54) considers two taxpayers
+-- "affiliated persons" when they are spouses or common-law partners. If
+-- either spouse buys the same security within 30 days before/after the
+-- other spouse sells at a loss, the loss is denied. The harvest engine
+-- needs visibility into spousal holdings to flag this risk BEFORE the
+-- trade — that's the whole point of this table.
+--
+-- Income-splitting strategies (spousal RRSP contributions, attribution-
+-- rule-aware non-registered transfers, pension splitting) also benefit
+-- from a household graph, but those are downstream consumers of the same
+-- data model.
+
+create table if not exists households (
+  id                uuid primary key default gen_random_uuid(),
+  primary_user_id   uuid not null references auth.users(id) on delete cascade,
+  display_name      text,
+  created_at        timestamptz not null default now()
+);
+alter table households enable row level security;
+-- Members can read; primary can write.
+create policy "household members read household" on households
+  for select using (
+    exists (select 1 from household_members hm where hm.household_id = households.id and hm.user_id = auth.uid())
+  );
+create policy "household primary writes household" on households
+  for all using (auth.uid() = primary_user_id) with check (auth.uid() = primary_user_id);
+
+create table if not exists household_members (
+  household_id      uuid not null references households(id) on delete cascade,
+  user_id           uuid not null references auth.users(id) on delete cascade,
+  role              text not null default 'spouse',  -- 'primary' | 'spouse'
+  joined_at         timestamptz not null default now(),
+  primary key (household_id, user_id)
+);
+alter table household_members enable row level security;
+-- Members can see each other (this is what powers spousal holdings visibility).
+create policy "household members see roster" on household_members
+  for select using (
+    exists (select 1 from household_members self where self.household_id = household_members.household_id and self.user_id = auth.uid())
+  );
+-- Primary user can insert/remove members. Spouses can remove themselves
+-- (leave) but cannot add others.
+create policy "household primary writes members" on household_members
+  for insert with check (
+    exists (select 1 from households h where h.id = household_id and h.primary_user_id = auth.uid())
+  );
+create policy "household members can leave" on household_members
+  for delete using (
+    auth.uid() = user_id
+    or exists (select 1 from households h where h.id = household_id and h.primary_user_id = auth.uid())
+  );
+create index if not exists household_members_user on household_members(user_id);
+
+create table if not exists household_invites (
+  id                uuid primary key default gen_random_uuid(),
+  household_id      uuid not null references households(id) on delete cascade,
+  invited_email     text not null,
+  invite_token      text not null unique,
+  status            text not null default 'pending', -- 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked'
+  invited_by        uuid not null references auth.users(id) on delete cascade,
+  expires_at        timestamptz not null default (now() + interval '14 days'),
+  created_at        timestamptz not null default now(),
+  accepted_at       timestamptz
+);
+alter table household_invites enable row level security;
+-- Invitee reads by token (no auth check — the token IS the access control).
+-- Anyone with the token can read; the accept endpoint then enforces email-
+-- match and expiry. Inviter reads their own outstanding invites.
+create policy "inviter reads own invites" on household_invites
+  for select using (auth.uid() = invited_by);
+create policy "inviter writes invites" on household_invites
+  for all using (auth.uid() = invited_by) with check (auth.uid() = invited_by);
+create index if not exists household_invites_token on household_invites(invite_token);
+create index if not exists household_invites_email on household_invites(invited_email, status);
+
+-- Cross-spousal holdings + transactions views. RLS on holdings/transactions
+-- already permits the user themselves to read. We need spouses to be able
+-- to read their partner's tickers + recent transactions WITHOUT exposing
+-- account-level detail (account names, balances). These two views project
+-- only the columns we want spouses to see, and have their own RLS that
+-- whitelists household members.
+create or replace view household_holdings_view as
+  select
+    h.user_id          as owner_user_id,
+    h.ticker,
+    h.quantity,
+    h.currency,
+    h.account_type,
+    h.updated_at
+  from holdings h;
+
+-- Postgres views inherit the underlying table's RLS by default in Supabase
+-- (security_invoker). Holdings RLS only lets the owner read, so spouses
+-- can't see each other through the view yet. We add a SECURITY DEFINER
+-- function that joins household_members and returns only rows owned by
+-- the user OR by a household co-member. RLS-equivalent without touching
+-- the holdings policy.
+create or replace function get_household_holdings()
+returns table (owner_user_id uuid, ticker text, quantity numeric, currency text, account_type text, updated_at timestamptz)
+language sql
+security definer
+set search_path = public
+as $$
+  select h.user_id, h.ticker, h.quantity, h.currency, h.account_type, h.updated_at
+  from holdings h
+  where h.user_id = auth.uid()
+     or h.user_id in (
+       select hm.user_id
+       from household_members hm
+       where hm.household_id in (
+         select hm2.household_id from household_members hm2 where hm2.user_id = auth.uid()
+       )
+     );
+$$;
+grant execute on function get_household_holdings() to authenticated;
+
+create or replace function get_household_recent_transactions(since_days integer default 35)
+returns table (owner_user_id uuid, ticker text, transaction_type text, trade_date date, quantity numeric, currency text)
+language sql
+security definer
+set search_path = public
+as $$
+  select t.user_id, t.ticker, t.transaction_type, t.trade_date, t.quantity, t.currency
+  from transactions t
+  where t.trade_date >= (current_date - (since_days || ' days')::interval)
+    and (
+      t.user_id = auth.uid()
+      or t.user_id in (
+        select hm.user_id
+        from household_members hm
+        where hm.household_id in (
+          select hm2.household_id from household_members hm2 where hm2.user_id = auth.uid()
+        )
+      )
+    );
+$$;
+grant execute on function get_household_recent_transactions(integer) to authenticated;

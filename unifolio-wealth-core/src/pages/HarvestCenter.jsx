@@ -14,6 +14,8 @@ import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { buildHarvestPlan, buildHarvestPlanMarkdown } from '@/lib/taxOptimizer';
+import { useQuery } from '@tanstack/react-query';
+import { getHouseholdRecentTransactions, getCurrentHousehold } from '@/lib/householdClient';
 
 const PM = '••••••';
 
@@ -136,7 +138,8 @@ function OpportunityCard({ opp, privacyMode }) {
             <span className="font-mono font-semibold text-sm text-foreground">{opp.ticker}</span>
             {opp.wouldTriggerSuperficial ? (
               <span className="rounded-full bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-[10px] font-semibold text-red-400 flex items-center gap-1">
-                <AlertTriangle className="h-2.5 w-2.5" /> Superficial Loss — Blocked
+                <AlertTriangle className="h-2.5 w-2.5" />
+                {opp.blockedBySpouse ? 'Blocked by Spouse Buy' : 'Superficial Loss — Blocked'}
               </span>
             ) : opp.severity === 'high' ? (
               <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">High Impact</span>
@@ -159,14 +162,27 @@ function OpportunityCard({ opp, privacyMode }) {
         <div className="border-t border-border/30 px-4 py-3.5 space-y-3 bg-secondary/10">
           {opp.wouldTriggerSuperficial ? (
             <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 space-y-1.5">
-              <p className="text-xs font-medium text-red-400">Superficial-loss rule triggered</p>
+              <p className="text-xs font-medium text-red-400">
+                {opp.blockedBySpouse ? 'Spousal superficial-loss rule triggered' : 'Superficial-loss rule triggered'}
+              </p>
               <p className="text-[11px] text-foreground/80 leading-relaxed">
-                You bought <span className="font-mono">{opp.ticker}</span> on {opp.lastBuyDate} in {opp.lastBuyAccount}.
-                Selling now would deny the loss — the CRA adds the disallowed loss to the ACB of the remaining shares instead.
+                {opp.blockedBySpouse ? (
+                  <>
+                    Your spouse bought <span className="font-mono">{opp.ticker}</span> on {opp.lastBuyDate}.
+                    CRA treats spouses as "affiliated persons" under ITA section 251.1 — selling your shares at a loss now would deny the loss.
+                  </>
+                ) : (
+                  <>
+                    You bought <span className="font-mono">{opp.ticker}</span> on {opp.lastBuyDate} in {opp.lastBuyAccount}.
+                    Selling now would deny the loss — the CRA adds the disallowed loss to the ACB of the remaining shares instead.
+                  </>
+                )}
               </p>
               <p className="text-[11px] text-amber-400/90 leading-relaxed">
                 <strong>Workaround:</strong> wait until {opp.lastBuyDate ? new Date(new Date(opp.lastBuyDate).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : '30+ days after the recent buy'} before selling.
-                Or sell ALL shares in EVERY account and stay out for 30 days.
+                {opp.blockedBySpouse
+                  ? ' Or coordinate so neither spouse holds the security for 30 days.'
+                  : ' Or sell ALL shares in EVERY account and stay out for 30 days.'}
               </p>
             </div>
           ) : (
@@ -264,9 +280,36 @@ export default function HarvestCenter() {
     return () => { cancelled = true; };
   }, [user?.id]);
 
+  // Cross-spouse superficial-loss detection: when the user has linked their
+  // spouse via /profile, pull the spouse's recent (≤35 day) transactions
+  // via the SECURITY DEFINER RPC and pass them into the harvest engine.
+  // Returns rows for BOTH spouses; we filter to spouse-only before passing
+  // to buildHarvestPlan so we don't double-count the user's own buys.
+  const { data: household } = useQuery({
+    queryKey: ['household', user?.id],
+    queryFn: getCurrentHousehold,
+    enabled: !!user?.id,
+  });
+  const { data: householdTxnsRaw } = useQuery({
+    queryKey: ['householdRecentTxns', user?.id, household?.householdId],
+    queryFn: () => getHouseholdRecentTransactions(35),
+    enabled: !!user?.id && !!household?.householdId,
+  });
+  const spouseTransactions = useMemo(() => {
+    if (!Array.isArray(householdTxnsRaw) || !user?.id) return null;
+    return householdTxnsRaw
+      .filter(t => t.owner_user_id !== user.id)
+      .map(t => ({
+        ticker: t.ticker,
+        transaction_type: t.transaction_type,
+        date: t.trade_date,
+        quantity: t.quantity,
+      }));
+  }, [householdTxnsRaw, user?.id]);
+
   const plan = useMemo(
-    () => buildHarvestPlan({ holdings, accounts, transactions, realizedPositions, profile }),
-    [holdings, accounts, transactions, realizedPositions, profile],
+    () => buildHarvestPlan({ holdings, accounts, transactions, realizedPositions, profile, spouseTransactions }),
+    [holdings, accounts, transactions, realizedPositions, profile, spouseTransactions],
   );
 
   if (isEmptyPortfolio) {
@@ -368,7 +411,15 @@ export default function HarvestCenter() {
         <div className="rounded-xl border border-border/40 bg-card/30 px-4 py-3 flex items-start gap-2.5">
           <AlertTriangle className="h-3.5 w-3.5 mt-0.5 text-amber-400 flex-shrink-0" />
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            <strong className="text-foreground/80">The superficial-loss rule also applies to your spouse's accounts.</strong> Unifolio cannot see those — verify with your spouse before placing trades. For informational purposes only; not tax advice.
+            {plan.spouseLinkActive ? (
+              <>
+                <strong className="text-foreground/80">Spousal accounts ARE checked</strong> via the household link in your profile. Cross-spouse superficial-loss blocks are marked "Blocked by Spouse Buy" above. For informational purposes only; not tax advice.
+              </>
+            ) : (
+              <>
+                <strong className="text-foreground/80">The superficial-loss rule also applies to your spouse's accounts.</strong> <Link to="/profile" className="text-primary hover:underline">Link your spouse</Link> to enable cross-spouse detection. For informational purposes only; not tax advice.
+              </>
+            )}
           </p>
         </div>
       </div>

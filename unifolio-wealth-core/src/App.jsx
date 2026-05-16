@@ -46,6 +46,7 @@ import Community from '@/pages/Community';
 import Learn from '@/pages/Learn';
 import Checkout from '@/pages/Checkout';
 import CheckoutSuccess from '@/pages/CheckoutSuccess';
+import HouseholdAccept from '@/pages/HouseholdAccept';
 
 const isProDomain = typeof window !== 'undefined' &&
   (window.location.hostname === 'unifolio.pro' || window.location.hostname === 'www.unifolio.pro');
@@ -98,6 +99,7 @@ const AuthenticatedApp = () => {
         <Route path="/plans" element={<Plans />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/checkout/success" element={<CheckoutSuccess />} />
+        <Route path="/household/accept" element={<HouseholdAccept />} />
         <Route path="/import" element={<ImportCenter />} />
         <Route path="/tax" element={<TaxReport />} />
         <Route path="/optimize" element={<TaxOptimizer />} />

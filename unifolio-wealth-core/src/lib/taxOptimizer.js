@@ -678,12 +678,16 @@ export function calcTaxYearProgress(asOf = new Date()) {
   };
 }
 
-// ─── CROSS-ACCOUNT SUPERFICIAL BUY CHECK ──────────────────────
-// CRA's 30-day window applies across ALL accounts the user controls
-// (and the spouse's accounts, which we cannot see). We index every Buy
-// across every account, by ticker, and report the most recent one.
+// ─── CROSS-ACCOUNT + CROSS-SPOUSE SUPERFICIAL BUY CHECK ──────────────
+// CRA's 30-day window applies across ALL accounts the user controls AND
+// the accounts of any "affiliated person" — most commonly a spouse or
+// common-law partner (ITA section 251.1). Sprint 3 added the household
+// graph; when the user has linked their spouse via /profile, we extend
+// the recent-buy index with the spouse's transactions and tag each row
+// with `ownerKind: 'self' | 'spouse'` so the UI can explain WHY a loss
+// would be denied.
 
-function buildRecentBuyIndex(transactions, asOf = new Date()) {
+function buildRecentBuyIndex(transactions, asOf = new Date(), { ownerKind = 'self' } = {}) {
   const thirtyDaysAgo = asOf.getTime() - 30 * 24 * 60 * 60 * 1000;
   const thirtyDaysAhead = asOf.getTime() + 30 * 24 * 60 * 60 * 1000;
   const idx = {};
@@ -694,18 +698,30 @@ function buildRecentBuyIndex(transactions, asOf = new Date()) {
     })
     .forEach(t => {
       const tickr = String(t.ticker || '').toUpperCase();
-      const dt = t.date ? new Date(t.date).getTime() : 0;
+      const rawDate = t.date ?? t.trade_date;
+      const dt = rawDate ? new Date(rawDate).getTime() : 0;
       if (!tickr || dt < thirtyDaysAgo || dt > thirtyDaysAhead) return;
       if (!idx[tickr]) idx[tickr] = [];
       idx[tickr].push({
-        date: t.date,
-        account_id: t.account_id ?? t.accountId,
+        date: rawDate,
+        account_id: t.account_id ?? t.accountId ?? null,
         quantity: safeNumber(t.quantity),
         price: safeNumber(t.price),
+        ownerKind,
       });
     });
   Object.values(idx).forEach(arr => arr.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   return idx;
+}
+
+// Merges two recent-buy indexes preserving sort order (most recent first).
+function mergeRecentBuyIndexes(a, b) {
+  const out = { ...a };
+  Object.entries(b).forEach(([ticker, rows]) => {
+    out[ticker] = [...(out[ticker] || []), ...rows]
+      .sort((x, y) => new Date(y.date).getTime() - new Date(x.date).getTime());
+  });
+  return out;
 }
 
 // ─── BUILD HARVEST PLAN ───────────────────────────────────────
@@ -721,7 +737,7 @@ function buildRecentBuyIndex(transactions, asOf = new Date()) {
  * @param {Date} [input.asOf]
  */
 export function buildHarvestPlan(input = {}) {
-  const { holdings, accounts, transactions, realizedPositions, profile = {}, asOf } = input;
+  const { holdings, accounts, transactions, realizedPositions, profile = {}, asOf, spouseTransactions = null } = input;
   const now = asOf instanceof Date ? asOf : new Date();
   const rate = /** @type {{ marginal_tax_rate?: number }} */ (profile).marginal_tax_rate;
   const marginalTaxRate = typeof rate === 'number' ? rate / 100 : 0.30;
@@ -733,7 +749,16 @@ export function buildHarvestPlan(input = {}) {
   // Cross-account index — every Buy of every ticker the user has made in any
   // account in the last 30 days. This is what the CRA superficial-loss rule
   // actually catches (it doesn't care which account did the buy).
-  const recentBuyIndex = buildRecentBuyIndex(transactions, now);
+  let recentBuyIndex = buildRecentBuyIndex(transactions, now, { ownerKind: 'self' });
+  // Cross-spouse extension: when the user has linked their spouse via
+  // /profile, spouseTransactions is the list of recent Buy/Sell rows from
+  // the get_household_recent_transactions RPC. Tagging the merged rows as
+  // ownerKind='spouse' lets the UI explain WHY a loss is blocked.
+  const hasSpouseLink = Array.isArray(spouseTransactions);
+  if (hasSpouseLink && spouseTransactions.length > 0) {
+    const spouseIndex = buildRecentBuyIndex(spouseTransactions, now, { ownerKind: 'spouse' });
+    recentBuyIndex = mergeRecentBuyIndexes(recentBuyIndex, spouseIndex);
+  }
 
   // Build per-opportunity entries.
   const opportunities = [];
@@ -750,7 +775,13 @@ export function buildHarvestPlan(input = {}) {
       const recentBuys = recentBuyIndex[ticker] || [];
       const wouldTriggerSuperficial = recentBuys.length > 0;
       const lastBuy = recentBuys[0] || null;
-      const lastBuyAccount = lastBuy ? (accountMap[lastBuy.account_id]?.account_name || accountMap[lastBuy.account_id]?.account_type || lastBuy.account_id) : null;
+      const blockedBySpouse = !!lastBuy && lastBuy.ownerKind === 'spouse';
+      const spouseRecentBuyCount = recentBuys.filter(b => b.ownerKind === 'spouse').length;
+      const lastBuyAccount = lastBuy
+        ? (blockedBySpouse
+            ? "spouse's account"
+            : (accountMap[lastBuy.account_id]?.account_name || accountMap[lastBuy.account_id]?.account_type || lastBuy.account_id))
+        : null;
 
       // Days held — use the holding's earliest purchase_history entry if
       // present; fall back to "unknown".
@@ -778,6 +809,8 @@ export function buildHarvestPlan(input = {}) {
         grossLoss,
         daysHeld,
         wouldTriggerSuperficial,
+        blockedBySpouse,
+        spouseRecentBuyCount,
         lastBuyDate: lastBuy?.date ?? null,
         lastBuyAccount,
         recentBuyCount: recentBuys.length,
@@ -835,6 +868,8 @@ export function buildHarvestPlan(input = {}) {
     carryforwardValueDiscounted: totalProjectedSavings - immediateTaxSavings,
     totalProjectedSavings,
     blockedBySuperficialCount: annotated.filter(o => o.wouldTriggerSuperficial).length,
+    blockedBySpouseCount: annotated.filter(o => o.blockedBySpouse).length,
+    spouseLinkActive: hasSpouseLink,
     opportunities: annotated,
   };
 }
@@ -867,19 +902,26 @@ export function buildHarvestPlanMarkdown(plan, meta = {}) {
   lines.push(`- **Carryforward loss created:** ${fmt(plan.carryforwardLossesCreated)} (present value ~${fmt(plan.carryforwardValueDiscounted)})`);
   lines.push(`- **Total projected tax savings:** ${fmt(plan.totalProjectedSavings)}`);
   if (plan.blockedBySuperficialCount > 0) {
-    lines.push(`- **Blocked by superficial-loss rule:** ${plan.blockedBySuperficialCount} position(s) — see notes below`);
+    const spouseBit = plan.blockedBySpouseCount > 0 ? ` (${plan.blockedBySpouseCount} by spouse's purchases)` : '';
+    lines.push(`- **Blocked by superficial-loss rule:** ${plan.blockedBySuperficialCount} position(s)${spouseBit} — see notes below`);
   }
   lines.push('');
   lines.push('## Recommended Trades');
   lines.push('');
   plan.opportunities.forEach((opp, i) => {
     if (opp.wouldTriggerSuperficial) {
-      lines.push(`### ${i + 1}. ⚠️  ${opp.ticker} — BLOCKED (Superficial Loss Risk)`);
+      const blockLabel = opp.blockedBySpouse ? 'BLOCKED (Spousal Superficial Loss)' : 'BLOCKED (Superficial Loss Risk)';
+      lines.push(`### ${i + 1}. ⚠️  ${opp.ticker} — ${blockLabel}`);
       lines.push('');
       lines.push(`- Unrealized loss: ${fmt(opp.grossLoss)} in ${opp.fromAccount}`);
       lines.push(`- Last Buy of ${opp.ticker}: ${opp.lastBuyDate} in ${opp.lastBuyAccount}`);
-      lines.push(`- Selling now would deny the loss; ACB of remaining shares is adjusted upward instead.`);
-      lines.push(`- **Action:** wait until 30 days after ${opp.lastBuyDate} before selling, OR sell only some lots while leaving 0 shares in any account for 30+ days.`);
+      if (opp.blockedBySpouse) {
+        lines.push(`- CRA treats spouses as "affiliated persons" — a buy by your spouse within 30 days of your sale at a loss denies the loss for you.`);
+        lines.push(`- **Action:** wait until 30 days after your spouse's last buy (${opp.lastBuyDate}), OR coordinate so neither of you holds the security for 30 days.`);
+      } else {
+        lines.push(`- Selling now would deny the loss; ACB of remaining shares is adjusted upward instead.`);
+        lines.push(`- **Action:** wait until 30 days after ${opp.lastBuyDate} before selling, OR sell only some lots while leaving 0 shares in any account for 30+ days.`);
+      }
       lines.push('');
       return;
     }
@@ -907,6 +949,10 @@ export function buildHarvestPlanMarkdown(plan, meta = {}) {
   lines.push('---');
   lines.push('');
   lines.push('_Generated by Unifolio Tax Optimizer. For informational purposes only — not tax advice._');
-  lines.push('_Spousal accounts are part of the superficial-loss rule; this plan does not check them._');
+  if (plan.spouseLinkActive) {
+    lines.push('_Spousal accounts ARE checked in this plan via the household link in /profile._');
+  } else {
+    lines.push('_Spousal accounts are NOT checked in this plan — link your spouse in /profile to enable cross-spouse superficial-loss detection._');
+  }
   return lines.join('\n');
 }

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import HouseholdSection from '@/components/profile/HouseholdSection';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
@@ -365,6 +366,8 @@ export default function Profile() {
           </Button>
         </div>
       </div>
+
+      <HouseholdSection />
 
       <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
         <div className="bg-card rounded-xl border border-border p-4 sm:p-6 space-y-4">
