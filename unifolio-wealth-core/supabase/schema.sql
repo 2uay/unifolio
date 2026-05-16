@@ -237,6 +237,10 @@ create policy "users own their profile" on user_profiles
   for all using (auth.uid() = user_id);
 alter table user_profiles add column if not exists active_import_batch_id text;
 alter table user_profiles add column if not exists plan text default 'free';
+-- Tax Optimizer inputs. marginal_tax_rate is stored as a percent (e.g. 43.41
+-- for 43.41%). province is a 2-letter Canadian province code (ON, BC, etc.).
+alter table user_profiles add column if not exists marginal_tax_rate numeric;
+alter table user_profiles add column if not exists province text;
 
 -- Plaid Items (access tokens stored server-side; client only reads status/institution info)
 create table if not exists plaid_items (
