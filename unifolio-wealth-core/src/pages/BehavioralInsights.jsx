@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Brain, Activity, Repeat, AlertTriangle, Layers, Moon, Clock,
   TrendingUp, TrendingDown, Info, Sparkles,
@@ -10,6 +10,7 @@ import { formatCurrency } from '@/components/shared/ValueDisplay';
 import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import { buildBehavioralProfile } from '@/lib/behavioralEngine';
+import { loadHistoricalPricesForTransactions } from '@/lib/historicalPriceCache';
 
 const PM = '••••••';
 
@@ -293,13 +294,174 @@ function LateNightCard({ data }) {
   );
 }
 
+function PriceCacheLoadingNote({ priceLoadState }) {
+  if (priceLoadState === 'loading') {
+    return <p className="text-muted-foreground italic">Loading historical price bars…</p>;
+  }
+  if (priceLoadState === 'error') {
+    return <p className="text-muted-foreground italic">Couldn't load historical prices from Yahoo. Detector will run on your next visit.</p>;
+  }
+  return <p className="text-muted-foreground italic">Not enough analyzable trades yet (need ≥5 buys/sells with available price history).</p>;
+}
+
+function ChasePatternCard({ data, priceLoadState }) {
+  if (!data || !data.available) {
+    return (
+      <PatternCard icon={TrendingUp} title="Chase Pattern" severity="info">
+        <PriceCacheLoadingNote priceLoadState={priceLoadState} />
+      </PatternCard>
+    );
+  }
+  if (data.sampleSize < 5) {
+    return (
+      <PatternCard icon={TrendingUp} title="Chase Pattern" severity="info">
+        <p className="text-muted-foreground italic">
+          Analyzed {data.sampleSize} buy{data.sampleSize === 1 ? '' : 's'} — need at least 5 with available price history to call it a pattern.
+        </p>
+      </PatternCard>
+    );
+  }
+  const ratePct = (data.chaseRate * 100).toFixed(0);
+  const severity = data.chaseRate >= 0.50 ? 'high' : data.chaseRate >= 0.30 ? 'medium' : 'info';
+  return (
+    <PatternCard icon={TrendingUp} title="Chase Pattern" severity={severity}>
+      <p className="mb-2">
+        <span className="font-mono text-foreground">{ratePct}%</span> of your last {data.sampleSize} buys came after the security had already run up ≥5% in the prior 5 trading days ({data.chaseCount} of {data.sampleSize}).
+      </p>
+      {data.examples.length > 0 && (
+        <>
+          <p className="text-[11px] text-muted-foreground mb-1.5">Hottest entries (largest 5-day run-up before your buy):</p>
+          <ul className="space-y-1 text-[11px]">
+            {data.examples.map((ex, i) => (
+              <li key={`${ex.ticker}-${i}`} className="flex items-center justify-between gap-2 rounded-md bg-secondary/30 px-2 py-1">
+                <span className="font-mono">{ex.ticker}</span>
+                <span className="text-muted-foreground">{ex.date}</span>
+                <span className="font-mono text-amber-400">+{(ex.runUpPct * 100).toFixed(1)}% prior 5d</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </PatternCard>
+  );
+}
+
+function CapitulationCard({ data, priceLoadState }) {
+  if (!data || !data.available) {
+    return (
+      <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity="info">
+        <PriceCacheLoadingNote priceLoadState={priceLoadState} />
+      </PatternCard>
+    );
+  }
+  if (data.sampleSize < 4) {
+    return (
+      <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity="info">
+        <p className="text-muted-foreground italic">
+          Analyzed {data.sampleSize} sell{data.sampleSize === 1 ? '' : 's'} — need at least 4 with available price history to call it a pattern.
+        </p>
+      </PatternCard>
+    );
+  }
+  const ratePct = (data.capitulationRate * 100).toFixed(0);
+  const severity = data.capitulationRate >= 0.40 ? 'high' : data.capitulationRate >= 0.25 ? 'medium' : 'info';
+  return (
+    <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity={severity}>
+      <p className="mb-2">
+        <span className="font-mono text-foreground">{ratePct}%</span> of your last {data.sampleSize} sells came after a ≥8% drop in the prior 7 trading days ({data.capitulationCount} of {data.sampleSize}). Selling into weakness locks in losses that often recover.
+      </p>
+      {data.examples.length > 0 && (
+        <>
+          <p className="text-[11px] text-muted-foreground mb-1.5">Sharpest drops before your sell:</p>
+          <ul className="space-y-1 text-[11px]">
+            {data.examples.map((ex, i) => (
+              <li key={`${ex.ticker}-${i}`} className="flex items-center justify-between gap-2 rounded-md bg-secondary/30 px-2 py-1">
+                <span className="font-mono">{ex.ticker}</span>
+                <span className="text-muted-foreground">{ex.date}</span>
+                <span className="font-mono text-red-400">{(ex.drawdownPct * 100).toFixed(1)}% prior 7d</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </PatternCard>
+  );
+}
+
+function PostTradeTimingCard({ data, priceLoadState }) {
+  if (!data || !data.available) {
+    return (
+      <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity="info">
+        <PriceCacheLoadingNote priceLoadState={priceLoadState} />
+      </PatternCard>
+    );
+  }
+  if (data.sampleSize < 5) {
+    return (
+      <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity="info">
+        <p className="text-muted-foreground italic">
+          Need at least 5 analyzable trades with 30 days of follow-through data.
+        </p>
+      </PatternCard>
+    );
+  }
+  const compositePct = data.compositeTimingPct;
+  const severity = compositePct < -0.05 ? 'high' : compositePct < -0.02 ? 'medium' : 'info';
+  const verdict =
+    compositePct === null ? 'Inconclusive.'
+    : compositePct >= 0.02 ? 'Your timing is adding value: on average your buys appreciate and your sells avoid further gains.'
+    : compositePct >= -0.02 ? 'Your timing is roughly neutral over 30-day windows — typical for self-directed traders.'
+    : 'Your timing is working against you: buys tend to decline and sells tend to be followed by further gains.';
+  return (
+    <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity={severity}>
+      <p className="mb-2">{verdict}</p>
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        {data.avgBuyMovePct !== null && (
+          <div className="rounded-md bg-secondary/30 px-2 py-1.5">
+            <p className="text-muted-foreground">Avg 30d after buy</p>
+            <p className={cn('font-mono font-semibold', data.avgBuyMovePct >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+              {data.avgBuyMovePct >= 0 ? '+' : ''}{(data.avgBuyMovePct * 100).toFixed(1)}%
+            </p>
+            <p className="text-[10px] text-muted-foreground">{data.buyAnalyzed} buys</p>
+          </div>
+        )}
+        {data.avgSellMovePct !== null && (
+          <div className="rounded-md bg-secondary/30 px-2 py-1.5">
+            <p className="text-muted-foreground">Avg 30d after sell</p>
+            <p className={cn('font-mono font-semibold', data.avgSellMovePct <= 0 ? 'text-emerald-400' : 'text-red-400')}>
+              {data.avgSellMovePct >= 0 ? '+' : ''}{(data.avgSellMovePct * 100).toFixed(1)}%
+            </p>
+            <p className="text-[10px] text-muted-foreground">{data.sellAnalyzed} sells (positive = "missed gain")</p>
+          </div>
+        )}
+      </div>
+    </PatternCard>
+  );
+}
+
 export default function BehavioralInsights() {
   const { privacyMode } = usePrivacy();
   const { transactions, realizedPositions, holdings, portfolioSnapshots, isEmptyPortfolio } = usePortfolioData();
 
+  // Historical price bars for the v2 detectors (chase, capitulation,
+  // post-trade timing). We fire-and-forget on mount and re-render once
+  // they're ready; the v1 detectors don't depend on prices so the page
+  // is fully usable before the fetch completes.
+  const [priceCache, setPriceCache] = useState(null);
+  const [priceLoadState, setPriceLoadState] = useState('idle');
+  useEffect(() => {
+    if (!Array.isArray(transactions) || transactions.length === 0) return;
+    let cancelled = false;
+    setPriceLoadState('loading');
+    loadHistoricalPricesForTransactions(transactions)
+      .then(cache => { if (!cancelled) { setPriceCache(cache); setPriceLoadState('loaded'); } })
+      .catch(() => { if (!cancelled) setPriceLoadState('error'); });
+    return () => { cancelled = true; };
+  }, [transactions]);
+
   const profile = useMemo(
-    () => buildBehavioralProfile({ transactions, realizedPositions, holdings, portfolioSnapshots }),
-    [transactions, realizedPositions, holdings, portfolioSnapshots],
+    () => buildBehavioralProfile({ transactions, realizedPositions, holdings, portfolioSnapshots, priceCache }),
+    [transactions, realizedPositions, holdings, portfolioSnapshots, priceCache],
   );
 
   if (isEmptyPortfolio) {
@@ -389,6 +551,9 @@ export default function BehavioralInsights() {
           <ConcentrationCard items={profile.patterns.concentration} privacyMode={privacyMode} />
           <EmotionalVolatilityCard data={profile.patterns.emotionalVolatility} />
           <LateNightCard data={profile.patterns.lateNight} />
+          <ChasePatternCard data={profile.patterns.chase} priceLoadState={priceLoadState} />
+          <CapitulationCard data={profile.patterns.capitulation} priceLoadState={priceLoadState} />
+          <PostTradeTimingCard data={profile.patterns.postTrade} priceLoadState={priceLoadState} />
         </div>
       </section>
 

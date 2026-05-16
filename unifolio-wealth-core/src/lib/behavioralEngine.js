@@ -442,6 +442,184 @@ export function calcArchetype({ revengeTrades, holdingPeriod, concentration, emo
   return { label: 'Active Trader', tags };
 }
 
+// ─── BEHAVIORAL V2 — PRICE-CONTEXT DETECTORS ──────────────────
+// Require historical price bars (loaded by historicalPriceCache.js).
+// Each detector skips silently when its ticker has no bar data, so a single
+// delisted symbol or fetch failure doesn't break the whole profile.
+
+// Helper: percent-change from price A to price B, signed.
+function pctChange(from, to) {
+  if (!from || !to) return null;
+  return (to - from) / from;
+}
+
+/**
+ * CHASE PATTERN: how often the user buys after the price has already run up.
+ * For each Buy, compute the % change from N=5 trading days before to the
+ * trade date's close. If that change is >= +5%, count it as a "chase" buy.
+ * High chase rates correlate with buying near local tops.
+ */
+export function detectChasePattern(transactions = [], priceCache) {
+  if (!priceCache || priceCache.size === 0) {
+    return { detected: false, sampleSize: 0, available: false };
+  }
+  const buys = (transactions || []).filter(isBuy);
+  let analyzed = 0;
+  let chased = 0;
+  const examples = [];
+  buys.forEach(t => {
+    const ticker = String(t.ticker || '').toUpperCase();
+    const data = priceCache.get(ticker);
+    if (!data?.bars?.length) return;
+    const tradeIso = String(t.date || t.trade_date || '').slice(0, 10);
+    if (!tradeIso) return;
+    const priorClose = getCloseAtOffsetSafe(data, tradeIso, -5);
+    const tradeClose = getCloseAtOffsetSafe(data, tradeIso, 0);
+    const change = pctChange(priorClose, tradeClose);
+    if (change === null) return;
+    analyzed += 1;
+    if (change >= 0.05) {
+      chased += 1;
+      examples.push({ ticker, date: tradeIso, runUpPct: change });
+    }
+  });
+  examples.sort((a, b) => b.runUpPct - a.runUpPct);
+  const chaseRate = analyzed > 0 ? chased / analyzed : 0;
+  return {
+    detected: chaseRate >= 0.30 && analyzed >= 5,
+    available: true,
+    sampleSize: analyzed,
+    chaseCount: chased,
+    chaseRate,
+    examples: examples.slice(0, 5),
+  };
+}
+
+/**
+ * CAPITULATION PATTERN: how often the user sells after a sharp recent drop.
+ * For each Sell, compute the % change from N=7 trading days before to the
+ * trade date's close. If <= -8%, count it as capitulation. High rates
+ * suggest selling near local bottoms.
+ */
+export function detectCapitulationPattern(transactions = [], priceCache) {
+  if (!priceCache || priceCache.size === 0) {
+    return { detected: false, sampleSize: 0, available: false };
+  }
+  const sells = (transactions || []).filter(isSell);
+  let analyzed = 0;
+  let capitulations = 0;
+  const examples = [];
+  sells.forEach(t => {
+    const ticker = String(t.ticker || '').toUpperCase();
+    const data = priceCache.get(ticker);
+    if (!data?.bars?.length) return;
+    const tradeIso = String(t.date || t.trade_date || '').slice(0, 10);
+    if (!tradeIso) return;
+    const priorClose = getCloseAtOffsetSafe(data, tradeIso, -7);
+    const tradeClose = getCloseAtOffsetSafe(data, tradeIso, 0);
+    const change = pctChange(priorClose, tradeClose);
+    if (change === null) return;
+    analyzed += 1;
+    if (change <= -0.08) {
+      capitulations += 1;
+      examples.push({ ticker, date: tradeIso, drawdownPct: change });
+    }
+  });
+  examples.sort((a, b) => a.drawdownPct - b.drawdownPct);
+  const capitulationRate = analyzed > 0 ? capitulations / analyzed : 0;
+  return {
+    detected: capitulationRate >= 0.25 && analyzed >= 4,
+    available: true,
+    sampleSize: analyzed,
+    capitulationCount: capitulations,
+    capitulationRate,
+    examples: examples.slice(0, 5),
+  };
+}
+
+/**
+ * POST-TRADE REGRET: for each Buy, what was the price 30 trading days later?
+ * Aggregate the average drawdown-from-purchase across all analyzable buys.
+ * For each Sell, what was the price 30 trading days later? Aggregate the
+ * average "missed gain". Together these measure "was your timing
+ * value-additive vs noise?"
+ */
+export function analyzePostTradePriceAction(transactions = [], priceCache) {
+  if (!priceCache || priceCache.size === 0) {
+    return { detected: false, sampleSize: 0, available: false };
+  }
+  const buys = (transactions || []).filter(isBuy);
+  const sells = (transactions || []).filter(isSell);
+  let buyAnalyzed = 0;
+  let buyTotalPctMove = 0;
+  let sellAnalyzed = 0;
+  let sellTotalPctMove = 0;
+
+  const tally = (txList, isSellSide) => {
+    let analyzed = 0;
+    let totalMove = 0;
+    txList.forEach(t => {
+      const ticker = String(t.ticker || '').toUpperCase();
+      const data = priceCache.get(ticker);
+      if (!data?.bars?.length) return;
+      const tradeIso = String(t.date || t.trade_date || '').slice(0, 10);
+      if (!tradeIso) return;
+      const tradeClose = getCloseAtOffsetSafe(data, tradeIso, 0);
+      const afterClose = getCloseAtOffsetSafe(data, tradeIso, 30);
+      const change = pctChange(tradeClose, afterClose);
+      if (change === null) return;
+      analyzed += 1;
+      totalMove += isSellSide ? -change : change; // for sells, "missed gain" is positive when price kept rising
+    });
+    return { analyzed, totalMove };
+  };
+
+  const b = tally(buys, false);
+  const s = tally(sells, true);
+  buyAnalyzed = b.analyzed; buyTotalPctMove = b.totalMove;
+  sellAnalyzed = s.analyzed; sellTotalPctMove = s.totalMove;
+
+  const avgBuyMovePct = buyAnalyzed > 0 ? buyTotalPctMove / buyAnalyzed : null;
+  const avgSellMovePct = sellAnalyzed > 0 ? sellTotalPctMove / sellAnalyzed : null;
+  // Negative timing score = both your buys (subsequent loss) and your sells
+  // (subsequent gain) work against you. Positive = your timing adds value.
+  const timingScore = [avgBuyMovePct, avgSellMovePct === null ? null : -avgSellMovePct]
+    .filter(v => v !== null);
+  const compositeTimingPct = timingScore.length > 0
+    ? timingScore.reduce((a, b) => a + b, 0) / timingScore.length
+    : null;
+
+  return {
+    available: true,
+    detected: compositeTimingPct !== null && compositeTimingPct < -0.02,
+    sampleSize: buyAnalyzed + sellAnalyzed,
+    buyAnalyzed,
+    sellAnalyzed,
+    avgBuyMovePct,         // average 30-day return after your buys (>0 = your buys appreciated)
+    avgSellMovePct,        // average 30-day return after your sells (>0 = you "missed" gains)
+    compositeTimingPct,    // averaged: positive = your timing is value-additive
+  };
+}
+
+// Mirror of historicalPriceCache.getCloseAtOffset but inlined to avoid an
+// import cycle (the engine is consumed by tests with no DOM access).
+function getCloseAtOffsetSafe(tickerData, tradeIsoDate, offsetDays) {
+  if (!tickerData?.bars?.length) return null;
+  const d = new Date(`${tradeIsoDate}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  const targetIso = d.toISOString().slice(0, 10);
+  if (offsetDays >= 0) {
+    for (let i = 0; i < tickerData.bars.length; i++) {
+      if (tickerData.bars[i].date >= targetIso) return tickerData.bars[i].close ?? null;
+    }
+    return tickerData.bars[tickerData.bars.length - 1]?.close ?? null;
+  }
+  for (let i = tickerData.bars.length - 1; i >= 0; i--) {
+    if (tickerData.bars[i].date <= targetIso) return tickerData.bars[i].close ?? null;
+  }
+  return tickerData.bars[0]?.close ?? null;
+}
+
 // ─── COMPOSITE ────────────────────────────────────────────────
 // Single entry point used by the UI.
 
@@ -450,12 +628,19 @@ export function buildBehavioralProfile({
   realizedPositions = [],
   holdings = [],
   portfolioSnapshots = [],
+  priceCache = null,
 } = {}) {
   const revengeTrades = detectRevengeTrades(transactions, realizedPositions);
   const holdingPeriod = analyzeHoldingPeriodPerformance(realizedPositions);
   const lateNight = detectLateNightTrading(transactions, realizedPositions);
   const concentration = detectConcentrationAddiction(transactions, holdings);
   const emotionalVolatility = analyzeEmotionalVolatility(transactions, portfolioSnapshots);
+  // v2 detectors — require historical price bars. When priceCache is null
+  // (page hasn't fetched yet, or fetch failed), each returns
+  // {available: false} and the UI shows a "loading" / "couldn't load" tile.
+  const chase = detectChasePattern(transactions, priceCache);
+  const capitulation = detectCapitulationPattern(transactions, priceCache);
+  const postTrade = analyzePostTradePriceAction(transactions, priceCache);
 
   const score = calcBehavioralScore({ revengeTrades, holdingPeriod, concentration, emotionalVolatility, lateNight });
   const archetype = calcArchetype({ revengeTrades, holdingPeriod, concentration, emotionalVolatility, lateNight });
@@ -483,6 +668,10 @@ export function buildBehavioralProfile({
       lateNight,
       concentration,
       emotionalVolatility,
+      // v2:
+      chase,
+      capitulation,
+      postTrade,
     },
   };
 }
