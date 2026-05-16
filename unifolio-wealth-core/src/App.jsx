@@ -33,6 +33,9 @@ import Instructions from '@/pages/Instructions';
 import PrivacyAndData from '@/pages/PrivacyAndData';
 import ImportCenter from '@/pages/ImportCenter';
 import TaxReport from '@/pages/TaxReport';
+import TaxOptimizer from '@/pages/TaxOptimizer';
+import HarvestCenter from '@/pages/HarvestCenter';
+import BehavioralInsights from '@/pages/BehavioralInsights';
 import Settings from '@/pages/Settings';
 import Profile from '@/pages/Profile';
 import ProLanding from '@/pages/ProLanding';
@@ -42,6 +45,8 @@ import Welcome from '@/pages/Welcome';
 import Community from '@/pages/Community';
 import Learn from '@/pages/Learn';
 import Checkout from '@/pages/Checkout';
+import CheckoutSuccess from '@/pages/CheckoutSuccess';
+import HouseholdAccept from '@/pages/HouseholdAccept';
 
 const isProDomain = typeof window !== 'undefined' &&
   (window.location.hostname === 'unifolio.pro' || window.location.hostname === 'www.unifolio.pro');
@@ -53,7 +58,9 @@ const AuthenticatedApp = () => {
   // unifolio.pro shows the Plans/pricing page (or the Checkout flow when
   // the CTA was clicked) regardless of auth state.
   if (isProDomain) {
-    return location.pathname === '/checkout' ? <Checkout /> : <Plans />;
+    if (location.pathname === '/checkout') return <Checkout />;
+    if (location.pathname === '/checkout/success') return <CheckoutSuccess />;
+    return <Plans />;
   }
 
   // Password reset link — must be reachable without auth
@@ -91,8 +98,13 @@ const AuthenticatedApp = () => {
         <Route path="/learn" element={<Learn />} />
         <Route path="/plans" element={<Plans />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/checkout/success" element={<CheckoutSuccess />} />
+        <Route path="/household/accept" element={<HouseholdAccept />} />
         <Route path="/import" element={<ImportCenter />} />
         <Route path="/tax" element={<TaxReport />} />
+        <Route path="/optimize" element={<TaxOptimizer />} />
+        <Route path="/harvest" element={<HarvestCenter />} />
+        <Route path="/behavioral" element={<BehavioralInsights />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
       </Route>

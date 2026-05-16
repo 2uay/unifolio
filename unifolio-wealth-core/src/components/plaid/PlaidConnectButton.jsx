@@ -25,7 +25,7 @@ function PlaidLinkOpener({ linkToken, onSuccess, onError, className }) {
       const { data: s } = await supabase.auth.getSession();
       const token = s?.session?.access_token;
       if (!token) throw new Error('Not authenticated');
-      const res = await fetch('/api/plaid/exchange', {
+      const res = await fetch('/api/plaid/action?action=exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -35,10 +35,24 @@ function PlaidLinkOpener({ linkToken, onSuccess, onError, className }) {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Exchange failed');
+      if (!res.ok) {
+        // Plan-cap rejection (402) carries upgradeUrl/addOnUrl so the
+        // parent can route to the upgrade flow. The error string still
+        // works as a fallback message for the existing toast UI.
+        if (res.status === 402 && (data.upgradeUrl || data.addOnUrl)) {
+          onError?.({
+            message: data.message || 'Plan limit reached',
+            planCap: true,
+            upgradeUrl: data.upgradeUrl,
+            addOnUrl: data.addOnUrl,
+          });
+          return;
+        }
+        throw new Error(data.error || data.message || 'Exchange failed');
+      }
       onSuccess?.();
     } catch (err) {
-      onError?.(err.message || 'Connection failed');
+      onError?.(err?.message || 'Connection failed');
     } finally {
       setExchanging(false);
     }
@@ -72,6 +86,7 @@ export default function PlaidConnectButton({ onSuccess, className }) {
   const [linkToken, setLinkToken] = useState(null);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState(null);
+  const [planCapError, setPlanCapError] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const [mfaCheck, setMfaCheck] = useState({ loading: true, blocked: false });
 
@@ -106,7 +121,7 @@ export default function PlaidConnectButton({ onSuccess, className }) {
     supabase.auth.getSession().then(({ data }) => {
       const token = data?.session?.access_token;
       if (!token || cancelled) { if (!cancelled) setFetching(false); return; }
-      fetch('/api/plaid/link-token', {
+      fetch('/api/plaid/action?action=link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       })
@@ -161,8 +176,39 @@ export default function PlaidConnectButton({ onSuccess, className }) {
         <PlaidLinkOpener
           linkToken={linkToken}
           onSuccess={() => { setLinkToken(null); onSuccess?.(); }}
-          onError={setError}
+          onError={(errOrMessage) => {
+            if (errOrMessage && typeof errOrMessage === 'object' && errOrMessage.planCap) {
+              setPlanCapError(errOrMessage);
+              setError(null);
+            } else {
+              setError(typeof errOrMessage === 'string' ? errOrMessage : errOrMessage?.message);
+              setPlanCapError(null);
+            }
+          }}
         />
+        {planCapError && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs space-y-1.5">
+            <p className="text-amber-200">{planCapError.message}</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => navigate(planCapError.upgradeUrl)}
+                className="text-primary hover:underline"
+              >
+                Upgrade plan →
+              </button>
+              {planCapError.addOnUrl && (
+                <button
+                  type="button"
+                  onClick={() => navigate(planCapError.addOnUrl)}
+                  className="text-primary hover:underline"
+                >
+                  Add slot →
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
     );

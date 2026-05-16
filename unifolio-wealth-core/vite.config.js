@@ -2,6 +2,25 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { defineConfig } from 'vite'
 
+// In dev, proxy /api/* straight through to unifolio.ca's deployed Vercel
+// serverless functions instead of hitting Yahoo Finance directly. Three
+// reasons that beat the previous direct-to-Yahoo approach:
+//
+//   1. Vercel CDN caches every Yahoo response for 6h (s-maxage=21600), so
+//      a refresh costs zero Yahoo requests. The dev box was getting
+//      rate-limited (HTTP 429 "Too Many Requests") because every reload
+//      escaped to Yahoo fresh.
+//   2. The Vercel functions already send the correct desktop UA / headers
+//      Yahoo expects. Replicating that in a dev proxy is fragile.
+//   3. One target instead of three per-endpoint rewrites — if Yahoo
+//      breaks something, the fix happens in api/*.js and dev/prod stay
+//      identical.
+//
+// The prod functions set Access-Control-Allow-Origin:* so a localhost
+// fetch returns clean JSON. The cost is one extra hop (dev → unifolio.ca
+// → Yahoo), but with the 6h edge cache that's a non-issue.
+const PROD_API_TARGET = 'https://unifolio.ca';
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -11,26 +30,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api/chart': {
-        target: 'https://query1.finance.yahoo.com',
+      '/api': {
+        target: PROD_API_TARGET,
         changeOrigin: true,
-        rewrite: (path) => {
-          const url = new URL(path, 'http://localhost');
-          const ticker = url.searchParams.get('ticker') || '';
-          const interval = url.searchParams.get('interval') || '1d';
-          const range = url.searchParams.get('range') || '1y';
-          return `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${range}&includePrePost=false`;
-        },
-      },
-      '/api/yquote': {
-        target: 'https://query1.finance.yahoo.com',
-        changeOrigin: true,
-        rewrite: (path) => {
-          const url = new URL(path, 'http://localhost');
-          const symbols = url.searchParams.get('symbols') || '';
-          const fields = 'regularMarketPrice,regularMarketPreviousClose,regularMarketChangePercent,currency';
-          return `/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&fields=${fields}`;
-        },
+        secure: true,
       },
     },
   },

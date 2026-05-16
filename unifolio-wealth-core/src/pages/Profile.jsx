@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Mail, MapPin, Phone, User, Lock, Save, Loader2, BadgeInfo } from 'lucide-react';
+import { Mail, MapPin, Phone, User, Lock, Save, Loader2, BadgeInfo, Receipt } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import ProfilePictureSection from '@/components/settings/ProfilePictureSection';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import HouseholdSection from '@/components/profile/HouseholdSection';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
@@ -19,7 +20,37 @@ const DEFAULT_FORM = {
   phoneNumber: '',
   location: '',
   bio: '',
+  marginalTaxRate: '',
+  spouseMarginalTaxRate: '',
+  province: '',
 };
+
+// Approximate top-of-bracket combined federal+provincial marginal rates for
+// taxable income in the rough middle of each Canadian bracket. Used to
+// populate the helper dropdown so users don't have to look up the math.
+const MARGINAL_RATE_PRESETS = [
+  { label: 'Low income (~$30K–$55K)', rate: 24 },
+  { label: 'Middle income (~$55K–$110K)', rate: 30 },
+  { label: 'Upper middle (~$110K–$170K)', rate: 38 },
+  { label: 'High income (~$170K–$245K)', rate: 45 },
+  { label: 'Top bracket ($245K+)', rate: 53 },
+];
+
+const CANADIAN_PROVINCES = [
+  { code: 'AB', name: 'Alberta' },
+  { code: 'BC', name: 'British Columbia' },
+  { code: 'MB', name: 'Manitoba' },
+  { code: 'NB', name: 'New Brunswick' },
+  { code: 'NL', name: 'Newfoundland and Labrador' },
+  { code: 'NS', name: 'Nova Scotia' },
+  { code: 'NT', name: 'Northwest Territories' },
+  { code: 'NU', name: 'Nunavut' },
+  { code: 'ON', name: 'Ontario' },
+  { code: 'PE', name: 'Prince Edward Island' },
+  { code: 'QC', name: 'Quebec' },
+  { code: 'SK', name: 'Saskatchewan' },
+  { code: 'YT', name: 'Yukon' },
+];
 
 export default function Profile() {
   const {
@@ -49,7 +80,7 @@ export default function Profile() {
       try {
         const { data } = await supabase
           .from('user_profiles')
-          .select('display_name, phone_number, location, bio')
+          .select('display_name, phone_number, location, bio, marginal_tax_rate, spouse_marginal_tax_rate, province')
           .eq('user_id', user.id)
           .single();
 
@@ -61,6 +92,9 @@ export default function Profile() {
           phoneNumber: data?.phone_number || '',
           location: data?.location || '',
           bio: data?.bio || '',
+          marginalTaxRate: data?.marginal_tax_rate != null ? String(data.marginal_tax_rate) : '',
+          spouseMarginalTaxRate: data?.spouse_marginal_tax_rate != null ? String(data.spouse_marginal_tax_rate) : '',
+          province: data?.province || '',
         };
         setForm(nextForm);
         setInitialForm(nextForm);
@@ -73,6 +107,8 @@ export default function Profile() {
           phoneNumber: '',
           location: '',
           bio: '',
+          marginalTaxRate: '',
+          province: '',
         };
         setForm(nextForm);
         setInitialForm(nextForm);
@@ -110,6 +146,10 @@ export default function Profile() {
         await updateEmail(trimmedEmail);
       }
 
+      const parsedRate = form.marginalTaxRate === '' ? null : Number(form.marginalTaxRate);
+      const parsedSpouseRate = form.spouseMarginalTaxRate === '' ? null : Number(form.spouseMarginalTaxRate);
+      const trimmedProvince = (form.province || '').trim().toUpperCase();
+
       const { error } = await supabase.from('user_profiles').upsert({
         user_id: user.id,
         full_name: trimmedFullName || null,
@@ -117,6 +157,9 @@ export default function Profile() {
         phone_number: trimmedPhone || null,
         location: trimmedLocation || null,
         bio: trimmedBio || null,
+        marginal_tax_rate: Number.isFinite(parsedRate) ? parsedRate : null,
+        spouse_marginal_tax_rate: Number.isFinite(parsedSpouseRate) ? parsedSpouseRate : null,
+        province: trimmedProvince || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
 
@@ -128,6 +171,9 @@ export default function Profile() {
         phoneNumber: trimmedPhone || '',
         location: trimmedLocation || '',
         bio: trimmedBio || '',
+        marginalTaxRate: Number.isFinite(parsedRate) ? String(parsedRate) : '',
+        spouseMarginalTaxRate: Number.isFinite(parsedSpouseRate) ? String(parsedSpouseRate) : '',
+        province: trimmedProvince || '',
       };
       setForm(nextForm);
       setInitialForm(nextForm);
@@ -252,6 +298,108 @@ export default function Profile() {
           </div>
         </div>
 
+      </div>
+
+      <div className="bg-card rounded-xl border border-border p-4 sm:p-6 space-y-4">
+        <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground uppercase tracking-wider">
+          <Receipt className="w-4 h-4" />
+          Tax Settings
+        </div>
+        <p className="text-[11px] text-muted-foreground -mt-1">
+          Powers the Tax Optimizer's savings estimates. Stored only in your profile; never sent to external services.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-marginal-rate">Marginal Tax Rate (%)</Label>
+            <Input
+              id="profile-marginal-rate"
+              type="number"
+              step="0.01"
+              min="0"
+              max="60"
+              value={form.marginalTaxRate}
+              onChange={(e) => updateField('marginalTaxRate', e.target.value)}
+              placeholder="e.g. 43.41"
+              disabled={loading}
+            />
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {MARGINAL_RATE_PRESETS.map(preset => (
+                <button
+                  key={preset.rate}
+                  type="button"
+                  onClick={() => updateField('marginalTaxRate', String(preset.rate))}
+                  className={cn(
+                    'rounded-md border px-2 py-0.5 text-[10px] transition-colors',
+                    Number(form.marginalTaxRate) === preset.rate
+                      ? 'border-primary/50 bg-primary/15 text-primary'
+                      : 'border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60'
+                  )}
+                >
+                  {preset.rate}%
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/80">
+              Combined federal + provincial rate on your next dollar of taxable income.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-province">Province</Label>
+            <select
+              id="profile-province"
+              value={form.province}
+              onChange={(e) => updateField('province', e.target.value)}
+              disabled={loading}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">Select…</option>
+              {CANADIAN_PROVINCES.map(p => (
+                <option key={p.code} value={p.code}>{p.name}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted-foreground/80">
+              Used to refine province-specific dividend tax credit calculations.
+            </p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="profile-spouse-rate">Spouse's Marginal Tax Rate (%) — optional</Label>
+            <Input
+              id="profile-spouse-rate"
+              type="number"
+              step="0.01"
+              min="0"
+              max="60"
+              value={form.spouseMarginalTaxRate}
+              onChange={(e) => updateField('spouseMarginalTaxRate', e.target.value)}
+              placeholder="e.g. 29.65"
+              disabled={loading}
+            />
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {MARGINAL_RATE_PRESETS.map(preset => (
+                <button
+                  key={`sp-${preset.rate}`}
+                  type="button"
+                  onClick={() => updateField('spouseMarginalTaxRate', String(preset.rate))}
+                  className={cn(
+                    'rounded-md border px-2 py-0.5 text-[10px] transition-colors',
+                    Number(form.spouseMarginalTaxRate) === preset.rate
+                      ? 'border-primary/50 bg-primary/15 text-primary'
+                      : 'border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60'
+                  )}
+                >
+                  {preset.rate}%
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/80">
+              Unlocks income-splitting recommendations in the Tax Optimizer (spousal RRSP,
+              prescribed-rate spousal loans, TFSA gifting). Stays in your profile; we don't
+              share it with your linked spouse.
+            </p>
+          </div>
+        </div>
+
         <div className="flex justify-end">
           <Button onClick={handleSave} disabled={loading || saving || !isDirty} className="gap-2">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -259,6 +407,8 @@ export default function Profile() {
           </Button>
         </div>
       </div>
+
+      <HouseholdSection />
 
       <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
         <div className="bg-card rounded-xl border border-border p-4 sm:p-6 space-y-4">

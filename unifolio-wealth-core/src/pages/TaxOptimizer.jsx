@@ -1,0 +1,443 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Sparkles, ArrowRight, AlertTriangle, TrendingDown, Wallet, MapPin,
+  Info, Settings as SettingsIcon, CheckCircle2, Users,
+} from 'lucide-react';
+import PageHeader from '@/components/shared/PageHeader';
+import PlainEnglish from '@/components/shared/PlainEnglish';
+import PageBenefitsDialog from '@/components/shared/PageBenefitsDialog';
+import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/components/shared/ValueDisplay';
+import { usePrivacy } from '@/lib/PrivacyContext.jsx';
+import { usePortfolioData } from '@/lib/PortfolioDataContext';
+import { useAuth } from '@/lib/AuthContext';
+import { supabase } from '@/lib/supabaseClient';
+import { buildTaxOptimization } from '@/lib/taxOptimizer';
+import { useQuery } from '@tanstack/react-query';
+import { getHouseholdHoldings } from '@/lib/householdClient';
+
+const PM = '••••••';
+
+const TAX_OPTIMIZER_BENEFITS = {
+  title: 'Tax Optimizer — what it does for you',
+  benefits: [
+    'A single dollar-figure for how much tax you could save next year — calibrated to your bracket, not a generic estimate.',
+    'Asset-location moves that put the right investments in the right account type (e.g. US dividend stocks in RRSP, growth in TFSA).',
+    'A ranked list of which account to fund first (RRSP vs TFSA vs FHSA), with the dollar reason for each step.',
+    'Income-splitting plays when you have a spouse with a different tax bracket — spousal-RRSPs, prescribed-rate loans, TFSA gifting.',
+  ],
+  howToUse: [
+    'Set your marginal tax rate in Profile → Tax Settings (and your spouse\'s if applicable). The savings numbers depend on this.',
+    'Walk the opportunity cards in order, top to bottom. Each one is a single concrete action with a dollar-savings tag.',
+    'For asset-location moves, transfers happen at your broker (in-kind transfer between your own accounts — no tax event).',
+    'Re-check the page in November as you plan year-end contributions, and again in January after fresh contribution room opens.',
+  ],
+  whatItsFor: 'Surfacing the cheapest, highest-impact ways for you to pay less Canadian tax in the coming year — without changing what you invest in.',
+  whoItsFor: 'High earners (>$100k marginal), spouses with a tax-rate gap, anyone with both registered and non-registered accounts, or anyone deciding which account to fund first. If you only have a sheltered TFSA and contribute the max every year, this page won\'t change much for you.',
+};
+
+function HeadlineCard({ totalSavings, opportunityCount, marginalTaxRate, privacyMode }) {
+  return (
+    <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-background to-background p-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-[11px] uppercase tracking-wider text-primary font-semibold">Projected Annual Tax Savings</span>
+          </div>
+          <p className="text-4xl sm:text-5xl font-bold font-mono text-primary">
+            {privacyMode ? PM : (totalSavings > 0 ? '+' : '') + formatCurrency(totalSavings)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            From {opportunityCount} actionable {opportunityCount === 1 ? 'opportunity' : 'opportunities'} below.
+            Based on a {(marginalTaxRate * 100).toFixed(0)}% marginal tax rate.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 items-end">
+          <Link to="/profile">
+            <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5">
+              <SettingsIcon className="h-3 w-3" /> Tax Settings
+            </Button>
+          </Link>
+          <Link to="/tax">
+            <Button variant="ghost" size="sm" className="h-7 text-[11px] gap-1.5 text-muted-foreground">
+              View Tax Report <ArrowRight className="h-3 w-3" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SeverityBadge({ severity }) {
+  if (severity === 'high') {
+    return <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">High Impact</span>;
+  }
+  if (severity === 'medium') {
+    return <span className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-400">Medium Impact</span>;
+  }
+  return <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">Low Impact</span>;
+}
+
+function OpportunityCard({ opp, privacyMode, icon: Icon, accentColor }) {
+  const [open, setOpen] = useState(false);
+  const savings = opp.estimatedAnnualSavings;
+  return (
+    <div className={cn('rounded-xl border border-border bg-card overflow-hidden transition-all', open && 'ring-1 ring-primary/30')}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-secondary/20 transition-colors"
+      >
+        <Icon className={cn('h-4 w-4 mt-0.5 flex-shrink-0', accentColor)} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-mono font-semibold text-sm text-foreground">{opp.ticker}</span>
+            <SeverityBadge severity={opp.severity} />
+            {opp.wouldTriggerSuperficial && (
+              <span className="rounded-full bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-[10px] font-semibold text-red-400 flex items-center gap-1">
+                <AlertTriangle className="h-2.5 w-2.5" /> Superficial Loss Risk
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground truncate">{opp.name}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Est. Savings</p>
+          <p className="text-sm font-mono font-bold text-emerald-400">
+            {privacyMode ? PM : '+' + formatCurrency(savings)}
+            <span className="text-[10px] text-muted-foreground ml-1">/yr</span>
+          </p>
+        </div>
+      </button>
+      {open && (
+        <div className="border-t border-border/30 px-4 py-3.5 space-y-3 bg-secondary/10">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Why</p>
+            <p className="text-xs text-foreground leading-relaxed">{opp.rationale}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Action</p>
+            <p className="text-xs text-foreground leading-relaxed">{opp.action}</p>
+          </div>
+          {opp.caveat && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-500/5 border border-amber-500/20 px-3 py-2">
+              <Info className="h-3 w-3 mt-0.5 text-amber-400 flex-shrink-0" />
+              <p className="text-[11px] text-amber-400/90 leading-relaxed">{opp.caveat}</p>
+            </div>
+          )}
+          {opp.replacementCandidates && opp.replacementCandidates.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Suggested Replacements</p>
+              <div className="flex gap-2 flex-wrap">
+                {opp.replacementCandidates.map(t => (
+                  <span key={t} className="rounded-md bg-primary/10 border border-primary/30 px-2 py-1 font-mono text-[11px] text-primary">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex items-center justify-between pt-1 border-t border-border/20 text-[10px] text-muted-foreground">
+            <span>From: <span className="text-foreground">{opp.fromAccount}</span></span>
+            {opp.toAccountType && <span>To: <span className="text-foreground">{opp.toAccountType}</span></span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({ icon: Icon, title, count, accentColor, plainEnglish }) {
+  return (
+    <div className="mb-3">
+      <div className="flex items-center gap-2.5">
+        <Icon className={cn('h-4 w-4', accentColor)} />
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">{count}</span>
+      </div>
+      {plainEnglish && <div className="ml-6 mt-0.5"><PlainEnglish>{plainEnglish}</PlainEnglish></div>}
+    </div>
+  );
+}
+
+function EmptySection({ message }) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-6 text-center">
+      <CheckCircle2 className="h-5 w-5 text-emerald-500/60 mx-auto mb-2" />
+      <p className="text-xs text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
+function IncomeSplittingCard({ opp, privacyMode }) {
+  const isInfo = !!opp.informational;
+  const accent = isInfo ? 'text-violet-400' : opp.severity === 'high' ? 'text-emerald-400' : 'text-violet-400';
+  const borderAccent = isInfo ? 'border-violet-400/30' : 'border-violet-400/40';
+  return (
+    <div className={cn('rounded-xl border bg-card p-4 space-y-2.5', borderAccent)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <Users className={cn('w-4 h-4 mt-0.5 shrink-0', accent)} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">{opp.title}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{opp.summary}</p>
+          </div>
+        </div>
+        {!isInfo && opp.estimatedAnnualSavings > 0 && (
+          <div className="text-right shrink-0">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Est. savings/yr</p>
+            <p className="text-sm font-mono font-bold text-emerald-400">
+              {privacyMode ? '••••••' : '+' + formatCurrency(opp.estimatedAnnualSavings)}
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="rounded-md bg-secondary/30 px-3 py-2 ml-7">
+        <p className="text-[11px] text-foreground/80 leading-relaxed">
+          <strong className="text-foreground">How:</strong> {opp.actionText}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ContributionSequenceCard({ sequence }) {
+  if (sequence.length === 0) {
+    return <EmptySection message="No registered accounts found. Add a TFSA, RRSP, or FHSA in Accounts to get contribution guidance." />;
+  }
+  return (
+    <div className="space-y-3">
+      {sequence.map((step, i) => (
+        <div key={step.account} className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-primary/15 border border-primary/30 w-6 h-6 flex items-center justify-center text-[11px] font-bold text-primary">
+                {i + 1}
+              </div>
+              <span className="font-semibold text-sm text-foreground">{step.account}</span>
+              {step.annualCap && (
+                <span className="text-[10px] text-muted-foreground">Annual cap: ${step.annualCap.toLocaleString()}</span>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-foreground/80 leading-relaxed ml-9">{step.rationale}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+async function loadOptProfile(userId) {
+  if (!userId) return {};
+  try {
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('marginal_tax_rate, spouse_marginal_tax_rate, province')
+      .eq('user_id', userId)
+      .single();
+    return data || {};
+  } catch {
+    return {};
+  }
+}
+
+export default function TaxOptimizer() {
+  const { privacyMode } = usePrivacy();
+  const { user } = useAuth();
+  const { accounts, transactions, holdings, isEmptyPortfolio } = usePortfolioData();
+  const [profile, setProfile] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    loadOptProfile(user?.id).then(p => { if (!cancelled) setProfile(p); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  // Spouse holdings (when linked via /profile) inform the spousal-loan
+  // recommendation sizing. Same RPC the harvest engine uses; gracefully
+  // returns null when no household exists.
+  const { data: spouseHoldings } = useQuery({
+    queryKey: ['householdHoldings', user?.id],
+    enabled: !!user?.id && profile?.spouse_marginal_tax_rate != null,
+    queryFn: getHouseholdHoldings,
+  });
+
+  const optimization = useMemo(
+    () => buildTaxOptimization({
+      holdings, accounts, transactions, profile,
+      spouseHoldings: Array.isArray(spouseHoldings)
+        ? spouseHoldings.filter(h => h.owner_user_id !== user?.id)
+        : null,
+    }),
+    [holdings, accounts, transactions, profile, spouseHoldings, user?.id],
+  );
+
+  if (isEmptyPortfolio) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Tax Optimizer"
+          description="Personalized recommendations to lower your annual tax bill."
+          actions={<PageBenefitsDialog {...TAX_OPTIMIZER_BENEFITS} />}
+        />
+        <EmptyPortfolioState />
+      </div>
+    );
+  }
+
+  const hasMarginalSet = typeof (/** @type {{ marginal_tax_rate?: number }} */ (profile).marginal_tax_rate) === 'number';
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Tax Optimizer"
+        description="Personalized recommendations to lower your annual tax bill. Canadian rules — asset location, loss harvesting, and contribution sequencing."
+        actions={<PageBenefitsDialog {...TAX_OPTIMIZER_BENEFITS} />}
+      />
+
+      <PlainEnglish>
+        The cheapest legal moves you can make to lower next year&rsquo;s tax bill — ranked by dollar impact, calibrated to your bracket.
+      </PlainEnglish>
+
+      {!hasMarginalSet && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <Info className="h-4 w-4 mt-0.5 text-amber-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-amber-400">Set your marginal tax rate for accurate savings estimates.</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              We're using a 30% default. Update it in your Profile under Tax Settings to get recommendations calibrated to your actual bracket.
+            </p>
+            <PlainEnglish>
+              Your marginal tax rate is the tax you pay on the next dollar you earn. Without it, every savings number on this page is just a rough guess.
+            </PlainEnglish>
+          </div>
+          <Link to="/profile">
+            <Button variant="outline" size="sm" className="h-7 text-[11px]">Set Rate</Button>
+          </Link>
+        </div>
+      )}
+
+      <HeadlineCard
+        totalSavings={optimization.totalProjectedSavings}
+        opportunityCount={optimization.opportunityCount}
+        marginalTaxRate={optimization.marginalTaxRate}
+        privacyMode={privacyMode}
+      />
+
+      {/* Asset Location */}
+      <section>
+        <SectionHeader
+          icon={MapPin}
+          title="Asset Location Opportunities"
+          count={optimization.assetLocation.length}
+          accentColor="text-blue-400"
+          plainEnglish="Same investments, different account types. Putting US dividend stocks in your RRSP (no withholding) and growth in your TFSA (tax-free forever) can save hundreds a year — no new buys required."
+        />
+        {optimization.assetLocation.length === 0 ? (
+          <EmptySection message="No asset location moves found. Your portfolio is well-placed across registered and non-registered accounts." />
+        ) : (
+          <div className="space-y-2">
+            {optimization.assetLocation.map(opp => (
+              <OpportunityCard key={opp.id} opp={opp} privacyMode={privacyMode} icon={MapPin} accentColor="text-blue-400" />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Loss Harvesting */}
+      <section>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5">
+              <TrendingDown className="h-4 w-4 text-amber-400" />
+              <h2 className="text-sm font-semibold text-foreground">Loss Harvesting Opportunities</h2>
+              <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">{optimization.lossHarvest.length}</span>
+            </div>
+            <div className="ml-6 mt-0.5">
+              <PlainEnglish>
+                Stocks you currently own at a loss. Selling them lets the loss cancel out gains you owe tax on — actual cash savings on April 15.
+              </PlainEnglish>
+            </div>
+          </div>
+          <Link to="/harvest">
+            <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 flex-shrink-0">
+              Open Harvest Center <ArrowRight className="h-3 w-3" />
+            </Button>
+          </Link>
+        </div>
+        {optimization.lossHarvest.length === 0 ? (
+          <EmptySection message="No harvestable losses in your taxable accounts right now. We only surface losses outside registered accounts (registered losses are not tax-deductible)." />
+        ) : (
+          <div className="space-y-2">
+            {optimization.lossHarvest.map(opp => (
+              <OpportunityCard key={opp.id} opp={opp} privacyMode={privacyMode} icon={TrendingDown} accentColor="text-amber-400" />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Contribution Sequence */}
+      <section>
+        <SectionHeader
+          icon={Wallet}
+          title="Contribution Sequence"
+          count={optimization.contributionSequence.length}
+          accentColor="text-emerald-400"
+          plainEnglish="If you have $1,000 to invest right now, which account should it go in first — FHSA, TFSA, RRSP? The order matters; getting it wrong can cost you thousands over a few years."
+        />
+        <ContributionSequenceCard sequence={optimization.contributionSequence} />
+      </section>
+
+      {optimization.spouseMarginalRate !== null ? (
+        <section>
+          <SectionHeader
+            icon={Users}
+            title="Income Splitting Opportunities"
+            count={optimization.incomeSplitting.length}
+            accentColor="text-violet-400"
+            plainEnglish="Legal ways to move investment income from the higher-earning spouse to the lower-earning one, so the household pays less tax overall."
+          />
+          {optimization.incomeSplitting.length === 0 ? (
+            <p className="text-xs text-muted-foreground rounded-xl border border-border/40 bg-card/30 px-4 py-3">
+              No income-splitting opportunities right now — the rate spread between you and your spouse is &lt;3%, so the after-cost benefit isn't material.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {optimization.incomeSplitting.map(opp => (
+                <IncomeSplittingCard key={opp.id} opp={opp} privacyMode={privacyMode} />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="rounded-xl border border-border/40 bg-card/30 px-4 py-3">
+          <p className="text-[11px] text-muted-foreground leading-relaxed flex items-start gap-2">
+            <Users className="w-3.5 h-3.5 mt-0.5 text-violet-400 shrink-0" />
+            <span>
+              <strong className="text-foreground/80">Unlock income-splitting recommendations:</strong>{' '}
+              add your spouse's marginal tax rate in <Link to="/profile" className="text-primary hover:underline">your profile</Link> (the Tax Settings card).
+              We'll surface spousal-RRSP contribution savings, prescribed-rate spousal loans, and TFSA gifting strategies.
+            </span>
+          </p>
+          <div className="ml-5">
+            <PlainEnglish>
+              If you and your spouse are in different tax brackets, there are legal ways to shift investment income to the lower-bracket spouse and save thousands a year. We just need their tax rate to size them up.
+            </PlainEnglish>
+          </div>
+        </section>
+      )}
+
+      <div className="rounded-xl border border-border/40 bg-card/30 px-4 py-3">
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          <strong className="text-foreground/80">For informational purposes only.</strong> These recommendations are based on Canadian tax rules and your portfolio data. They are not tax advice. Consult a tax professional before acting, especially for in-kind transfers between registered accounts (which use contribution room) or transactions that may trigger superficial loss rules.
+        </p>
+        <PlainEnglish>
+          We don&rsquo;t know the full picture your accountant does. Treat these as a starting list of questions to bring to them, not as a green light to execute trades.
+        </PlainEnglish>
+      </div>
+    </div>
+  );
+}

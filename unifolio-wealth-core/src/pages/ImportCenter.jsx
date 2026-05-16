@@ -52,7 +52,7 @@ function PlaidSection() {
     try {
       const { data: s } = await supabase.auth.getSession();
       const token = s?.session?.access_token;
-      await fetch('/api/plaid/sync', {
+      await fetch('/api/plaid/action?action=sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ itemId }),
@@ -66,7 +66,7 @@ function PlaidSection() {
     try {
       const { data: s } = await supabase.auth.getSession();
       const token = s?.session?.access_token;
-      await fetch('/api/plaid/disconnect', {
+      await fetch('/api/plaid/action?action=disconnect', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ itemId }),

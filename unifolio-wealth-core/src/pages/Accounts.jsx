@@ -26,7 +26,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import usePersistentTableColumns from '@/hooks/usePersistentTableColumns';
+import usePlanCap from '@/hooks/usePlanCap';
 import DraggableTableHeader, { TableColumnGrip } from '@/components/shared/DraggableTableHeader';
+import PlanCapBanner from '@/components/accounts/PlanCapBanner';
 import { cn } from '@/lib/utils';
 
 const ACCOUNT_TABLE_ID = 'accounts_connected_table';
@@ -171,9 +173,14 @@ export default function Accounts() {
     queryKey: ['customAssets', user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
+      // Belt-and-braces user_id filter. Supabase RLS should already scope
+      // these rows to the current user, but an explicit filter prevents
+      // accidental data leakage if RLS policies are ever weakened or
+      // migrated incorrectly.
       const { data, error } = await supabase
         .from('custom_assets')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       if (error) {
         console.warn('[Accounts] custom_assets fetch failed:', error.message);
@@ -293,6 +300,11 @@ export default function Accounts() {
     sum + convert(safeNumber(value.deposited) - safeNumber(value.withdrawn), currency)
   ), 0), [contributionTotals, convert, displayCurrency]);
 
+  // Plan-cap check uses the count of connected investment accounts only
+  // (custom assets are unmetered — they're rows the user types in, not
+  // institutional connections that cost us anything to maintain).
+  const planCap = usePlanCap(safeAccounts.length);
+
   const includedAssets = customAssets.filter(a => a.include_in_net_value !== false);
   const customAssetsGross = useMemo(() => includedAssets.reduce((s, a) => s + convert(a.chosen_value || 0, a.currency || 'USD'), 0), [includedAssets, convert, displayCurrency]);
   const customAssetsLiability = useMemo(() => includedAssets.reduce((s, a) => s + convert(a.liability_amount || 0, a.currency || 'USD'), 0), [includedAssets, convert, displayCurrency]);
@@ -331,6 +343,8 @@ export default function Accounts() {
         customAssetsNet={customAssetsNet}
         customAssetsCount={customAssets.length}
       />
+
+      <PlanCapBanner cap={planCap} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card rounded-xl border border-border p-4">
