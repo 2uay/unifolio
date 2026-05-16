@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Briefcase, Building2, TrendingUp,
   ArrowLeftRight, Lightbulb, Zap, Link2, Settings, X,
   LogOut, UserCircle, LogIn, ChevronUp, BookOpen, Shield, Upload, Receipt, Gem, Users, GraduationCap,
-  Sparkles, Scissors,
+  Sparkles, Scissors, Brain,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/AuthContext';
@@ -30,6 +30,7 @@ const navItems = [
   { path: '/tax', label: 'Tax Report', icon: Receipt },
   { path: '/optimize', label: 'Tax Optimizer', icon: Sparkles },
   { path: '/harvest', label: 'Loss Harvest', icon: Scissors },
+  { path: '/behavioral', label: 'Behavioral', icon: Brain },
 ];
 
 const utilityNavItems = [

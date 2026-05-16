@@ -35,6 +35,7 @@ import ImportCenter from '@/pages/ImportCenter';
 import TaxReport from '@/pages/TaxReport';
 import TaxOptimizer from '@/pages/TaxOptimizer';
 import HarvestCenter from '@/pages/HarvestCenter';
+import BehavioralInsights from '@/pages/BehavioralInsights';
 import Settings from '@/pages/Settings';
 import Profile from '@/pages/Profile';
 import ProLanding from '@/pages/ProLanding';
@@ -97,6 +98,7 @@ const AuthenticatedApp = () => {
         <Route path="/tax" element={<TaxReport />} />
         <Route path="/optimize" element={<TaxOptimizer />} />
         <Route path="/harvest" element={<HarvestCenter />} />
+        <Route path="/behavioral" element={<BehavioralInsights />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
       </Route>
