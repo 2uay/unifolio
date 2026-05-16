@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Sparkles, ArrowRight, AlertTriangle, TrendingDown, Wallet, MapPin,
-  Info, Settings as SettingsIcon, CheckCircle2,
+  Info, Settings as SettingsIcon, CheckCircle2, Users,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
@@ -14,6 +14,8 @@ import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import { useAuth } from '@/lib/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { buildTaxOptimization } from '@/lib/taxOptimizer';
+import { useQuery } from '@tanstack/react-query';
+import { getHouseholdHoldings } from '@/lib/householdClient';
 
 const PM = '••••••';
 
@@ -147,6 +149,38 @@ function EmptySection({ message }) {
   );
 }
 
+function IncomeSplittingCard({ opp, privacyMode }) {
+  const isInfo = !!opp.informational;
+  const accent = isInfo ? 'text-violet-400' : opp.severity === 'high' ? 'text-emerald-400' : 'text-violet-400';
+  const borderAccent = isInfo ? 'border-violet-400/30' : 'border-violet-400/40';
+  return (
+    <div className={cn('rounded-xl border bg-card p-4 space-y-2.5', borderAccent)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <Users className={cn('w-4 h-4 mt-0.5 shrink-0', accent)} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">{opp.title}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{opp.summary}</p>
+          </div>
+        </div>
+        {!isInfo && opp.estimatedAnnualSavings > 0 && (
+          <div className="text-right shrink-0">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Est. savings/yr</p>
+            <p className="text-sm font-mono font-bold text-emerald-400">
+              {privacyMode ? '••••••' : '+' + formatCurrency(opp.estimatedAnnualSavings)}
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="rounded-md bg-secondary/30 px-3 py-2 ml-7">
+        <p className="text-[11px] text-foreground/80 leading-relaxed">
+          <strong className="text-foreground">How:</strong> {opp.actionText}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ContributionSequenceCard({ sequence }) {
   if (sequence.length === 0) {
     return <EmptySection message="No registered accounts found. Add a TFSA, RRSP, or FHSA in Accounts to get contribution guidance." />;
@@ -178,7 +212,7 @@ async function loadOptProfile(userId) {
   try {
     const { data } = await supabase
       .from('user_profiles')
-      .select('marginal_tax_rate, province')
+      .select('marginal_tax_rate, spouse_marginal_tax_rate, province')
       .eq('user_id', userId)
       .single();
     return data || {};
@@ -199,9 +233,23 @@ export default function TaxOptimizer() {
     return () => { cancelled = true; };
   }, [user?.id]);
 
+  // Spouse holdings (when linked via /profile) inform the spousal-loan
+  // recommendation sizing. Same RPC the harvest engine uses; gracefully
+  // returns null when no household exists.
+  const { data: spouseHoldings } = useQuery({
+    queryKey: ['householdHoldings', user?.id],
+    enabled: !!user?.id && profile?.spouse_marginal_tax_rate != null,
+    queryFn: getHouseholdHoldings,
+  });
+
   const optimization = useMemo(
-    () => buildTaxOptimization({ holdings, accounts, transactions, profile }),
-    [holdings, accounts, transactions, profile],
+    () => buildTaxOptimization({
+      holdings, accounts, transactions, profile,
+      spouseHoldings: Array.isArray(spouseHoldings)
+        ? spouseHoldings.filter(h => h.owner_user_id !== user?.id)
+        : null,
+    }),
+    [holdings, accounts, transactions, profile, spouseHoldings, user?.id],
   );
 
   if (isEmptyPortfolio) {
@@ -301,6 +349,39 @@ export default function TaxOptimizer() {
         />
         <ContributionSequenceCard sequence={optimization.contributionSequence} />
       </section>
+
+      {optimization.spouseMarginalRate !== null ? (
+        <section>
+          <SectionHeader
+            icon={Users}
+            title="Income Splitting Opportunities"
+            count={optimization.incomeSplitting.length}
+            accentColor="text-violet-400"
+          />
+          {optimization.incomeSplitting.length === 0 ? (
+            <p className="text-xs text-muted-foreground rounded-xl border border-border/40 bg-card/30 px-4 py-3">
+              No income-splitting opportunities right now — the rate spread between you and your spouse is &lt;3%, so the after-cost benefit isn't material.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {optimization.incomeSplitting.map(opp => (
+                <IncomeSplittingCard key={opp.id} opp={opp} privacyMode={privacyMode} />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="rounded-xl border border-border/40 bg-card/30 px-4 py-3">
+          <p className="text-[11px] text-muted-foreground leading-relaxed flex items-start gap-2">
+            <Users className="w-3.5 h-3.5 mt-0.5 text-violet-400 shrink-0" />
+            <span>
+              <strong className="text-foreground/80">Unlock income-splitting recommendations:</strong>{' '}
+              add your spouse's marginal tax rate in <Link to="/profile" className="text-primary hover:underline">your profile</Link> (the Tax Settings card).
+              We'll surface spousal-RRSP contribution savings, prescribed-rate spousal loans, and TFSA gifting strategies.
+            </span>
+          </p>
+        </section>
+      )}
 
       <div className="rounded-xl border border-border/40 bg-card/30 px-4 py-3">
         <p className="text-[11px] text-muted-foreground leading-relaxed">

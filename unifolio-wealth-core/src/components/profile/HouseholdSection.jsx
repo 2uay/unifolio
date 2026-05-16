@@ -5,7 +5,7 @@ import { Users, UserPlus, Mail, Loader2, Copy, CheckCircle2, AlertTriangle, X, L
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/AuthContext';
 import {
-  inviteSpouse, leaveHousehold, revokeInvite,
+  inviteSpouse, leaveHousehold, revokeInvite, transferHouseholdPrimary,
   getCurrentHousehold, getPendingInvites,
 } from '@/lib/householdClient';
 
@@ -62,6 +62,13 @@ export default function HouseholdSection() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['householdInvites'] }),
   });
 
+  const transferPrimaryMutation = useMutation({
+    mutationFn: transferHouseholdPrimary,
+    onMutate: () => setErrorMessage(null),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['household'] }),
+    onError: (err) => setErrorMessage(err?.message || 'Could not transfer primary'),
+  });
+
   const handleCopy = () => {
     if (!generatedUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
     navigator.clipboard.writeText(generatedUrl).then(() => {
@@ -108,6 +115,8 @@ export default function HouseholdSection() {
           currentUserId={user?.id}
           onLeave={() => leaveMutation.mutate()}
           isLeaving={leaveMutation.isPending}
+          onTransferPrimary={(uid) => transferPrimaryMutation.mutate(uid)}
+          isTransferring={transferPrimaryMutation.isPending}
         />
       ) : (
         <InviteForm
@@ -132,8 +141,10 @@ export default function HouseholdSection() {
   );
 }
 
-function CurrentHousehold({ household, currentUserId, onLeave, isLeaving }) {
+function CurrentHousehold({ household, currentUserId, onLeave, isLeaving, onTransferPrimary, isTransferring }) {
   const otherMembers = household.members.filter(m => m.user_id !== currentUserId);
+  const isPrimary = household.myRole === 'primary';
+  const canDirectLeave = !isPrimary || otherMembers.length === 0;
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3 py-2 flex items-start gap-2">
@@ -148,19 +159,36 @@ function CurrentHousehold({ household, currentUserId, onLeave, isLeaving }) {
       <div className="space-y-2">
         <p className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Members</p>
         {household.members.map(m => (
-          <div key={m.user_id} className="flex items-center justify-between rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs">
-            <span className="font-mono text-foreground/85 truncate">
-              {m.user_id === currentUserId ? 'You' : m.user_id.slice(0, 8) + '…'}
-            </span>
-            <span className="capitalize text-muted-foreground">{m.role}</span>
+          <div key={m.user_id} className="flex items-center justify-between rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono text-foreground/85 truncate">
+                {m.user_id === currentUserId ? 'You' : m.user_id.slice(0, 8) + '…'}
+              </span>
+              <span className="capitalize text-muted-foreground">{m.role}</span>
+            </div>
+            {isPrimary && m.user_id !== currentUserId && m.role !== 'primary' && (
+              <button
+                type="button"
+                onClick={() => onTransferPrimary?.(m.user_id)}
+                disabled={isTransferring}
+                className="text-[11px] text-primary hover:underline disabled:opacity-40 shrink-0"
+                title="Make this member the household primary"
+              >
+                {isTransferring ? '…' : 'Make primary'}
+              </button>
+            )}
           </div>
         ))}
       </div>
-      <Button size="sm" variant="outline" onClick={onLeave} disabled={isLeaving} className="text-xs gap-1.5">
+      {isPrimary && otherMembers.length > 0 && !canDirectLeave && (
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          As the primary, you can't leave directly. Use "Make primary" above to transfer
+          the role to a household member, then leave from the new spouse role.
+        </p>
+      )}
+      <Button size="sm" variant="outline" onClick={onLeave} disabled={isLeaving || !canDirectLeave} className="text-xs gap-1.5">
         {isLeaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogOut className="w-3 h-3" />}
-        {household.myRole === 'primary' && otherMembers.length > 0
-          ? 'Leave (must remove others first)'
-          : 'Leave household'}
+        Leave household
       </Button>
     </div>
   );

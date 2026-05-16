@@ -1,4 +1,5 @@
 import { makePlaidClient, makeServiceSupabase, getAuthUser, cors } from './_client.js';
+import { loadPlanCapState, enforcePlanCap } from '../_lib/planCap.js';
 
 export default async function handler(req, res) {
   cors(res);
@@ -13,6 +14,14 @@ export default async function handler(req, res) {
 
   const plaid = makePlaidClient();
   const supabase = makeServiceSupabase();
+
+  // Server-side plan-cap hard enforcement. We pre-check against +1 here
+  // (Plaid Items always represent at least one new account); the sync
+  // step below re-checks the final account count after Plaid responds
+  // and unwinds the Item if it would exceed the cap.
+  const preCheck = await loadPlanCapState(supabase, user.id);
+  const preReject = enforcePlanCap(preCheck, 1);
+  if (preReject) return res.status(preReject.status).json(preReject.body);
 
   try {
     // Exchange public_token for access_token
@@ -32,14 +41,63 @@ export default async function handler(req, res) {
     });
     if (upsertError) throw new Error(`DB upsert failed: ${upsertError.message}`);
 
-    // Trigger initial sync inline
-    await syncItem({ userId: user.id, itemId: item_id, accessToken: access_token, institutionName, supabase, plaid });
+    // Trigger initial sync inline. syncItem returns the canonical account
+    // IDs it created so we can rollback by exact id if the post-sync cap
+    // check fails.
+    const { createdAccountIds, createdInstitutionIds } = await syncItem({
+      userId: user.id, itemId: item_id, accessToken: access_token, institutionName, supabase, plaid,
+    });
+
+    // Post-sync cap check. Plaid may return more accounts than the
+    // user has cap room for (e.g. a single institution login that
+    // exposes Chequing + Savings + TFSA + RRSP + Margin = 5 accounts
+    // against a pro plan with 5 slots and 2 already used). When that
+    // happens we unwind the Item entirely and return 402 — partial
+    // imports are worse UX than "pay for the upgrade and retry."
+    const postCheck = await loadPlanCapState(supabase, user.id);
+    if (postCheck.overCap) {
+      await unwindPlaidItem({
+        supabase, userId: user.id, plaidItemRowId: id,
+        accountIds: createdAccountIds, institutionIds: createdInstitutionIds,
+      });
+      return res.status(402).json({
+        error: 'plan_cap_exceeded_post_sync',
+        message: `Connecting this institution brought you to ${postCheck.currentCount} accounts on a plan that includes ${postCheck.totalCap}. The connection was rolled back — upgrade or add an extra-account slot and reconnect.`,
+        plan: postCheck.plan,
+        currentCount: postCheck.currentCount,
+        totalCap: postCheck.totalCap,
+        upgradeUrl: '/plans',
+        addOnUrl: `/checkout?plan=${postCheck.plan}&extra=${postCheck.currentCount - postCheck.totalCap}`,
+      });
+    }
 
     res.json({ itemId: item_id, success: true });
   } catch (err) {
     console.error('[Plaid exchange]', err?.response?.data || err.message);
     res.status(500).json({ error: err?.response?.data?.error_message || err.message || 'Exchange failed' });
   }
+}
+
+// Rolls back a Plaid Item that was synced but would exceed the cap.
+// Deletes by exact account IDs collected during sync (the normalizer
+// stamps deterministic plaid_${userId}_${plaidAccountId} ids). We
+// don't touch the institution row if the user had pre-existing
+// accounts under that institution — but if this Item was the only
+// reason it existed, we clean it up too.
+async function unwindPlaidItem({ supabase, userId, plaidItemRowId, accountIds = [], institutionIds = [] }) {
+  if (accountIds.length > 0) {
+    await supabase.from('holdings').delete().eq('user_id', userId).in('account_id', accountIds);
+    await supabase.from('transactions').delete().eq('user_id', userId).in('account_id', accountIds);
+    await supabase.from('realized_positions').delete().eq('user_id', userId).in('account_id', accountIds);
+    await supabase.from('accounts').delete().eq('user_id', userId).in('id', accountIds);
+  }
+  for (const instId of institutionIds) {
+    const { count } = await supabase
+      .from('accounts').select('id', { count: 'exact', head: true })
+      .eq('user_id', userId).eq('institution_id', instId);
+    if (!count) await supabase.from('institutions').delete().eq('user_id', userId).eq('id', instId);
+  }
+  await supabase.from('plaid_items').delete().eq('user_id', userId).eq('id', plaidItemRowId);
 }
 
 async function syncItem({ userId, itemId, accessToken, institutionName, supabase, plaid }) {
@@ -78,8 +136,13 @@ async function syncItem({ userId, itemId, accessToken, institutionName, supabase
   if (accounts.length) await supabase.from('accounts').upsert(accounts, { onConflict: 'id' });
   if (holdings.length) await supabase.from('holdings').upsert(holdings, { onConflict: 'id' });
 
+  const createdAccountIds = accounts.map(a => a.id).filter(Boolean);
+  const createdInstitutionIds = [...new Set(institutions.map(i => i.id).filter(Boolean))];
+
   // Update last_synced_at + institution logo
   await supabase.from('plaid_items')
     .update({ last_synced_at: new Date().toISOString(), status: 'active', institution_logo: institutionLogo })
     .eq('item_id', itemId);
+
+  return { createdAccountIds, createdInstitutionIds };
 }

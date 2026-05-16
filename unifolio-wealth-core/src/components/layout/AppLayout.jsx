@@ -7,6 +7,7 @@ import ThemedWaveBackground from '@/components/shared/ThemedWaveBackground';
 import { cn } from '@/lib/utils';
 import { useFloatingHoldings } from '@/lib/FloatingHoldingsContext';
 import Holdings from '@/pages/Holdings';
+import CryptoRenewalBanner from '@/components/billing/CryptoRenewalBanner';
 
 export default function AppLayout() {
   const { desktopOpen } = useSidebar();
@@ -33,7 +34,8 @@ export default function AppLayout() {
         ) : (
           <div className="relative z-10 pt-14 lg:pt-14 w-full">
             <div className="sm:p-4 md:p-6 w-full bg-transparent pt-4 pr-3 pl-3 pb-3">
-              <div className="w-full">
+              <div className="w-full space-y-3">
+                <CryptoRenewalBanner />
                 <Outlet />
               </div>
             </div>

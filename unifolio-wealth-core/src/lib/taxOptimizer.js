@@ -421,6 +421,167 @@ export function calcTotalProjectedSavings(opportunities = []) {
   return opportunities.reduce((sum, opp) => sum + safeNumber(opp.estimatedAnnualSavings), 0);
 }
 
+// ============================================================
+// SPOUSAL INCOME SPLITTING (Sprint C)
+// Recommendations that exploit the rate spread between two spouses to
+// reduce household tax. All quantification assumes the user has linked
+// their spouse (so we have their holdings + recent transactions) and
+// supplied a spouse_marginal_tax_rate in /profile.
+//
+// References:
+//   - Spousal RRSP attribution rule: ITA s.146(8.3)
+//   - Income-attribution rules: ITA s.74.1, s.74.5
+//   - Prescribed-rate loan exception: Reg. 4301(c) (~5% as of 2025)
+//   - TFSA inter-spousal transfer attribution: ITA s.74.5(12) — exempts
+//     income earned inside a TFSA from attribution.
+// ============================================================
+
+// CRA's prescribed rate is published quarterly. We default to 5% as the
+// most recent value at time of writing — UIs can override if/when the
+// rate changes meaningfully. Even a stale value is fine for an
+// opportunity scan since the spread vs. spouse's borrowing cost is
+// what matters.
+const PRESCRIBED_RATE_DEFAULT = 0.05;
+
+/**
+ * @param {object} input
+ * @param {number} input.userMarginalRate    — decimal, e.g. 0.4341 for 43.41%
+ * @param {number} input.spouseMarginalRate  — decimal
+ * @param {Array}  [input.userHoldings]      — caller's holdings (for non-reg balance estimate)
+ * @param {Array}  [input.spouseHoldings]    — spouse's holdings (via get_household_holdings RPC)
+ * @param {Array}  [input.userAccounts]      — caller's accounts (for account_type)
+ * @param {number} [input.prescribedRate]    — CRA prescribed rate, decimal
+ *
+ * Returns an array of opportunity objects in the same shape as
+ * calcAssetLocationOpportunities/calcLossHarvestOpportunities, so the UI
+ * can render them in the existing opportunity list.
+ */
+export function calcSpousalIncomeSplitting({
+  userMarginalRate,
+  spouseMarginalRate,
+  userHoldings = [],
+  spouseHoldings = [],
+  userAccounts = [],
+  prescribedRate = PRESCRIBED_RATE_DEFAULT,
+} = {}) {
+  const opportunities = [];
+  const rateUser = Number(userMarginalRate);
+  const rateSpouse = Number(spouseMarginalRate);
+  if (!Number.isFinite(rateUser) || !Number.isFinite(rateSpouse)) return opportunities;
+  const rateSpread = rateUser - rateSpouse;
+  // Only recommend when spread is material. <3% spread isn't worth the
+  // complexity of moving money between spouses.
+  if (Math.abs(rateSpread) < 0.03) return opportunities;
+
+  const higherEarnerIsCaller = rateSpread > 0;
+  const higherRate = higherEarnerIsCaller ? rateUser : rateSpouse;
+  const lowerRate  = higherEarnerIsCaller ? rateSpouse : rateUser;
+  const spread = higherRate - lowerRate;
+
+  // Compute approximate non-registered balance for the higher earner —
+  // sets a realistic upper bound on income-splitting opportunities.
+  const nonRegByAccount = {};
+  (userAccounts || []).forEach(a => { nonRegByAccount[a.id] = accountClass(a.account_type ?? a.type ?? '') === 'taxable'; });
+  const userNonRegBalance = (userHoldings || [])
+    .filter(h => nonRegByAccount[h.account_id ?? h.accountId])
+    .reduce((sum, h) => sum + safeNumber(h.market_value ?? h.marketValue), 0);
+
+  // ── 1. Spousal RRSP contribution ─────────────────────────────
+  // Higher earner contributes to a spousal RRSP. They get the deduction
+  // at their higher rate; spouse later withdraws at their lower rate.
+  // Savings ≈ contribution × spread, less attribution risk if withdrawn
+  // within 3 calendar years (then attributed back to contributor).
+  //
+  // We size the recommendation at a default $10k/yr — actual room
+  // depends on the higher earner's RRSP room (which we don't query yet).
+  const RECOMMENDED_SPOUSAL_RRSP_CONTRIB = 10000;
+  const spousalRrspSavings = RECOMMENDED_SPOUSAL_RRSP_CONTRIB * spread;
+  if (spousalRrspSavings >= 100) {
+    opportunities.push({
+      id: 'spousal-rrsp',
+      kind: 'income_splitting',
+      subtype: 'spousal_rrsp',
+      severity: spousalRrspSavings > 1500 ? 'high' : 'medium',
+      title: higherEarnerIsCaller
+        ? 'Open a spousal RRSP — you contribute, spouse withdraws'
+        : 'Spouse should open a spousal RRSP naming you as beneficiary',
+      summary: higherEarnerIsCaller
+        ? `Your marginal rate (${(rateUser * 100).toFixed(1)}%) is ${(spread * 100).toFixed(1)} percentage points above your spouse's (${(rateSpouse * 100).toFixed(1)}%). Contributing $${RECOMMENDED_SPOUSAL_RRSP_CONTRIB.toLocaleString()} to a spousal RRSP this year saves you ~$${Math.round(spousalRrspSavings).toLocaleString()} more than contributing the same amount to your own RRSP.`
+        : `Your spouse's marginal rate is ${(spread * 100).toFixed(1)} percentage points above yours. They should contribute up to $${RECOMMENDED_SPOUSAL_RRSP_CONTRIB.toLocaleString()}/yr to a spousal RRSP naming you, saving ~$${Math.round(spousalRrspSavings).toLocaleString()}/yr in household tax.`,
+      actionText: higherEarnerIsCaller
+        ? 'Open a spousal RRSP at your broker. Contribute against your own RRSP room (not your spouse\'s). Withdrawals are attributed back if made within 3 calendar years — only contribute amounts you don\'t expect spouse to withdraw soon.'
+        : 'Have spouse open a spousal RRSP naming you. They contribute against THEIR RRSP room; you withdraw later at your lower rate. Watch the 3-year attribution rule.',
+      estimatedAnnualSavings: spousalRrspSavings,
+      assumesContribution: RECOMMENDED_SPOUSAL_RRSP_CONTRIB,
+      rateSpreadPct: spread * 100,
+    });
+  }
+
+  // ── 2. Prescribed-rate spousal loan ──────────────────────────
+  // For non-registered transfers: lender (higher earner) charges spouse
+  // the CRA prescribed rate (5%). Spouse invests, earns return ABOVE the
+  // 5% loan rate, declares the income themselves at their lower rate.
+  // Net household savings ≈ invested-balance × (assumed_return − prescribed_rate)
+  // × spread.
+  //
+  // Only meaningful when higher earner has substantial non-registered
+  // balance to lend (>= $25k as a heuristic).
+  const NON_REG_THRESHOLD = 25000;
+  if (higherEarnerIsCaller && userNonRegBalance >= NON_REG_THRESHOLD) {
+    const ASSUMED_RETURN = 0.07; // 7% long-run equity proxy
+    const lendableBalance = userNonRegBalance; // could lend up to whole non-reg balance
+    const excessReturn = Math.max(0, ASSUMED_RETURN - prescribedRate);
+    const annualSavings = lendableBalance * excessReturn * spread;
+    if (annualSavings >= 100) {
+      opportunities.push({
+        id: 'prescribed-rate-loan',
+        kind: 'income_splitting',
+        subtype: 'prescribed_rate_loan',
+        severity: annualSavings > 2000 ? 'high' : 'medium',
+        title: 'Set up a prescribed-rate spousal loan',
+        summary: `You hold ~$${Math.round(lendableBalance).toLocaleString()} in non-registered accounts. Lending this to your spouse at the CRA prescribed rate (${(prescribedRate * 100).toFixed(2)}%) lets them invest and declare investment income at their lower rate. Estimated household savings: ~$${Math.round(annualSavings).toLocaleString()}/yr (assumes ${(ASSUMED_RETURN * 100).toFixed(1)}% return).`,
+        actionText: 'Sign a written loan agreement at the prescribed rate. Spouse pays you interest annually (by Jan 30 of the following year). You include the interest in your income; spouse deducts it from theirs. The prescribed rate stays locked in for the life of the loan.',
+        estimatedAnnualSavings: annualSavings,
+        loanAmount: lendableBalance,
+        prescribedRatePct: prescribedRate * 100,
+        assumedReturnPct: ASSUMED_RETURN * 100,
+        rateSpreadPct: spread * 100,
+      });
+    }
+  }
+
+  // ── 3. TFSA gift to lower-earning spouse ─────────────────────
+  // TFSA income is exempt from attribution rules under ITA s.74.5(12).
+  // The higher earner can gift money to the lower earner to fill the
+  // lower earner's TFSA room. Strictly an asset-shuffle (no income
+  // generated at lower rate per se) but tilts long-term household
+  // wealth toward the lower-rate spouse for the EVENTUAL withdrawal
+  // and re-investment outside the TFSA.
+  //
+  // Savings are second-order; we surface this as informational rather
+  // than quantified-dollar.
+  if (higherEarnerIsCaller && userNonRegBalance >= 10000) {
+    opportunities.push({
+      id: 'tfsa-spousal-gift',
+      kind: 'income_splitting',
+      subtype: 'tfsa_gift',
+      severity: 'medium',
+      title: 'Fund spouse\'s TFSA first',
+      summary: `TFSA income is exempt from CRA attribution rules. Before topping up your own TFSA, gift cash to your spouse so they can max theirs. Withdrawals from the spouse's TFSA stay in the spouse's hands — useful for future retirement-income smoothing.`,
+      actionText: 'Transfer cash to spouse (no tax consequences — TFSA contributions aren\'t in-kind taxable). Spouse contributes to their TFSA. The income earned inside stays in the spouse\'s name forever.',
+      estimatedAnnualSavings: 0, // not a per-year saving — strategic
+      informational: true,
+    });
+  }
+
+  // Sort highest-impact first; informational items go last.
+  opportunities.sort((a, b) => {
+    if (!!a.informational !== !!b.informational) return a.informational ? 1 : -1;
+    return safeNumber(b.estimatedAnnualSavings) - safeNumber(a.estimatedAnnualSavings);
+  });
+  return opportunities;
+}
+
 // ─── ENTRY POINT ──────────────────────────────────────────────
 // Single call from the UI: returns everything the Tax Optimizer page needs.
 
@@ -431,23 +592,36 @@ export function calcTotalProjectedSavings(opportunities = []) {
  * @param {Array} input.transactions
  * @param {{ marginal_tax_rate?: number, province?: string }} [input.profile]
  */
-export function buildTaxOptimization({ holdings, accounts, transactions, profile = {} }) {
+export function buildTaxOptimization({ holdings, accounts, transactions, profile = {}, spouseHoldings = null }) {
   const rate = /** @type {{ marginal_tax_rate?: number }} */ (profile).marginal_tax_rate;
   const marginalTaxRate = typeof rate === 'number' ? rate / 100 : 0.30;
+  const spouseRateRaw = /** @type {{ spouse_marginal_tax_rate?: number }} */ (profile).spouse_marginal_tax_rate;
+  const spouseRate = typeof spouseRateRaw === 'number' ? spouseRateRaw / 100 : null;
 
   const assetLocation = calcAssetLocationOpportunities({ holdings, accounts, transactions, marginalTaxRate });
   const lossHarvest = calcLossHarvestOpportunities({ holdings, accounts, transactions, marginalTaxRate });
   const contributionSequence = calcContributionSequence({ marginalTaxRate, accounts, profile });
+  const incomeSplitting = spouseRate !== null
+    ? calcSpousalIncomeSplitting({
+        userMarginalRate: marginalTaxRate,
+        spouseMarginalRate: spouseRate,
+        userHoldings: holdings,
+        spouseHoldings: spouseHoldings || [],
+        userAccounts: accounts,
+      })
+    : [];
 
-  const totalProjectedSavings = calcTotalProjectedSavings([...assetLocation, ...lossHarvest]);
+  const totalProjectedSavings = calcTotalProjectedSavings([...assetLocation, ...lossHarvest, ...incomeSplitting]);
 
   return {
     marginalTaxRate,
+    spouseMarginalRate: spouseRate,
     assetLocation,
     lossHarvest,
     contributionSequence,
+    incomeSplitting,
     totalProjectedSavings,
-    opportunityCount: assetLocation.length + lossHarvest.length,
+    opportunityCount: assetLocation.length + lossHarvest.length + incomeSplitting.length,
   };
 }
 

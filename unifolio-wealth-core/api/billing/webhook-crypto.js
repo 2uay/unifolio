@@ -50,6 +50,22 @@ export default async function handler(req, res) {
         return res.status(200).json({ received: true });
       }
       const extraAccounts = Math.max(0, parseInt(meta.extra_accounts || '0', 10));
+      const isOneTime = meta.is_one_time === 'true' || meta.is_one_time === true;
+      const billing = meta.billing || 'annual';
+
+      // Compute the period the user just paid for. Crypto charges are
+      // discrete (no Stripe-style recurring subscription), so we explicitly
+      // track period_starts_at + period_ends_at so the renewal cron can
+      // (a) email a reminder 14 days before expiry and (b) auto-downgrade
+      // to free when the period elapses without renewal.
+      const now = new Date();
+      const periodStartsAt = now;
+      const periodEndsAt = isOneTime ? null : new Date(now);
+      if (periodEndsAt) {
+        if (billing === 'monthly') periodEndsAt.setUTCMonth(periodEndsAt.getUTCMonth() + 1);
+        else periodEndsAt.setUTCFullYear(periodEndsAt.getUTCFullYear() + 1);
+      }
+
       await supabase.from('user_profiles').upsert({
         user_id: userId,
         plan: planId,
@@ -58,6 +74,8 @@ export default async function handler(req, res) {
       }, { onConflict: 'user_id' });
       await supabase.from('billing_orders').update({
         status: 'paid',
+        period_starts_at: periodStartsAt.toISOString(),
+        period_ends_at: periodEndsAt ? periodEndsAt.toISOString() : null,
         metadata: { ...meta, confirmed_at: new Date().toISOString() },
       }).eq('id', charge.id);
     } else if (type === 'charge:failed' || type === 'charge:delayed') {

@@ -693,3 +693,18 @@ as $$
     );
 $$;
 grant execute on function get_household_recent_transactions(integer) to authenticated;
+
+-- Sprint C: spousal income-splitting input (user_profiles)
+-- Optional — only populated when the user has a household link and wants
+-- spousal-RRSP / spousal-loan recommendations in the Tax Optimizer.
+alter table user_profiles add column if not exists spouse_marginal_tax_rate numeric;
+
+
+-- Sprint D: crypto subscription periods
+-- Coinbase Commerce charges are one-time. For recurring crypto billing we
+-- track period_ends_at on billing_orders so the renewal cron can email a
+-- reminder + downgrade expired plans.
+alter table billing_orders add column if not exists period_starts_at timestamptz;
+alter table billing_orders add column if not exists period_ends_at timestamptz;
+alter table billing_orders add column if not exists renewed_from_order_id text references billing_orders(id);
+create index if not exists billing_orders_period_ends on billing_orders(period_ends_at) where status = 'paid' and billing_method = 'crypto_coinbase';

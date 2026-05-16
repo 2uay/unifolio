@@ -28,6 +28,10 @@ export function leaveHousehold() {
   return authedFetch('/api/household/leave', {});
 }
 
+export function transferHouseholdPrimary(newPrimaryUserId) {
+  return authedFetch('/api/household/transfer-primary', { newPrimaryUserId });
+}
+
 // Direct Supabase reads for "what's the current household state". RLS
 // scopes everything to the caller.
 export async function getCurrentHousehold() {

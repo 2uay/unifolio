@@ -21,6 +21,7 @@ const DEFAULT_FORM = {
   location: '',
   bio: '',
   marginalTaxRate: '',
+  spouseMarginalTaxRate: '',
   province: '',
 };
 
@@ -79,7 +80,7 @@ export default function Profile() {
       try {
         const { data } = await supabase
           .from('user_profiles')
-          .select('display_name, phone_number, location, bio, marginal_tax_rate, province')
+          .select('display_name, phone_number, location, bio, marginal_tax_rate, spouse_marginal_tax_rate, province')
           .eq('user_id', user.id)
           .single();
 
@@ -92,6 +93,7 @@ export default function Profile() {
           location: data?.location || '',
           bio: data?.bio || '',
           marginalTaxRate: data?.marginal_tax_rate != null ? String(data.marginal_tax_rate) : '',
+          spouseMarginalTaxRate: data?.spouse_marginal_tax_rate != null ? String(data.spouse_marginal_tax_rate) : '',
           province: data?.province || '',
         };
         setForm(nextForm);
@@ -145,6 +147,7 @@ export default function Profile() {
       }
 
       const parsedRate = form.marginalTaxRate === '' ? null : Number(form.marginalTaxRate);
+      const parsedSpouseRate = form.spouseMarginalTaxRate === '' ? null : Number(form.spouseMarginalTaxRate);
       const trimmedProvince = (form.province || '').trim().toUpperCase();
 
       const { error } = await supabase.from('user_profiles').upsert({
@@ -155,6 +158,7 @@ export default function Profile() {
         location: trimmedLocation || null,
         bio: trimmedBio || null,
         marginal_tax_rate: Number.isFinite(parsedRate) ? parsedRate : null,
+        spouse_marginal_tax_rate: Number.isFinite(parsedSpouseRate) ? parsedSpouseRate : null,
         province: trimmedProvince || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
@@ -168,6 +172,7 @@ export default function Profile() {
         location: trimmedLocation || '',
         bio: trimmedBio || '',
         marginalTaxRate: Number.isFinite(parsedRate) ? String(parsedRate) : '',
+        spouseMarginalTaxRate: Number.isFinite(parsedSpouseRate) ? String(parsedSpouseRate) : '',
         province: trimmedProvince || '',
       };
       setForm(nextForm);
@@ -355,6 +360,42 @@ export default function Profile() {
             </select>
             <p className="text-[10px] text-muted-foreground/80">
               Used to refine province-specific dividend tax credit calculations.
+            </p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="profile-spouse-rate">Spouse's Marginal Tax Rate (%) — optional</Label>
+            <Input
+              id="profile-spouse-rate"
+              type="number"
+              step="0.01"
+              min="0"
+              max="60"
+              value={form.spouseMarginalTaxRate}
+              onChange={(e) => updateField('spouseMarginalTaxRate', e.target.value)}
+              placeholder="e.g. 29.65"
+              disabled={loading}
+            />
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {MARGINAL_RATE_PRESETS.map(preset => (
+                <button
+                  key={`sp-${preset.rate}`}
+                  type="button"
+                  onClick={() => updateField('spouseMarginalTaxRate', String(preset.rate))}
+                  className={cn(
+                    'rounded-md border px-2 py-0.5 text-[10px] transition-colors',
+                    Number(form.spouseMarginalTaxRate) === preset.rate
+                      ? 'border-primary/50 bg-primary/15 text-primary'
+                      : 'border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60'
+                  )}
+                >
+                  {preset.rate}%
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/80">
+              Unlocks income-splitting recommendations in the Tax Optimizer (spousal RRSP,
+              prescribed-rate spousal loans, TFSA gifting). Stays in your profile; we don't
+              share it with your linked spouse.
             </p>
           </div>
         </div>
