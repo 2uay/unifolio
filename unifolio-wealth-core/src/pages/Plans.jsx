@@ -1,58 +1,32 @@
 import React, { useState } from 'react';
-import { Check, X, Gem, Sparkles, Crown, Zap, ArrowRight, Lock, X as CloseIcon } from 'lucide-react';
+import { Check, X, Gem, Sparkles, Crown, Zap, ArrowRight, Lock, Plus, Minus, X as CloseIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/lib/ThemeContext';
 import { useCurrency } from '@/lib/CurrencyContext';
 import ThemedWaveBackground from '@/components/shared/ThemedWaveBackground';
 import LoginBackgroundWheel from '@/components/shared/LoginBackgroundWheel';
 import SpinningLogo from '@/components/shared/SpinningLogo';
+import {
+  PLAN_TIERS, ACCOUNT_ADD_ON, calcMonthlyPricing, calcAnnualPricing,
+  annualSavingsPct, getTier,
+} from '@/lib/planTiers';
 
-// Lifetime price = 2 years of annual billing at a 20% discount.
-//   lifetime = 2 × (annual × 12) × 0.8
-// USD: 2 × ($18 × 12) × 0.8 = $345.60 ≈ $346
-// CAD: 2 × ($25 × 12) × 0.8 = $480
-const PRICES = {
-  USD: { monthly: 20,  annual: 18,  lifetime: 346 },
-  CAD: { monthly: 28,  annual: 25,  lifetime: 480 },
+// Icons + accent styles per tier id. Kept in this file (not in planTiers.js)
+// because Lucide icons + Tailwind classes are presentation concerns.
+const TIER_PRESENTATION = {
+  free:      { icon: Gem,      highlighted: false, badgeColor: '' },
+  pro:       { icon: Sparkles, highlighted: true,  badgeColor: 'bg-primary text-primary-foreground border-primary/40' },
+  pro_plus:  { icon: Sparkles, highlighted: false, badgeColor: '' },
+  pro_max:   { icon: Crown,    highlighted: false, badgeColor: 'bg-violet-500 text-violet-50 border-violet-400/40' },
+  lifetime:  { icon: Crown,    highlighted: false, badgeColor: 'bg-amber-500 text-amber-950 border-amber-400/40' },
 };
 
-const PLAN_FEATURES = {
-  starter: [
-    { label: '1 brokerage account',         included: true  },
-    { label: 'Holdings & P&L tracking',     included: true  },
-    { label: 'Watchlist (up to 10 tickers)', included: true },
-    { label: 'Sample data mode',             included: true  },
-    { label: 'IBKR / CSV import',            included: false },
-    { label: 'Real-time price feed',         included: false },
-    { label: 'Tax report export',            included: false },
-    { label: 'Insights & AI analysis',       included: false },
-    { label: '48+ custom themes',            included: false },
-    { label: 'Priority support',             included: false },
-  ],
-  pro: [
-    { label: 'Unlimited brokerage accounts', included: true },
-    { label: 'Holdings & P&L tracking',      included: true },
-    { label: 'Unlimited watchlist',           included: true },
-    { label: 'IBKR / CSV import',             included: true },
-    { label: 'Real-time price feed',          included: true },
-    { label: 'Tax report export',             included: true },
-    { label: 'Insights & AI analysis',        included: true },
-    { label: '48+ custom themes',             included: true },
-    { label: 'Priority support',              included: true },
-    { label: 'Early feature access',          included: true },
-  ],
-  lifetime: [
-    { label: 'Everything in Pro',             included: true },
-    { label: 'All future features, forever',  included: true },
-    { label: 'No recurring charges',          included: true },
-    { label: 'Dedicated support channel',     included: true },
-    { label: 'Private beta access',           included: true },
-    { label: 'Founding member badge',         included: true },
-    { label: 'Changelog early access',        included: true },
-    { label: 'Feature request priority',      included: true },
-    { label: 'Full data export tools',        included: true },
-    { label: 'API access (coming soon)',       included: true },
-  ],
+const CTA_BY_TIER = {
+  free:      { label: 'Open unifolio.ca',    style: 'border border-border text-foreground hover:bg-secondary/80 backdrop-blur-sm' },
+  pro:       { label: 'Start 7-Day Free Trial', style: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_32px_hsl(var(--primary)/0.40)]' },
+  pro_plus:  { label: 'Upgrade to Pro+',     style: 'bg-secondary border border-border text-foreground hover:bg-secondary/80 backdrop-blur-sm' },
+  pro_max:   { label: 'Get Pro Max',         style: 'bg-violet-500/15 border border-violet-500/40 text-violet-300 hover:bg-violet-500/25 hover:border-violet-500/60' },
+  lifetime:  { label: 'Buy Lifetime Access', style: 'bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/60' },
 };
 
 const WHY_ITEMS = [
@@ -83,44 +57,53 @@ const APP_URL = 'https://unifolio.ca';
 // Long-form descriptions surfaced in the plan-detail modal (when the user
 // clicks the card body, not the CTA button).
 const PLAN_DETAILS = {
-  starter: {
+  free: {
     headline: 'Free forever — perfect for trying Unifolio',
-    body: `Starter is for people testing the waters. You get one connected brokerage account, basic holdings + P&L tracking, a small watchlist, and full access to demo mode (which loads a fictional but realistic portfolio so you can see what Pro looks like before paying).
+    body: `Free is for people testing the waters. Up to 2 connected brokerage accounts, basic holdings + P&L tracking, a small watchlist (10 tickers), and full access to demo mode (which loads a fictional but realistic portfolio so you can see what Pro looks like before paying).
 
-What you don't get: real-time prices (delayed quotes only), CSV/IBKR Flex import (you'll have to add positions manually), the tax report, AI insights, and the 48 themes — those are Pro features.
+What you don't get on Free: API linkage (Plaid), IBKR Flex / CSV import, real-time price feed, tax reports, the Tax Optimizer, ETF X-Ray insights, or behavioral insights. Those start on Pro.
 
-Starter never expires and never asks for a card. If you decide you want more, upgrade to Pro at any time and your existing data carries over.`,
-    bestFor: 'Curious investors with a single account who want to see if portfolio tracking is for them.',
+Free never expires and never asks for a card. If you decide you want more, upgrade to Pro and your existing data carries over.`,
+    bestFor: 'Curious investors with one or two accounts who want to see if portfolio tracking is for them.',
     nextStep: 'Click "Open unifolio.ca" to start using the free tier. No card required.',
   },
   pro: {
-    headline: 'The full Unifolio experience for daily use',
-    body: `Pro is what most users land on. Unlimited brokerage accounts, full IBKR Flex Query and CSV imports, real-time price feeds across every position and watchlist ticker, tax-ready exports (T5008 in Canada, etc.), the ETF X-Ray for true exposure analysis, all 48 themes, and priority support.
+    headline: 'The everyday Unifolio for active investors',
+    body: `Pro is where most active investors land. Up to 3 brokerage accounts, API linkage via Plaid, IBKR Flex Query + CSV imports, real-time price feeds, tax-ready exports (T5008 for Canada), the Tax Optimizer, ETF X-Ray for true exposure analysis, and unlimited watchlists.
 
-The Pro subscription includes every feature shipped to Unifolio, plus early access to new ones. We ship features weekly and Pro users get them first.
+Need more than 3 accounts? Add extras at $${ACCOUNT_ADD_ON.USD}/mo each — or move up to Pro+ (8 accounts) or Pro Max (20).
 
-Annual billing is 10% cheaper than monthly. You can switch billing modes at any time from your profile.
+Pro includes a 7-day free trial — no card charged until day 8.`,
+    bestFor: 'Active investors with a TFSA + RRSP + non-reg setup who want real-time data and tax exports.',
+    nextStep: 'Click "Start 7-Day Free Trial" to begin. We never charge you during the trial.',
+  },
+  pro_plus: {
+    headline: 'Pro+ — deeper analytics, more accounts',
+    body: `Pro+ adds two of Unifolio's most differentiated features on top of everything in Pro: the Loss Harvest Center (cross-account superficial-loss detection with ETF replacement suggestions and a year-end harvest plan) and Behavioral Insights (the patterns in your own trading history — when you tend to win, when you tend to lose, when you tend to panic).
 
-Pro includes a 7-day free trial — no card charged until day 8 — so you can import your real portfolio and see the value before committing.`,
-    bestFor: 'Active investors with multiple accounts (TFSA + RRSP + non-reg + IBKR), or anyone who wants tax exports and real-time data.',
-    nextStep: 'Click "Start 7-Day Free Trial" to begin. We never charge you during the trial — you have to actively renew on day 8.',
+Account cap: 8. Need more? Add extras at $${ACCOUNT_ADD_ON.USD}/mo each, or upgrade to Pro Max.
+
+Best for: investors who care about tax optimization at year-end and want the app to surface trading patterns they can't see for themselves.`,
+    bestFor: 'Multi-account investors with non-registered assets, optimizing for tax efficiency.',
+    nextStep: 'Click "Upgrade to Pro+" to start. Existing Pro users see a prorated upgrade flow.',
+  },
+  pro_max: {
+    headline: 'Pro Max — for serious investors and family offices',
+    body: `Pro Max is the top subscription tier. Up to 20 brokerage accounts (with $${ACCOUNT_ADD_ON.USD}/mo per extra above that), direct access to the founder, 4-hour support SLA, early access to every feature before it ships to lower tiers, custom data exports, and multi-user access (add your spouse or fee-only advisor).
+
+This tier exists because users with 20+ accounts were eating into per-user economics on the lower tiers. The pricing now scales with the support burden you create.`,
+    bestFor: 'Investors with extensive portfolios across many institutions, multi-account households, fee-only advisors managing 10+ client portfolios.',
+    nextStep: 'Click "Get Pro Max" or email support@unifolio.ca to schedule a 15-minute onboarding call.',
   },
   lifetime: {
-    headline: 'Pay once. Own Unifolio forever.',
-    body: `Lifetime gets you everything in Pro, locked in for the lifetime of the product, with zero recurring charges.
+    headline: 'Pay once. Own Pro Max forever.',
+    body: `Lifetime gives you Pro Max features for the lifetime of the product, with zero recurring charges. Direct line to the founder. Vote on the roadmap. Founding-member badge.
 
-The price is set at exactly two years of annual Pro billing minus a 20% loyalty discount. After ~24 months you start saving money vs. continuing on annual Pro. After 5 years you've saved roughly 60%. After 10 years you've saved 80%+.
+The price is set at exactly two years of annual Pro Max billing minus a 20% loyalty discount. After ~24 months you start saving money vs. continuing on annual Pro Max. After 5 years you've saved roughly 60%. After 10 years, 80%+.
 
-Lifetime members also get:
-• Founding-member badge in the app and on the public Unifolio Discord
-• Dedicated support channel with direct line to the founder
-• Private beta access to features before they ship to Pro
-• Feature-request priority — your requests get triaged first
-• Free access to any new product Unifolio launches in the next 24 months (e.g. mobile app, advisor mode)
-
-Lifetime is capped at 500 members. We're at #${42} as of today. Once we hit 500, the Lifetime tier closes permanently — Pro will remain available.`,
+Lifetime is capped at 500 members. Once we hit 500, the tier closes permanently — the four subscription tiers stay available.`,
     bestFor: "People who plan to use Unifolio long-term, want to support a solo founder, and don't want to think about subscriptions.",
-    nextStep: 'Click "Buy Lifetime Access" to start the one-time purchase flow. Email support@unifolio.ca if you want to discuss the founding-member badge.',
+    nextStep: 'Click "Buy Lifetime Access" to start the one-time purchase flow. Email support@unifolio.ca to discuss the founding-member badge.',
   },
 };
 
@@ -301,11 +284,20 @@ const isOnProDomain = typeof window !== 'undefined' &&
 export default function Plans() {
   const [billing, setBilling] = useState('annual');
   const [openPlanId, setOpenPlanId] = useState(null);
-  const { chartColors } = useTheme();
+  const [extraAccounts, setExtraAccounts] = useState(0);
+  useTheme(); // keeps the page theme-reactive on switch
   const { displayCurrency } = useCurrency();
 
   const goToCheckout = (plan) => {
-    const url = `/checkout?plan=${plan.id}&billing=${billing}&currency=${displayCurrency}`;
+    const params = new URLSearchParams({
+      plan: plan.id,
+      billing: plan.id === 'lifetime' ? 'lifetime' : billing,
+      currency: displayCurrency,
+    });
+    if (extraAccounts > 0 && plan.id !== 'free' && plan.id !== 'lifetime') {
+      params.set('extra', String(extraAccounts));
+    }
+    const url = `/checkout?${params.toString()}`;
     if (isOnProDomain) {
       window.location.href = `${APP_URL}${url}`;
     } else {
@@ -313,62 +305,64 @@ export default function Plans() {
     }
   };
 
-  const currency = PRICES[displayCurrency] ? displayCurrency : 'USD';
-  const { monthly: MONTHLY_PRICE, annual: ANNUAL_PRICE, lifetime: LIFETIME_PRICE } = PRICES[currency];
+  const currency = PLAN_TIERS[0].prices[displayCurrency] ? displayCurrency : 'USD';
   const currSymbol = currency === 'CAD' ? 'CA$' : '$';
-  const annualSavingsPct = Math.round((1 - ANNUAL_PRICE / MONTHLY_PRICE) * 100);
+  // Use Pro's savings pct as the headline (the price-sensitive entry tier).
+  const proSavingsPct = annualSavingsPct({ planId: 'pro', currency });
 
-  const plans = [
-    {
-      id: 'starter',
-      title: 'Starter',
-      badge: null,
-      badgeColor: '',
-      icon: Gem,
-      highlighted: false,
-      price: 'Free',
-      priceSub: null,
-      description: 'Get started free — no card required.',
-      features: PLAN_FEATURES.starter,
-      cta: 'Open unifolio.ca',
-      ctaHref: APP_URL,
-      ctaStyle: 'border border-border text-foreground hover:bg-secondary/80 backdrop-blur-sm',
-    },
-    {
-      id: 'pro',
-      title: 'Pro',
-      badge: 'Most Popular',
-      badgeColor: 'bg-primary text-primary-foreground border-primary/40',
-      icon: Sparkles,
-      highlighted: true,
-      price: billing === 'annual'
-        ? `${currSymbol}${ANNUAL_PRICE}`
-        : `${currSymbol}${MONTHLY_PRICE}`,
-      priceSub: billing === 'annual' ? '/mo, billed annually' : '/month',
-      description: billing === 'annual'
-        ? `${currSymbol}${ANNUAL_PRICE * 12}/yr — save ${annualSavingsPct}% vs monthly.`
-        : `Switch to annual to save ${annualSavingsPct}%.`,
-      features: PLAN_FEATURES.pro,
-      cta: 'Start 7-Day Free Trial',
-      ctaHref: `${APP_URL}/?plan=pro`,
-      ctaStyle: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_32px_hsl(var(--primary)/0.40)]',
-    },
-    {
-      id: 'lifetime',
-      title: 'Lifetime',
-      badge: 'Best Value',
-      badgeColor: 'bg-amber-500 text-amber-950 border-amber-400/40',
-      icon: Crown,
-      highlighted: false,
-      price: `${currSymbol}${LIFETIME_PRICE}`,
-      priceSub: 'one-time',
-      description: 'Pay once. Own Unifolio Pro forever.',
-      features: PLAN_FEATURES.lifetime,
-      cta: 'Buy Lifetime Access',
-      ctaHref: `${APP_URL}/?plan=lifetime`,
-      ctaStyle: 'bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/60',
-    },
-  ];
+  // Build the cards from PLAN_TIERS so adding/removing a tier is a one-line
+  // change in src/lib/planTiers.js.
+  const plans = PLAN_TIERS.map(tier => {
+    const pres = TIER_PRESENTATION[tier.id] || TIER_PRESENTATION.free;
+    const cta = CTA_BY_TIER[tier.id] || CTA_BY_TIER.free;
+    const pricing = calcMonthlyPricing({
+      planId: tier.id,
+      billing,
+      currency,
+      extraAccounts: tier.addOnAllowed ? extraAccounts : 0,
+    });
+
+    // Price label varies by tier kind.
+    let price, priceSub, description;
+    if (tier.id === 'free') {
+      price = 'Free';
+      priceSub = null;
+      description = 'Up to 2 accounts · no card required.';
+    } else if (tier.id === 'lifetime') {
+      price = `${currSymbol}${pricing.base}`;
+      priceSub = 'one-time';
+      description = `~24 months breaks even vs annual Pro Max.`;
+    } else {
+      price = `${currSymbol}${pricing.base}`;
+      priceSub = billing === 'annual' ? '/mo, billed annually' : '/month';
+      const annual = calcAnnualPricing({ planId: tier.id, billing, currency, extraAccounts: 0 });
+      const savings = annualSavingsPct({ planId: tier.id, currency });
+      description = billing === 'annual'
+        ? `${currSymbol}${annual.base}/yr — save ${savings}% vs monthly.`
+        : `Switch to annual to save ${savings}%.`;
+      if (pricing.addOn > 0) {
+        description = `+${currSymbol}${pricing.addOn}/mo for ${extraAccounts} extra account${extraAccounts === 1 ? '' : 's'}. ` + description;
+      }
+    }
+
+    return {
+      id: tier.id,
+      title: tier.title,
+      badge: tier.badge,
+      badgeColor: pres.badgeColor,
+      icon: pres.icon,
+      highlighted: pres.highlighted,
+      accountCap: tier.accountCap,
+      addOnAllowed: tier.addOnAllowed,
+      price,
+      priceSub,
+      description,
+      features: tier.features,
+      cta: cta.label,
+      ctaHref: `${APP_URL}/?plan=${tier.id}`,
+      ctaStyle: cta.style,
+    };
+  });
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -436,8 +430,8 @@ export default function Plans() {
           </p>
         </div>
 
-        {/* Billing toggle */}
-        <div className="flex flex-col items-center gap-3 mb-12">
+        {/* Billing toggle + add-on stepper */}
+        <div className="flex flex-col items-center gap-4 mb-10">
           <div className="flex items-center gap-1 p-1 rounded-xl bg-card/60 border border-border/40 backdrop-blur-md">
             <button
               onClick={() => setBilling('monthly')}
@@ -464,18 +458,48 @@ export default function Plans() {
                 'px-1.5 py-0.5 rounded-md text-[10px] font-bold',
                 billing === 'annual' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/15 text-primary'
               )}>
-                -{annualSavingsPct}%
+                -{proSavingsPct}%
               </span>
             </button>
           </div>
+
+          {/* Extra-account add-on stepper */}
+          <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-card/60 border border-border/40 backdrop-blur-md">
+            <span className="text-xs text-muted-foreground">Extra accounts above cap:</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setExtraAccounts(n => Math.max(0, n - 1))}
+                disabled={extraAccounts === 0}
+                aria-label="Decrease extra accounts"
+                className="w-7 h-7 rounded-md border border-border/50 bg-secondary/40 hover:bg-secondary disabled:opacity-30 disabled:hover:bg-secondary/40 flex items-center justify-center text-foreground"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <span className="font-mono text-sm font-semibold text-foreground w-6 text-center">{extraAccounts}</span>
+              <button
+                type="button"
+                onClick={() => setExtraAccounts(n => Math.min(50, n + 1))}
+                disabled={extraAccounts >= 50}
+                aria-label="Increase extra accounts"
+                className="w-7 h-7 rounded-md border border-border/50 bg-secondary/40 hover:bg-secondary disabled:opacity-30 disabled:hover:bg-secondary/40 flex items-center justify-center text-foreground"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              @ {currSymbol}{ACCOUNT_ADD_ON[currency]}/mo each
+            </span>
+          </div>
+
           <p className="text-xs text-muted-foreground">
             Prices shown in {currency} · Change in{' '}
             <a href="/settings" className="text-primary hover:underline">Settings</a>
           </p>
         </div>
 
-        {/* Plan cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start mb-20 pt-4">
+        {/* Plan cards — 5 tiers; xl shows all in a row, lg wraps at 3, md at 2. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 items-start mb-20 pt-4">
           {plans.map(plan => (
             <PlanCard
               key={plan.id}
@@ -541,9 +565,11 @@ export default function Plans() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {[
               { q: 'Can I cancel anytime?', a: 'Yes. Monthly plans cancel immediately. Annual plans are refundable within 14 days of renewal.' },
+              { q: 'What if I have more accounts than my plan cap?', a: `Add extras for $${ACCOUNT_ADD_ON.USD}/mo each (CA$${ACCOUNT_ADD_ON.CAD}/mo). Use the stepper above the plans to model your cost. If you have 20+ accounts, Pro Max is usually cheaper than Pro+ with add-ons.` },
               { q: 'Is my financial data safe?', a: 'Your holdings stay in your own Supabase instance. We never store raw broker files or sell data.' },
-              { q: "What's the difference between unifolio.ca and unifolio.pro?", a: 'unifolio.ca is free with limited accounts. unifolio.pro requires a Pro or Lifetime plan and unlocks everything.' },
-              { q: 'Does Lifetime include future features?', a: 'Yes — every feature that ships to Pro is included in Lifetime, forever, at no extra cost.' },
+              { q: "What's the difference between Pro+ and Pro Max?", a: 'Pro+ unlocks the Loss Harvest Center and Behavioral Insights. Pro Max adds 12 more account slots, direct founder access, a 4-hour support SLA, and multi-user (spouse + advisor).' },
+              { q: 'Does Lifetime include future features?', a: 'Yes — every feature that ships to Pro Max is included in Lifetime, forever, at no extra cost.' },
+              { q: "What's the difference between unifolio.ca and unifolio.pro?", a: 'unifolio.ca is the app. unifolio.pro is this pricing page — click any plan CTA to sign in or sign up at unifolio.ca.' },
             ].map((item, i) => (
               <div key={i} className="p-4 rounded-xl border border-border/30 bg-card/40 backdrop-blur-sm">
                 <p className="text-sm font-bold text-foreground mb-1.5">{item.q}</p>
