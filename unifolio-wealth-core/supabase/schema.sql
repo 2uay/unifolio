@@ -241,6 +241,11 @@ alter table user_profiles add column if not exists plan text default 'free';
 -- for 43.41%). province is a 2-letter Canadian province code (ON, BC, etc.).
 alter table user_profiles add column if not exists marginal_tax_rate numeric;
 alter table user_profiles add column if not exists province text;
+-- Number of extra-account add-on slots the user has paid for on top of the
+-- plan's base accountCap. Updated by the billing webhook on subscription
+-- create/update; read by the plan-cap banner + (eventually) server-side
+-- import enforcement. 0 = no extras.
+alter table user_profiles add column if not exists extra_accounts_paid integer default 0;
 
 -- Plaid Items (access tokens stored server-side; client only reads status/institution info)
 create table if not exists plaid_items (
