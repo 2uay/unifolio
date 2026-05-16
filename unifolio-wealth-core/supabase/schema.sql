@@ -521,3 +521,34 @@ begin
   end if;
 end;
 $$;
+
+-- ──────────────────────────────────────────────────────────────────────────────
+-- billing_orders — pending/paid checkout orders across providers (Stripe,
+-- Interac e-Transfer manual, Coinbase Commerce crypto). Useful as an
+-- audit trail for refunds, manual Interac reconciliation, and ops queries.
+-- The webhook handlers in api/billing/ are the only writers in production;
+-- RLS lets a user read their own rows for the future "Billing history"
+-- page on /profile.
+create table if not exists billing_orders (
+  id              text primary key default gen_random_uuid()::text,
+  user_id         uuid not null references auth.users(id) on delete cascade,
+  plan_id         text not null,
+  billing_method  text not null,           -- 'stripe_checkout' | 'interac_etransfer' | 'crypto_coinbase'
+  currency        text not null,
+  amount_total    integer,                 -- cents
+  status          text not null default 'pending', -- 'pending' | 'paid' | 'failed' | 'refunded' | 'delayed'
+  external_id     text,                    -- Stripe session id / Coinbase charge code / Interac security answer
+  metadata        jsonb default '{}'::jsonb,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+alter table billing_orders enable row level security;
+create policy "users read own billing orders" on billing_orders
+  for select using (auth.uid() = user_id);
+create index if not exists billing_orders_user_time on billing_orders(user_id, created_at desc);
+create index if not exists billing_orders_status on billing_orders(status, created_at desc);
+
+-- user_profiles columns set by Stripe webhook on subscription create/update.
+alter table user_profiles add column if not exists stripe_customer_id text;
+alter table user_profiles add column if not exists stripe_subscription_id text;
+
