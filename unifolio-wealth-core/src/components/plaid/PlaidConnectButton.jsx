@@ -25,7 +25,7 @@ function PlaidLinkOpener({ linkToken, onSuccess, onError, className }) {
       const { data: s } = await supabase.auth.getSession();
       const token = s?.session?.access_token;
       if (!token) throw new Error('Not authenticated');
-      const res = await fetch('/api/plaid/exchange', {
+      const res = await fetch('/api/plaid/action?action=exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -121,7 +121,7 @@ export default function PlaidConnectButton({ onSuccess, className }) {
     supabase.auth.getSession().then(({ data }) => {
       const token = data?.session?.access_token;
       if (!token || cancelled) { if (!cancelled) setFetching(false); return; }
-      fetch('/api/plaid/link-token', {
+      fetch('/api/plaid/action?action=link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       })

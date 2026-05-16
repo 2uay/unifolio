@@ -16,20 +16,23 @@ async function authedFetch(path, body) {
   return parsed || {};
 }
 
+// All four actions are served by the consolidated /api/household/action
+// dispatcher (routed via ?action=). The split into four exports here is
+// for clarity at the call sites.
 export function inviteSpouse({ invitedEmail, displayName } = {}) {
-  return authedFetch('/api/household/invite', { invitedEmail, displayName });
+  return authedFetch('/api/household/action?action=invite', { invitedEmail, displayName });
 }
 
 export function acceptHouseholdInvite(token) {
-  return authedFetch('/api/household/accept', { token });
+  return authedFetch('/api/household/action?action=accept', { token });
 }
 
 export function leaveHousehold() {
-  return authedFetch('/api/household/leave', {});
+  return authedFetch('/api/household/action?action=leave', {});
 }
 
 export function transferHouseholdPrimary(newPrimaryUserId) {
-  return authedFetch('/api/household/transfer-primary', { newPrimaryUserId });
+  return authedFetch('/api/household/action?action=transfer-primary', { newPrimaryUserId });
 }
 
 // Direct Supabase reads for "what's the current household state". RLS

@@ -19,7 +19,7 @@ function PlaidReconnectOpener({ linkToken, itemId, onReconnected, onError, class
       const { data: s } = await supabase.auth.getSession();
       const token = s?.session?.access_token;
       if (token) {
-        await fetch('/api/plaid/sync', {
+        await fetch('/api/plaid/action?action=sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ itemId }),
@@ -69,7 +69,7 @@ export default function PlaidReconnectButton({ itemId, onReconnected, onError, c
     supabase.auth.getSession().then(({ data }) => {
       const token = data?.session?.access_token;
       if (!token || cancelled) { if (!cancelled) setFetching(false); return; }
-      fetch('/api/plaid/link-token-update', {
+      fetch('/api/plaid/action?action=link-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ itemId }),

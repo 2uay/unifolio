@@ -51,7 +51,7 @@ export default function Institutions() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
-      await fetch('/api/plaid/sync', {
+      await fetch('/api/plaid/action?action=sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ itemId }),
@@ -69,7 +69,7 @@ export default function Institutions() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
-      await fetch('/api/plaid/disconnect', {
+      await fetch('/api/plaid/action?action=disconnect', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ itemId: item.item_id }),

@@ -33,14 +33,17 @@ async function authedFetch(path, body) {
   return parsed || {};
 }
 
+// All three providers are served by the consolidated /api/billing/checkout
+// dispatcher (routed via ?provider=). The split into three exports here is
+// for clarity at the call sites — they each post the same payload shape.
 export function createStripeCheckoutSession(payload) {
-  return authedFetch('/api/billing/create-checkout-session', payload);
+  return authedFetch('/api/billing/checkout?provider=stripe', payload);
 }
 
 export function createInteracOrder(payload) {
-  return authedFetch('/api/billing/etransfer-request', payload);
+  return authedFetch('/api/billing/checkout?provider=interac', payload);
 }
 
 export function createCryptoCharge(payload) {
-  return authedFetch('/api/billing/crypto-checkout', payload);
+  return authedFetch('/api/billing/checkout?provider=crypto', payload);
 }
