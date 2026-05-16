@@ -100,6 +100,60 @@ they track different indexes.
 - Spousal accounts are part of the superficial-loss rule and **not** checked
   by the optimizer today (we don't have visibility into a spouse's portfolio).
 
+### Superficial Loss Harvester (dedicated `/harvest` page)
+
+`/optimize` shows loss harvesting as a section. `/harvest` is the dedicated
+year-end planner with deeper analysis. Same engine code, richer output.
+Lives in `src/lib/taxOptimizer.js` (`buildHarvestPlan`).
+
+**Cross-account 30-day buy detection.** The CRA's identical-property rule
+spans every account the user controls — TFSA buy on Dec 1 blocks a Margin
+harvest of the same security on Dec 20. `buildRecentBuyIndex` builds a
+single ticker→buys index from *all* transactions across all accounts, and
+the planner uses it to flag conflicts with `lastBuyAccount` named.
+
+**Underlying overlap estimation** (`calcUnderlyingOverlap`). For two ETFs in
+`ETF_MANIFEST`, computes the share of the smaller basket's top-10 weight
+that overlaps the other's top 10. Used to color-code replacement candidates:
+
+| Overlap                  | Safety   | UI         |
+|--------------------------|----------|------------|
+| Same canonical group     | unsafe   | red        |
+| ≥ 0.85 overlap           | unsafe   | red        |
+| 0.70–0.85 overlap        | caution  | amber      |
+| < 0.70 or unknown        | safe     | green      |
+
+**YTD realized-gain offset.** `calcRealizedGainsYTD` sums non-registered
+realized gains for the current tax year. The harvester then allocates
+candidate losses to offset YTD gains in priority order (largest loss first),
+producing two distinct savings buckets:
+
+- `immediateTaxSavings`: portion of loss that offsets THIS year's gains;
+  full marginal-rate × 50% inclusion value.
+- `carryforwardValueDiscounted`: portion that becomes a carryforward;
+  discounted to 60% of nominal to reflect that future use is uncertain.
+
+**Year-end urgency tier.** `calcTaxYearProgress` returns a tier driven by
+days until the Dec 28 sell-by date (T+1 settlement to clear by Dec 31):
+
+| Days until sell-by | Tier         |
+|--------------------|--------------|
+| > 60               | `planning`   |
+| 15–60              | `soon`       |
+| 4–14               | `urgent`     |
+| 1–3                | `last-call`  |
+| 0                  | `expired`    |
+
+The UI banner color-codes against this tier. T+1 is the global standard for
+US/CA equities since May 2024; pre-2024 markets needed Dec 27. Dec 28 is the
+conservative middle ground.
+
+**Markdown export** (`buildHarvestPlanMarkdown`). Renders a printable
+year-end plan with trade-by-trade detail, replacement candidates with
+safety ratings, immediate vs. carryforward breakdown, and BLOCKED entries
+for superficial-loss conflicts. User clicks "Download Harvest Plan" on
+`/harvest` to get `unifolio-harvest-plan-{year}-{asOf}.md`.
+
 ## Rule 5: Contribution Sequencing
 
 The sequence is a rule of thumb based on the user's marginal tax rate and

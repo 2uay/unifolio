@@ -8,7 +8,8 @@
 // ============================================================
 
 import { safeNumber } from './safeNum.js';
-import { getETFGroup } from './etfEquivalenceMap.js';
+import { getETFGroup, ETF_GROUPS } from './etfEquivalenceMap.js';
+import { getEtfBasket, isKnownEtf } from './etfManifest.js';
 
 // ─── ACCOUNT TYPE TAXONOMY ────────────────────────────────────
 
@@ -448,4 +449,464 @@ export function buildTaxOptimization({ holdings, accounts, transactions, profile
     totalProjectedSavings,
     opportunityCount: assetLocation.length + lossHarvest.length,
   };
+}
+
+// ============================================================
+// SUPERFICIAL LOSS HARVESTER
+// Dedicated planner. Richer than calcLossHarvestOpportunities:
+//   • Computes underlying overlap between sold ETF and each candidate
+//     using top-10 basket data → flags substantially-identical risk.
+//   • Cross-account 30-day buy detection (spans every account the user
+//     owns, not just the one holding the loss).
+//   • YTD realized-gain awareness: shows how much of the harvested loss
+//     offsets gains *this year* vs. becomes carryforward (worth less).
+//   • Year-end urgency tier + settlement-aware "sell by" date.
+//   • Markdown export for the year-end harvest list.
+// ============================================================
+
+// ─── UNDERLYING OVERLAP ───────────────────────────────────────
+// Estimates the % of two ETFs' top-10 baskets that overlap by weight.
+// Returns null if either ticker isn't a known ETF. Range: 0–1.
+// Used to flag "same index" replacements (overlap > 0.85 = unsafe to swap
+// as a loss harvest pair under CRA's "identical property" test).
+
+export function calcUnderlyingOverlap(tickerA, tickerB) {
+  const basketA = getEtfBasket(tickerA);
+  const basketB = getEtfBasket(tickerB);
+  if (!basketA || !basketB) return null;
+
+  const weightsA = new Map(basketA.top10.map(({ symbol, weight }) => [String(symbol).toUpperCase(), weight / 100]));
+  const weightsB = new Map(basketB.top10.map(({ symbol, weight }) => [String(symbol).toUpperCase(), weight / 100]));
+
+  let sharedWeight = 0;
+  weightsA.forEach((wA, sym) => {
+    const wB = weightsB.get(sym) || 0;
+    sharedWeight += Math.min(wA, wB);
+  });
+
+  // Normalize against the smaller basket's total weight to keep values in
+  // [0, 1] even when basket sizes differ. A 100% match on the smaller basket
+  // reads as 1.0 even if the larger basket has more diverse exposure.
+  const totalA = [...weightsA.values()].reduce((s, w) => s + w, 0);
+  const totalB = [...weightsB.values()].reduce((s, w) => s + w, 0);
+  const denominator = Math.min(totalA, totalB);
+  if (denominator <= 0) return 0;
+
+  return sharedWeight / denominator;
+}
+
+// Returns canonical-group equivalence for two tickers (CRA "identical
+// property" proxy). Two ETFs in the same ETF_GROUPS entry track the same
+// underlying index → treated as identical for superficial-loss purposes.
+
+function sameCanonicalGroup(tickerA, tickerB) {
+  const groupA = getETFGroup(tickerA);
+  const groupB = getETFGroup(tickerB);
+  if (!groupA || !groupB) return false;
+  return groupA.canonical === groupB.canonical;
+}
+
+// ─── RANKED REPLACEMENT CANDIDATES ────────────────────────────
+// For a given sold ticker, returns up to N ranked replacement options.
+// Each candidate carries a safety rating so the UI can color-code them.
+//
+//   safetyRating: 'safe' | 'caution' | 'unsafe'
+//     'safe'    → different canonical group AND overlap < 0.70 (or unknown
+//                 overlap with different group). Recommended.
+//     'caution' → different canonical group BUT overlap 0.70–0.85. Likely
+//                 fine but worth a visible note.
+//     'unsafe'  → same canonical group OR overlap ≥ 0.85. Risk of CRA
+//                 deeming the swap "identical property" → loss denied.
+
+// Pool of candidate replacements per canonical group. We deliberately list
+// funds in *different* canonical groups but adjacent asset classes — those
+// are the safe-harbor swaps. The first group of an entry is the user's
+// likely current exposure; we suggest the other groups as alternates.
+const REPLACEMENT_POOL = {
+  'S&P 500': [
+    { ticker: 'VUN', name: 'Vanguard US Total Market (CAD)', altGroup: 'Total US Market' },
+    { ticker: 'VUN.TO', name: 'Vanguard US Total Market (CAD)', altGroup: 'Total US Market' },
+    { ticker: 'VTI', name: 'Vanguard US Total Market (USD)', altGroup: 'Total US Market' },
+    { ticker: 'ITOT', name: 'iShares Core S&P Total US (USD)', altGroup: 'Total US Market' },
+  ],
+  'Total US Market': [
+    { ticker: 'VFV', name: 'Vanguard S&P 500 (CAD)', altGroup: 'S&P 500' },
+    { ticker: 'XUS', name: 'iShares Core S&P 500 (CAD)', altGroup: 'S&P 500' },
+    { ticker: 'ZSP.TO', name: 'BMO S&P 500 (CAD)', altGroup: 'S&P 500' },
+    { ticker: 'VOO', name: 'Vanguard S&P 500 (USD)', altGroup: 'S&P 500' },
+  ],
+  'NASDAQ 100': [
+    { ticker: 'VGT', name: 'Vanguard Information Technology', altGroup: 'US growth-tilted' },
+    { ticker: 'XLK', name: 'Technology Select Sector SPDR', altGroup: 'US growth-tilted' },
+    { ticker: 'SCHG', name: 'Schwab US Large-Cap Growth', altGroup: 'US growth-tilted' },
+  ],
+  'TSX Composite': [
+    { ticker: 'XIU.TO', name: 'iShares S&P/TSX 60', altGroup: 'S&P/TSX 60' },
+    { ticker: 'HXT.TO', name: 'Horizons S&P/TSX 60 (swap)', altGroup: 'S&P/TSX 60' },
+  ],
+  'S&P/TSX 60': [
+    { ticker: 'XIC.TO', name: 'iShares Core S&P/TSX Capped Composite', altGroup: 'TSX Composite' },
+    { ticker: 'VCN.TO', name: 'Vanguard FTSE Canada All Cap', altGroup: 'TSX Composite' },
+  ],
+  'Global Equity': [
+    { ticker: 'XAW.TO', name: 'iShares Core MSCI All Country World ex-Canada', altGroup: 'Developed Markets' },
+    { ticker: 'VT', name: 'Vanguard Total World Stock (USD)', altGroup: 'Developed Markets' },
+  ],
+  'Developed Markets': [
+    { ticker: 'XEQT.TO', name: 'iShares All-Equity Portfolio', altGroup: 'Global Equity' },
+    { ticker: 'VEQT.TO', name: 'Vanguard All-Equity Portfolio', altGroup: 'Global Equity' },
+  ],
+  'Emerging Markets': [
+    { ticker: 'XEC.TO', name: 'iShares Core MSCI Emerging Markets', altGroup: 'Emerging Markets' }, // same group flagged
+    { ticker: 'VWO', name: 'Vanguard FTSE Emerging Markets (USD)', altGroup: 'Emerging Markets' },
+    { ticker: 'XAW.TO', name: 'iShares Core MSCI All Country World ex-Canada', altGroup: 'Global Equity' },
+  ],
+  'Aggregate Bonds': [
+    { ticker: 'XBB.TO', name: 'iShares Core Canadian Universe Bond', altGroup: 'Aggregate Bonds' }, // same group flagged
+    { ticker: 'ZAG.TO', name: 'BMO Aggregate Bond', altGroup: 'Aggregate Bonds' }, // same group flagged
+    { ticker: 'VSB.TO', name: 'Vanguard Canadian Short-Term Bond', altGroup: 'Short-Term Bonds' },
+  ],
+  'Dividend Income': [
+    { ticker: 'VDY.TO', name: 'Vanguard FTSE Canadian High Dividend Yield', altGroup: 'Dividend Income' }, // same group flagged
+    { ticker: 'XEI.TO', name: 'iShares S&P/TSX Composite High Dividend', altGroup: 'Dividend Income' }, // same group flagged
+    { ticker: 'XIC.TO', name: 'iShares Core S&P/TSX Capped Composite', altGroup: 'TSX Composite' },
+  ],
+};
+
+export function rankReplacementCandidates(soldTicker, maxResults = 4) {
+  const group = getETFGroup(soldTicker);
+  if (!group) return [];
+  const upSold = String(soldTicker).toUpperCase();
+  const pool = REPLACEMENT_POOL[group.canonical] || [];
+
+  const ranked = pool
+    .filter(c => c.ticker.toUpperCase() !== upSold)
+    .map(c => {
+      const overlap = calcUnderlyingOverlap(soldTicker, c.ticker);
+      const sameGroup = sameCanonicalGroup(soldTicker, c.ticker);
+      let safetyRating = 'safe';
+      let note = '';
+      if (sameGroup) {
+        safetyRating = 'unsafe';
+        note = `Same canonical index (${group.canonical}). CRA may treat as identical property — swap would deny the loss.`;
+      } else if (overlap !== null && overlap >= 0.85) {
+        safetyRating = 'unsafe';
+        note = `${Math.round(overlap * 100)}% underlying overlap. Practitioner caution: this is in "substantially identical" territory.`;
+      } else if (overlap !== null && overlap >= 0.70) {
+        safetyRating = 'caution';
+        note = `${Math.round(overlap * 100)}% underlying overlap. Different index, but high correlation. Usually acceptable; keep a paper trail of the index difference.`;
+      } else if (overlap !== null) {
+        note = `${Math.round(overlap * 100)}% underlying overlap. Different index, different basket — safe-harbor swap.`;
+      } else {
+        note = `Different index. Overlap not measured (one ticker not in our manifest).`;
+      }
+      return { ...c, overlapPct: overlap, sameGroup, safetyRating, note };
+    })
+    .sort((a, b) => {
+      const rank = { safe: 0, caution: 1, unsafe: 2 };
+      if (rank[a.safetyRating] !== rank[b.safetyRating]) return rank[a.safetyRating] - rank[b.safetyRating];
+      const oA = a.overlapPct ?? 0;
+      const oB = b.overlapPct ?? 0;
+      return oA - oB; // lower overlap first within same safety tier
+    });
+
+  return ranked.slice(0, maxResults);
+}
+
+// ─── YTD REALIZED GAINS (NON-REG ONLY) ────────────────────────
+// Year-to-date realized capital gains from non-registered accounts only —
+// registered-account gains are sheltered and don't matter for harvesting.
+
+export function calcRealizedGainsYTD(realizedPositions, accounts, asOf = new Date()) {
+  const taxYearStart = new Date(asOf.getFullYear(), 0, 1).getTime();
+  const taxYearEnd = new Date(asOf.getFullYear(), 11, 31, 23, 59, 59).getTime();
+  const accountMap = {};
+  (accounts || []).forEach(a => { accountMap[a.id] = a; });
+
+  let gains = 0;
+  let losses = 0;
+
+  (realizedPositions || []).forEach(pos => {
+    const close = pos.close_date ? new Date(pos.close_date).getTime() : 0;
+    if (close < taxYearStart || close > taxYearEnd) return;
+    const acct = accountMap[pos.account_id ?? pos.accountId];
+    const klass = accountClass(acct?.account_type ?? acct?.type ?? '');
+    if (klass !== 'taxable') return;
+    const gl = safeNumber(pos.realized_gain_loss_amount ?? (safeNumber(pos.total_sale_value) - safeNumber(pos.total_cost_basis)));
+    if (gl >= 0) gains += gl; else losses += gl;
+  });
+
+  return {
+    taxYear: asOf.getFullYear(),
+    realizedGains: gains,
+    realizedLosses: losses,
+    netRealized: gains + losses,
+  };
+}
+
+// ─── TAX-YEAR URGENCY ─────────────────────────────────────────
+// Returns countdown + settlement-aware "sell by" date + a tier the UI can
+// use to color the headline (planning → soon → urgent → last-call).
+
+export function calcTaxYearProgress(asOf = new Date()) {
+  const year = asOf.getFullYear();
+  const yearEnd = new Date(year, 11, 31, 23, 59, 59);
+  // Canadian + US equities are T+1 settlement since May 2024. To have the
+  // trade SETTLE in the calendar year, the order must be placed by Dec 30
+  // (or last business day before Dec 31). For pre-T+1 markets, fall back to
+  // Dec 27. We use Dec 28 as a conservative middle ground.
+  const sellBy = new Date(year, 11, 28, 16, 0, 0);
+  const msUntilYearEnd = yearEnd.getTime() - asOf.getTime();
+  const msUntilSellBy = sellBy.getTime() - asOf.getTime();
+  const daysUntilYearEnd = Math.max(0, Math.ceil(msUntilYearEnd / (1000 * 60 * 60 * 24)));
+  const daysUntilSellBy = Math.max(0, Math.ceil(msUntilSellBy / (1000 * 60 * 60 * 24)));
+
+  let urgencyTier = 'planning';
+  if (daysUntilSellBy <= 0) urgencyTier = 'expired';
+  else if (daysUntilSellBy <= 3) urgencyTier = 'last-call';
+  else if (daysUntilSellBy <= 14) urgencyTier = 'urgent';
+  else if (daysUntilSellBy <= 60) urgencyTier = 'soon';
+
+  return {
+    asOfDate: asOf.toISOString().slice(0, 10),
+    taxYear: year,
+    yearEndDate: yearEnd.toISOString().slice(0, 10),
+    sellByDate: sellBy.toISOString().slice(0, 10),
+    daysUntilYearEnd,
+    daysUntilSellBy,
+    urgencyTier,
+  };
+}
+
+// ─── CROSS-ACCOUNT SUPERFICIAL BUY CHECK ──────────────────────
+// CRA's 30-day window applies across ALL accounts the user controls
+// (and the spouse's accounts, which we cannot see). We index every Buy
+// across every account, by ticker, and report the most recent one.
+
+function buildRecentBuyIndex(transactions, asOf = new Date()) {
+  const thirtyDaysAgo = asOf.getTime() - 30 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAhead = asOf.getTime() + 30 * 24 * 60 * 60 * 1000;
+  const idx = {};
+  (transactions || [])
+    .filter(t => {
+      const ty = String(t.transaction_type || t.type || '').toLowerCase();
+      return ty === 'buy';
+    })
+    .forEach(t => {
+      const tickr = String(t.ticker || '').toUpperCase();
+      const dt = t.date ? new Date(t.date).getTime() : 0;
+      if (!tickr || dt < thirtyDaysAgo || dt > thirtyDaysAhead) return;
+      if (!idx[tickr]) idx[tickr] = [];
+      idx[tickr].push({
+        date: t.date,
+        account_id: t.account_id ?? t.accountId,
+        quantity: safeNumber(t.quantity),
+        price: safeNumber(t.price),
+      });
+    });
+  Object.values(idx).forEach(arr => arr.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+  return idx;
+}
+
+// ─── BUILD HARVEST PLAN ───────────────────────────────────────
+// The richer entry-point used by the dedicated /harvest page.
+
+/**
+ * @param {object} [input]
+ * @param {Array} [input.holdings]
+ * @param {Array} [input.accounts]
+ * @param {Array} [input.transactions]
+ * @param {Array} [input.realizedPositions]
+ * @param {{ marginal_tax_rate?: number, province?: string }} [input.profile]
+ * @param {Date} [input.asOf]
+ */
+export function buildHarvestPlan(input = {}) {
+  const { holdings, accounts, transactions, realizedPositions, profile = {}, asOf } = input;
+  const now = asOf instanceof Date ? asOf : new Date();
+  const rate = /** @type {{ marginal_tax_rate?: number }} */ (profile).marginal_tax_rate;
+  const marginalTaxRate = typeof rate === 'number' ? rate / 100 : 0.30;
+
+  const progress = calcTaxYearProgress(now);
+  const ytd = calcRealizedGainsYTD(realizedPositions, accounts, now);
+  const accountMap = {};
+  (accounts || []).forEach(a => { accountMap[a.id] = a; });
+  // Cross-account index — every Buy of every ticker the user has made in any
+  // account in the last 30 days. This is what the CRA superficial-loss rule
+  // actually catches (it doesn't care which account did the buy).
+  const recentBuyIndex = buildRecentBuyIndex(transactions, now);
+
+  // Build per-opportunity entries.
+  const opportunities = [];
+  (holdings || [])
+    .filter(h => safeNumber(h.quantity ?? h.position) > 0)
+    .forEach(h => {
+      const acct = accountMap[h.account_id ?? h.accountId];
+      if (!acct) return;
+      if (accountClass(acct.account_type ?? acct.type ?? '') !== 'taxable') return;
+      const unrealized = safeNumber(h.unrealized_gain_loss_amount ?? h.unrealizedAmt);
+      if (unrealized >= -50) return;
+
+      const ticker = String(h.ticker || '').toUpperCase();
+      const recentBuys = recentBuyIndex[ticker] || [];
+      const wouldTriggerSuperficial = recentBuys.length > 0;
+      const lastBuy = recentBuys[0] || null;
+      const lastBuyAccount = lastBuy ? (accountMap[lastBuy.account_id]?.account_name || accountMap[lastBuy.account_id]?.account_type || lastBuy.account_id) : null;
+
+      // Days held — use the holding's earliest purchase_history entry if
+      // present; fall back to "unknown".
+      const lots = Array.isArray(h.purchase_history) ? h.purchase_history : [];
+      const earliestLotDate = lots
+        .map(l => l.date ? new Date(l.date).getTime() : null)
+        .filter(Boolean)
+        .sort((a, b) => a - b)[0];
+      const daysHeld = earliestLotDate ? Math.floor((now.getTime() - earliestLotDate) / (1000 * 60 * 60 * 24)) : null;
+
+      const grossLoss = Math.abs(unrealized);
+      const grossTaxSavings = grossLoss * 0.5 * marginalTaxRate;
+      const replacements = isKnownEtf(ticker) ? rankReplacementCandidates(ticker) : [];
+
+      opportunities.push({
+        id: `harvest-${h.id || ticker}`,
+        ticker,
+        holdingId: h.id,
+        name: h.name || h.asset_name || ticker,
+        fromAccount: acct.account_name || acct.account_type,
+        fromAccountId: acct.id,
+        currency: String(h.listing_currency || h.currency || 'CAD').toUpperCase(),
+        marketValue: safeNumber(h.market_value ?? h.marketValue),
+        unrealizedLoss: unrealized,
+        grossLoss,
+        daysHeld,
+        wouldTriggerSuperficial,
+        lastBuyDate: lastBuy?.date ?? null,
+        lastBuyAccount,
+        recentBuyCount: recentBuys.length,
+        replacements,
+        replacementsAvailable: replacements.length > 0,
+        grossTaxSavings,
+        severity: grossLoss > 2000 ? 'high' : grossLoss > 500 ? 'medium' : 'low',
+      });
+    });
+
+  opportunities.sort((a, b) => b.grossTaxSavings - a.grossTaxSavings);
+
+  // Walk the sorted opportunities and allocate offsets against YTD gains
+  // first; remainder is carryforward (worth less because deferred and
+  // contingent on having future gains).
+  const carryforwardDiscount = 0.60;
+  let remainingGainsToOffset = ytd.realizedGains;
+  let immediateTaxSavings = 0;
+  let carryforwardCreated = 0;
+  const annotated = opportunities.map(opp => {
+    if (opp.wouldTriggerSuperficial) {
+      return { ...opp, offsetUsed: 0, carryforwardAmount: 0, projectedTaxSavings: 0 };
+    }
+    const lossUsed = Math.min(opp.grossLoss, remainingGainsToOffset);
+    const remainder = opp.grossLoss - lossUsed;
+    remainingGainsToOffset -= lossUsed;
+    const immediate = lossUsed * 0.5 * marginalTaxRate;
+    const carryforward = remainder * 0.5 * marginalTaxRate * carryforwardDiscount;
+    immediateTaxSavings += immediate;
+    carryforwardCreated += remainder;
+    return {
+      ...opp,
+      offsetUsed: lossUsed,
+      carryforwardAmount: remainder,
+      projectedTaxSavings: immediate + carryforward,
+      immediateTaxSavings: immediate,
+      carryforwardValue: carryforward,
+    };
+  });
+
+  const totalHarvestableLoss = annotated
+    .filter(o => !o.wouldTriggerSuperficial)
+    .reduce((s, o) => s + o.grossLoss, 0);
+  const totalProjectedSavings = annotated.reduce((s, o) => s + (o.projectedTaxSavings || 0), 0);
+
+  return {
+    ...progress,
+    marginalTaxRate,
+    ytdRealizedGains: ytd.realizedGains,
+    ytdRealizedLosses: ytd.realizedLosses,
+    ytdNetRealized: ytd.netRealized,
+    totalHarvestableLoss,
+    immediateTaxSavings,
+    carryforwardLossesCreated: carryforwardCreated,
+    carryforwardValueDiscounted: totalProjectedSavings - immediateTaxSavings,
+    totalProjectedSavings,
+    blockedBySuperficialCount: annotated.filter(o => o.wouldTriggerSuperficial).length,
+    opportunities: annotated,
+  };
+}
+
+// ─── MARKDOWN EXPORT ──────────────────────────────────────────
+// Produces the printable / shareable "Year-End Harvest List" the user can
+// save as a PDF or paste into their broker's notes.
+
+/**
+ * @param {ReturnType<typeof buildHarvestPlan> | null} plan
+ * @param {{ fullName?: string, province?: string }} [meta]
+ */
+export function buildHarvestPlanMarkdown(plan, meta = {}) {
+  if (!plan) return '';
+  const { fullName, province } = meta;
+  const fmt = (n) => '$' + Math.round(n).toLocaleString('en-CA');
+  const lines = [];
+  lines.push(`# Year-End Tax-Loss Harvest Plan — ${plan.taxYear}`);
+  lines.push('');
+  if (fullName) lines.push(`**Prepared for:** ${fullName}${province ? ` (${province})` : ''}`);
+  lines.push(`**As of:** ${plan.asOfDate}`);
+  lines.push(`**Sell-by date for ${plan.taxYear} tax year:** ${plan.sellByDate} (T+1 settlement; ${plan.daysUntilSellBy} days remaining)`);
+  lines.push(`**Marginal tax rate used:** ${(plan.marginalTaxRate * 100).toFixed(1)}%`);
+  lines.push('');
+  lines.push('## Summary');
+  lines.push('');
+  lines.push(`- **Harvestable unrealized losses:** ${fmt(plan.totalHarvestableLoss)}`);
+  lines.push(`- **YTD realized gains (non-registered):** ${fmt(plan.ytdRealizedGains)}`);
+  lines.push(`- **Immediate tax saved (offsets YTD gains):** ${fmt(plan.immediateTaxSavings)}`);
+  lines.push(`- **Carryforward loss created:** ${fmt(plan.carryforwardLossesCreated)} (present value ~${fmt(plan.carryforwardValueDiscounted)})`);
+  lines.push(`- **Total projected tax savings:** ${fmt(plan.totalProjectedSavings)}`);
+  if (plan.blockedBySuperficialCount > 0) {
+    lines.push(`- **Blocked by superficial-loss rule:** ${plan.blockedBySuperficialCount} position(s) — see notes below`);
+  }
+  lines.push('');
+  lines.push('## Recommended Trades');
+  lines.push('');
+  plan.opportunities.forEach((opp, i) => {
+    if (opp.wouldTriggerSuperficial) {
+      lines.push(`### ${i + 1}. ⚠️  ${opp.ticker} — BLOCKED (Superficial Loss Risk)`);
+      lines.push('');
+      lines.push(`- Unrealized loss: ${fmt(opp.grossLoss)} in ${opp.fromAccount}`);
+      lines.push(`- Last Buy of ${opp.ticker}: ${opp.lastBuyDate} in ${opp.lastBuyAccount}`);
+      lines.push(`- Selling now would deny the loss; ACB of remaining shares is adjusted upward instead.`);
+      lines.push(`- **Action:** wait until 30 days after ${opp.lastBuyDate} before selling, OR sell only some lots while leaving 0 shares in any account for 30+ days.`);
+      lines.push('');
+      return;
+    }
+    lines.push(`### ${i + 1}. ${opp.ticker} — Sell for ${fmt(opp.grossLoss)} loss`);
+    lines.push('');
+    lines.push(`- **Account:** ${opp.fromAccount}`);
+    lines.push(`- **Current market value:** ${fmt(opp.marketValue)} (${opp.currency})`);
+    if (opp.daysHeld != null) lines.push(`- **Days held:** ${opp.daysHeld}`);
+    lines.push(`- **Tax savings this year:** ${fmt(opp.immediateTaxSavings)} (offsets ${fmt(opp.offsetUsed)} of YTD gains)`);
+    if (opp.carryforwardAmount > 0) {
+      lines.push(`- **Carryforward created:** ${fmt(opp.carryforwardAmount)} (present value ~${fmt(opp.carryforwardValue)})`);
+    }
+    if (opp.replacements.length > 0) {
+      lines.push(`- **Replacement candidates** (keeps similar market exposure without superficial-loss risk):`);
+      opp.replacements.forEach(r => {
+        const overlap = r.overlapPct != null ? `${Math.round(r.overlapPct * 100)}% overlap` : 'overlap unknown';
+        const flag = r.safetyRating === 'safe' ? '✅' : r.safetyRating === 'caution' ? '⚠️' : '❌';
+        lines.push(`  - ${flag}  **${r.ticker}** — ${r.name}. ${overlap}. ${r.note}`);
+      });
+    } else {
+      lines.push(`- **Replacement:** No ETF replacement available for this security. Wait 30 days before rebuying, or pick a different security in the same asset class.`);
+    }
+    lines.push('');
+  });
+  lines.push('---');
+  lines.push('');
+  lines.push('_Generated by Unifolio Tax Optimizer. For informational purposes only — not tax advice._');
+  lines.push('_Spousal accounts are part of the superficial-loss rule; this plan does not check them._');
+  return lines.join('\n');
 }

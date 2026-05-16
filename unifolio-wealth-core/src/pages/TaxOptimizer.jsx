@@ -268,12 +268,18 @@ export default function TaxOptimizer() {
 
       {/* Loss Harvesting */}
       <section>
-        <SectionHeader
-          icon={TrendingDown}
-          title="Loss Harvesting Opportunities"
-          count={optimization.lossHarvest.length}
-          accentColor="text-amber-400"
-        />
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5">
+            <TrendingDown className="h-4 w-4 text-amber-400" />
+            <h2 className="text-sm font-semibold text-foreground">Loss Harvesting Opportunities</h2>
+            <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">{optimization.lossHarvest.length}</span>
+          </div>
+          <Link to="/harvest">
+            <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5">
+              Open Harvest Center <ArrowRight className="h-3 w-3" />
+            </Button>
+          </Link>
+        </div>
         {optimization.lossHarvest.length === 0 ? (
           <EmptySection message="No harvestable losses in your taxable accounts right now. We only surface losses outside registered accounts (registered losses are not tax-deductible)." />
         ) : (
