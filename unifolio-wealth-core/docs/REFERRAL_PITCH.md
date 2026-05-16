@@ -1,237 +1,226 @@
 # Unifolio — Bro-to-Bro Pitch (Canada)
 
-Verified against the live site. Plans, prices, and feature gates all
-match what your friends will actually see when they click through.
+Verified against the live site and shipped code. Every claim below
+backs to a specific feature you can click on. Pick whichever length
+fits the channel.
 
 ---
 
-## The text (one friend, any setup)
+## The text (one friend)
 
-> Bro. Even if all your money is in ONE Wealthsimple account, your
-> broker is hiding stuff from you — your real ETF exposure, your true
-> sector mix, the tax losses you're leaving on the table, whether
-> you're actually beating inflation. Unifolio shows you all of it in
-> 60 seconds and does your T5008 in April. Free tier covers 2 accounts.
-> Paid tier starts at CA$8/mo. Demo loads with no card, no email →
-> **unifolio.ca**. Trust me.
-
----
-
-## The group chat drop
-
-> Found the thing. **Unifolio** — one Canadian dude built it, and it
-> shows you what your broker won't.
->
-> Even with just one account: it x-rays every ETF you hold so you can
-> see you're secretly 60% in Apple/Microsoft/Nvidia. Scores your
-> portfolio 0-100 with 8 factors. Flags superficial losses BEFORE the
-> CRA notices. Has a dedicated Tax Optimizer + Loss Harvest Center
-> that tells you which lots to sell in December to crystallize the
-> biggest legal tax loss. Tracks your house, car, gold, crypto, art
-> alongside your brokerage for real net worth. Plus debts and mortgages
-> so you finally see the actual number.
->
-> Multiple accounts? It stitches every TFSA / RRSP / FHSA / RESP / RDSP
-> / LIRA / non-reg / margin / IBKR into one portfolio. Reconciles CDRs
-> against US listings. One T5008 covering all of it.
->
-> Free tier: 2 accounts, no card, no email — just click "Continue
-> without logging in" at **unifolio.ca** and a fake portfolio loads
-> so you can feel it. If you have 3 accounts, Pro is **CA$8/mo
-> billed annually** ($96/yr). 7-day free trial, no card till day 8.
-> Lifetime is **CA$806 one-time** + direct line to the founder.
+> Bro. Open your Wealthsimple right now. If you hold XEQT + VFV + ZSP
+> you're like 14% Apple/Microsoft/Nvidia combined and you don't even
+> know it. Unifolio shows you that in 60 seconds. It also tells you
+> which of your losers to sell in December to legally cut your tax bill,
+> and spits out a T5008 in April. Free for 2 accounts. $8 CAD/mo for
+> the full thing. No card, no email to try it → **unifolio.ca**. Trust
+> me.
 
 ---
 
-## The full pitch
+## The full pitch — with proof
 
-### The lie everyone falls for
-
-You think your broker shows you your portfolio. **They show you your
-holdings.** Big difference.
-
-Open Wealthsimple. You see XEQT, VFV, ZSP, maybe some individual
-stocks. What you don't see:
-
-- That XEQT + VFV + ZSP combo? You bought Apple FOUR TIMES. A
-  double-digit % of your "diversified" portfolio is one company.
-- That "1-year return" Wealthsimple proudly shows? Not annualized,
-  not adjusted for deposits, not benchmarked. You have no idea if
-  you're actually winning.
-- That tax loss you harvested in November and rebought in December?
-  **Superficial loss.** CRA disallows it. Your broker won't warn
-  you. You'll find out in April.
-- The tax losses you SHOULD harvest before year-end to legally cut
-  your bill? Your broker doesn't tell you. Unifolio's Loss Harvest
-  Center literally generates a year-end plan.
-- Your real sector mix, country mix, currency split, cash drag,
-  concentration risk? Not shown.
-- Your actual net worth (brokerage + house + car + gold + crypto −
-  mortgage − loans)? Definitely not.
-
-This is all true with ONE account. It gets worse with more. Unifolio
-fixes it.
+Read the whole thing once. Then send it. The point of the pitch is
+that every line is a thing the person can verify themselves on the
+live demo in under a minute.
 
 ---
 
-### What you get with just one account (the Free tier covers 2)
+### Part 1 — The lie your broker tells you
 
-**1. ETF X-Ray** *(Pro+)*
-Click any ETF. Unifolio looks INSIDE it. Combined with your direct
-stocks, you get a True Exposure table: real Apple position, real
-tech weighting, the >8% concentration you didn't know you had.
-Index investors look at this once and go "oh fuck."
+Open Wealthsimple. Open Questrade. Open whatever you use. They show
+you a list of tickers and a number that says "return." That is the
+extent of what they tell you about your money.
 
-**2. Portfolio Health Score (0–100, A/B/C/D)** *(Pro+)*
-Eight factors actually scored: concentration, sector diversification
-(Herfindahl), currency exposure, account-type mix, unrealized-gain
-buffer, cash utilization, asset-class mix, 30-day trend. Click any
-factor to see what to fix.
+**Here's what they're hiding.**
 
-**3. Tax Optimizer + Loss Harvest Center** *(Pro+ / Pro+)*
-A whole page that scans your lots and tells you which ones to sell
-before year-end to crystallize the biggest legal tax loss without
-tripping the 30-day superficial-loss rule. Exports a year-end
-harvest plan you can act on. **Nothing else in Canada does this.**
+**1. You don't know what you own.**
 
-**4. Behavioral Insights** *(Pro+)*
-Calls out your investing biases: panic-selling, recency, home
-bias, over-trading. The mirror nobody else holds up.
+If you hold three Canadian-favorite ETFs — XEQT, VFV, ZSP — your
+broker shows you three tickers. The truth: those three ETFs combined
+put roughly **12–15% of your portfolio in Apple, Microsoft, and
+Nvidia.** You "diversified" by holding three funds. You actually
+concentrated. Open Unifolio's Insights page → ETF X-Ray. It looks
+INSIDE each fund and shows you a True Exposure table with your real
+weighting in each underlying company. Your broker does not have this
+screen.
 
-**5. AI Investment Analyst** *(Pro+)*
-Real AI. Ask questions about your portfolio in plain English and
-get answers about exposure, performance, tax position, suggested
-rebalancing.
+**2. You don't know if you're winning.**
 
-**6. ACB across multiple lots** *(Pro)*
-Adjusted Cost Base per ticker, per account, across every buy lot.
-Your broker's number is fine if you bought once and never touched
-it; the moment anything's split across lots, Unifolio's number is
-the one you want.
+That "+11.4% YTD" your broker shows? Not annualized. Not
+deposit-adjusted. Not benchmarked against anything. In a year where
+the S&P 500 was up 24% and Canadian inflation was 3.8%, +11.4%
+sounds great and is actually *losing* to both. Unifolio's
+Performance page lets you overlay S&P 500, Nasdaq, TSX, Bitcoin, US
+CPI, and Canadian CPI (live from Bank of Canada Valet API) on your
+own return curve. The first time most people see this they discover
+they're underperforming the index they thought they were beating.
 
-**7. Superficial loss detection** *(Pro)*
-Scans for sell-at-loss + buy-back within 30 days. Flags every
-offender before the CRA does.
+**3. You're leaving free money on the floor every December.**
 
-**8. T5008-ready CSV export per year** *(Pro)*
-Proceeds, cost, gain/loss, currency, account type, settlement
-date. Hand to your accountant. 50% inclusion math automatic.
+Canadian tax-loss harvesting math: if you sell a loser in your
+non-registered account, that capital loss offsets your capital gains
+elsewhere, at the 50% inclusion rate. Say you have $4,000 of
+realized gains this year and you're sitting on a $2,500 unrealized
+loss in another stock. Sell the loser, wait 31 days, rebuy. You
+just saved ~$625 in tax (at a 50% marginal rate × 50% inclusion ×
+$2,500). Your broker does not tell you to do this. It does not even
+list which positions are eligible. **Unifolio's Loss Harvest Center
+is a dedicated page that scans every lot you own, flags every
+eligible loss, calculates the tax saving, and exports a year-end
+harvest plan.** Then its Tax Optimizer flags any rebuy that would
+trigger the 30-day superficial-loss rule and disallow the loss.
 
-**9. Real benchmarks** *(Pro)*
-S&P 500, Nasdaq, TSX, Bitcoin, US CPI, and Canadian CPI live from
-the Bank of Canada Valet API. Most Canadians find out for the first
-time here whether their "great year" actually beat inflation.
+That feature alone pays for the entire subscription multiple times
+over for anyone with a non-reg account.
 
-**10. Monthly returns table.** Wealthsimple/Questrade don't have this.
+**4. Your ACB is wrong.**
 
-**11. 15 heatmap modes on Holdings.** Weight, daily P&L $/%,
-unrealized $/%, realized contribution, total return, volatility,
-custom risk.
+If you bought a stock in three lots over two years, your broker's
+"average cost" is correct only if nothing weird ever happened. The
+moment you transferred shares between accounts, or your broker
+processed a DRIP slightly off, or you sold part of a position — your
+cost basis displayed at the broker can drift from what the CRA
+expects. Unifolio recomputes ACB per ticker per account from the
+transaction log every time. When you sell, the gain it shows is the
+one the CRA wants on your T1.
 
-**12. 23 portfolio breakdown donuts.** Sector, asset class, currency,
-account type, institution, concentration, country, exchange,
-registration bucket, institution country, cash vs invested,
-top-5 / top-10 + other, gain-loss buckets, daily-mover buckets,
-CAD/USD/other, stocks/ETFs/cash/other, region, account size tier,
-risk category, income bucket, ETF lookthrough.
+**5. CDRs vs underlyings — silent double-counting.**
 
-**13. Real net worth — custom assets + debts.** 12 asset types:
-Real Estate, Vehicle, Precious Metals, Watches, Jewelry,
-Collectibles, Art, Private Business, Private Investment, Cash,
-Crypto Wallet, Other. With appraisal/valuation history. Plus a
-dedicated Debts & Balances page for mortgages and loans.
-**Brokers don't give you a net worth number. Unifolio does.**
+You hold AAPL.NE (the Cboe Canada CDR of Apple) for the FX hedge.
+You also hold AAPL on Nasdaq through IBKR. Your brokers see two
+different tickers. Unifolio's stacking engine knows they're the same
+underlying company, applies the right CAD/USD FX, and gives you ONE
+true Apple exposure number. The Import wizard has a dedicated
+Dual-Listing Panel to set this up.
 
-**14. Real-time price feed** *(Pro)* — Wealthsimple charges extra,
-Questrade charges extra, IBKR data plans cost money. Pro: included.
+**6. Your real net worth is a mystery.**
 
-**15. Unlimited watchlist** *(Pro)* + starred stocks + research
-windows + per-ticker stock news.
-
-**16. Smart transaction parser.** Auto-extracts ticker, qty,
-price, dates, transfer source/destination from broker exports.
-Auto-links cross-account transfers so shares don't double-count.
-
-**17. Privacy mode.** One click hides every dollar.
-
-**18. 48+ custom themes** *(Pro+)* including Liquid Glass + custom
-cursor + accent bars.
+This is true with one account. It gets exponentially worse with
+multiple — TFSA at Wealthsimple, RRSP at Questrade, FHSA at your
+bank, IBKR for the US stuff. No broker shows you the total. Unifolio
+stitches them all into one portfolio, with transfer detection so the
+same shares don't double-count when they move between accounts, and
+gives you per-account performance plus one rolled-up view.
 
 ---
 
-### What you get with multiple accounts
+### Part 2 — Walk through Unifolio in 90 seconds
 
-- **One reconciled portfolio.** TFSA + RRSP + FHSA + RESP + RDSP +
-  LIRA + non-reg + margin + IBKR — every Canadian account type,
-  stitched together.
-- **Transfer linker** — detects shares moved between accounts so
-  they don't double-count.
-- **CDR-aware.** Apple on Cboe Canada + Apple on Nasdaq = one
-  position with right FX. The Import wizard has a dedicated
-  Dual-Listing Panel for this.
-- **Per-account performance.**
-- **One T5008 export covering every account.**
-- **CAD ↔ USD toggle** across the whole app with live FX.
+Open **unifolio.ca**, click "Continue without logging in." A
+realistic fake portfolio loads (no card, no email, no signup).
+Click through in this order:
 
----
+1. **Insights** — see ETF X-Ray. Notice how three "diversified"
+   ETFs concentrate into the same top names. Look at the Health
+   Score: a single 0–100 grade with 8 expandable factors
+   (concentration, sector diversification via Herfindahl index,
+   currency exposure, account-type mix, unrealized-gain buffer,
+   cash utilization, asset-class mix, 30-day trend). Click any
+   factor to see how it's calculated.
+2. **Holdings** — flip through the 15 heatmap modes (portfolio
+   weight, daily P&L $/%, unrealized $/%, realized contribution,
+   total return, volatility, custom risk). Scroll down to the
+   23 portfolio breakdown donuts — every angle on your money.
+3. **Performance** — overlay the CPI_CA benchmark on the return
+   chart. See if the demo portfolio is beating Canadian inflation.
+4. **Tax Optimizer** — see ACB tracked per ticker, superficial
+   losses flagged.
+5. **Loss Harvest Center** *(Pro+ feature; visible in demo)* —
+   see the eligible losses ranked, the tax-saving estimate, the
+   year-end harvest plan ready to export.
 
-### Importing is easy
+If you've made it this far on the demo and your reaction isn't
+"oh fuck this is sick," you don't need this product. Close the
+tab. No hard feelings.
 
-**Plaid Canada** for live broker connections *(Pro)*. Step-by-step
-CSV guides with logos, screenshots and exact menu paths for every
-major broker: **Wealthsimple, Questrade, IBKR (with Flex Query
-template), TD, RBC, BMO, Scotia, CIBC, NBDB** — plus Schwab and
-Chase for cross-border.
-
----
-
-### Why everything else sucks
-
-- **Wealthica** — frozen. No ETF lookthrough. No loss harvesting.
-- **Passiv** — rebalancer for Questrade. Different category.
-- **Sharesight** — Australian. No T5008, no CDRs, no FHSA, no
-  Norbert's Gambit.
-- **Broker dashboards** — silos. None shows what's INSIDE your
-  ETFs. None shows net worth. None tells you which lot to harvest
-  in December.
-- **Spreadsheet / Mint / Yahoo / Google Finance** — RIP, RIP,
-  toys, toys.
-
-Unifolio is the only thing that's **Canadian-native + ETF X-Ray +
-multi-broker + proper tax math + loss harvesting + behavioral
-insights + custom assets + debts.** Nothing else hits all of it.
+If your reaction IS that — upload your real CSV from your broker
+(step-by-step guides for Wealthsimple, Questrade, IBKR with the
+Flex Query template, TD, RBC, BMO, Scotia, CIBC, NBDB, Schwab,
+Chase — with screenshots and exact menu paths) and your actual
+portfolio appears.
 
 ---
 
-### The plans (so you can recommend the right one)
+### Part 3 — Why everything else sucks
 
-| Plan | Price (CAD) | Accounts | For |
+I've tried them. So have you. None of them do this.
+
+| Tool | Why it fails |
+|---|---|
+| **Wealthica** | Last meaningful update was years ago. No ETF lookthrough. No active loss harvesting. Tax surface is bare minimum. |
+| **Passiv** | Rebalancing tool for Questrade. Different category entirely. Not a portfolio tracker. |
+| **Sharesight** | Australian product. Doesn't speak Canadian tax. No T5008. No CDRs. No FHSA. |
+| **Snowball Analytics** | Global. Doesn't model Canadian registered accounts or tax rules. |
+| **Wealthsimple / Questrade / RBC DI dashboards** | Silos. Each shows the slice you have with them. None shows what's INSIDE your ETFs. None tells you which lot to harvest in December. |
+| **Spreadsheets** | We all swore we'd keep it updated. We didn't. |
+| **Mint** | Dead. Never did investments properly anyway. |
+| **Yahoo / Google Finance** | Watchlists with extra steps. No tax, no ACB, no T5008. |
+
+Unifolio is the only thing that combines **Canadian-native tax
+math + ETF X-Ray + multi-broker aggregation + active loss
+harvesting + behavioral insights + AI analyst + CDR
+reconciliation.** Not one competitor hits even four of those.
+
+---
+
+### Part 4 — The objections
+
+**"I only have one account, this is overkill."**
+
+No. The ETF X-Ray, Health Score, Tax Optimizer, Loss Harvest
+Center, real benchmarks, and 23 breakdown donuts all work on a
+single account. Multi-account is a bonus, not the value prop.
+
+**"Wealthsimple already shows me my returns."**
+
+It shows you a single number with no benchmark and no
+deposit-adjustment. Unifolio shows you the same number plotted
+against the S&P, TSX, Bitcoin, AND Canadian CPI. You will
+discover within 30 seconds whether you're actually winning.
+
+**"I don't trust giving my data to another app."**
+
+Read-only Plaid Canada connections, or CSV import where you never
+hand over credentials at all. Privacy mode one-clicks to hide
+every dollar value if you want to use it in public.
+
+**"$96/yr is a lot for a tracker."**
+
+If you have a non-reg account and harvest one $1,000 loss you
+otherwise would have missed, that's ~$250 in tax saved at a
+typical marginal rate. The Loss Harvest Center alone pays for
+multiple years of Pro+ the first December you use it.
+
+**"I'll just use a spreadsheet."**
+
+You won't.
+
+---
+
+### Part 5 — The plans (so you can recommend the right one)
+
+| Plan | Price (CAD) | Accounts | Who it's for |
 |---|---|---|---|
-| **Free** | $0 | 2 | Anyone testing the water |
-| **Pro** | **$8/mo billed annually** ($96/yr) | 3 | Most people — Plaid, IBKR/CSV, T5008, Tax Optimizer, Insights & ETF X-Ray, real-time prices, unlimited watchlist |
-| **Pro+** | **$22/mo billed annually** ($264/yr) | 8 | Heavy users — adds Loss Harvest Center, year-end harvest plan export, Behavioral Insights, AI Investment Analyst, 48+ themes |
-| **Pro Max** | **$42/mo billed annually** ($504/yr) | Power users | Same features as Pro+, higher account ceiling |
-| **Lifetime** | **$806 one-time** | Forever | ~24 months breaks even vs annual Pro Max. Direct access to the founder. |
+| **Free** | $0 | 2 | "I just want to see what this is." Holdings + P&L tracking, watchlist (10 tickers), demo mode. No card. |
+| **Pro** | **$8/mo billed annually** ($96/yr, save 20% vs monthly) | 3 | The default. Plaid Canada, IBKR/CSV import, Tax Report + T5008, **Tax Optimizer**, Insights & ETF X-Ray, real-time prices, unlimited watchlist. **7-day free trial, no card until day 8.** |
+| **Pro+** | **$22/mo billed annually** ($264/yr, save 12%) | 8 | Tax-aware investors. Everything in Pro + **Loss Harvest Center**, year-end harvest plan export, **Behavioral Insights**, **AI Investment Analyst**, 48+ custom themes. |
+| **Pro Max** | **$42/mo billed annually** ($504/yr, save 13%) | Power users | Same feature set as Pro+, higher account ceiling. |
+| **Lifetime** | **$806 one-time** | Forever | Break-even at ~24 months vs annual Pro Max. After that, free for life. Comes with **direct access to the founder.** |
 
-Add **+$3/mo per extra brokerage account** on any paid tier if you
-need more than the cap.
-
-7-day free trial on Pro, no card until day 8.
+**Add-on:** +$3/mo per extra brokerage account beyond the cap on
+any paid tier.
 
 ---
 
-### The move
+### Part 6 — The one-line ask
 
-1. Open **unifolio.ca** on your phone right now.
-2. Hit "Continue without logging in." Fake portfolio loads. 90
-   seconds of clicking — open Insights for ETF X-Ray + Health Score,
-   open Holdings for the 23 donuts, open Performance and add the
-   CPI_CA benchmark, then peek at the Tax Optimizer.
-3. If your reaction is "oh fuck this is sick" — upload your real
-   CSV/Flex (guides for every major institution included). Your
-   actual portfolio appears.
-4. Forward this to one friend who still pretends he knows what he
-   owns. He'll thank you in April when his tax bill is lower than
-   yours.
+Send this to one friend. They open unifolio.ca. They click
+"Continue without logging in." 90 seconds later they either get it
+or they don't. If they get it, they save more in tax in December
+than they spend on Pro+ for the next two years. If they don't, they
+close the tab.
 
-That's it. **unifolio.ca.** Go.
+That's the deal.
+
+**unifolio.ca.** Go.
