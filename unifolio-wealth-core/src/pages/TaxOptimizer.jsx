@@ -5,6 +5,8 @@ import {
   Info, Settings as SettingsIcon, CheckCircle2, Users,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PlainEnglish from '@/components/shared/PlainEnglish';
+import PageBenefitsDialog from '@/components/shared/PageBenefitsDialog';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -18,6 +20,24 @@ import { useQuery } from '@tanstack/react-query';
 import { getHouseholdHoldings } from '@/lib/householdClient';
 
 const PM = '••••••';
+
+const TAX_OPTIMIZER_BENEFITS = {
+  title: 'Tax Optimizer — what it does for you',
+  benefits: [
+    'A single dollar-figure for how much tax you could save next year — calibrated to your bracket, not a generic estimate.',
+    'Asset-location moves that put the right investments in the right account type (e.g. US dividend stocks in RRSP, growth in TFSA).',
+    'A ranked list of which account to fund first (RRSP vs TFSA vs FHSA), with the dollar reason for each step.',
+    'Income-splitting plays when you have a spouse with a different tax bracket — spousal-RRSPs, prescribed-rate loans, TFSA gifting.',
+  ],
+  howToUse: [
+    'Set your marginal tax rate in Profile → Tax Settings (and your spouse\'s if applicable). The savings numbers depend on this.',
+    'Walk the opportunity cards in order, top to bottom. Each one is a single concrete action with a dollar-savings tag.',
+    'For asset-location moves, transfers happen at your broker (in-kind transfer between your own accounts — no tax event).',
+    'Re-check the page in November as you plan year-end contributions, and again in January after fresh contribution room opens.',
+  ],
+  whatItsFor: 'Surfacing the cheapest, highest-impact ways for you to pay less Canadian tax in the coming year — without changing what you invest in.',
+  whoItsFor: 'High earners (>$100k marginal), spouses with a tax-rate gap, anyone with both registered and non-registered accounts, or anyone deciding which account to fund first. If you only have a sheltered TFSA and contribute the max every year, this page won\'t change much for you.',
+};
 
 function HeadlineCard({ totalSavings, opportunityCount, marginalTaxRate, privacyMode }) {
   return (
@@ -130,12 +150,15 @@ function OpportunityCard({ opp, privacyMode, icon: Icon, accentColor }) {
   );
 }
 
-function SectionHeader({ icon: Icon, title, count, accentColor }) {
+function SectionHeader({ icon: Icon, title, count, accentColor, plainEnglish }) {
   return (
-    <div className="flex items-center gap-2.5 mb-3">
-      <Icon className={cn('h-4 w-4', accentColor)} />
-      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">{count}</span>
+    <div className="mb-3">
+      <div className="flex items-center gap-2.5">
+        <Icon className={cn('h-4 w-4', accentColor)} />
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">{count}</span>
+      </div>
+      {plainEnglish && <div className="ml-6 mt-0.5"><PlainEnglish>{plainEnglish}</PlainEnglish></div>}
     </div>
   );
 }
@@ -258,6 +281,7 @@ export default function TaxOptimizer() {
         <PageHeader
           title="Tax Optimizer"
           description="Personalized recommendations to lower your annual tax bill."
+          actions={<PageBenefitsDialog {...TAX_OPTIMIZER_BENEFITS} />}
         />
         <EmptyPortfolioState />
       </div>
@@ -271,7 +295,12 @@ export default function TaxOptimizer() {
       <PageHeader
         title="Tax Optimizer"
         description="Personalized recommendations to lower your annual tax bill. Canadian rules — asset location, loss harvesting, and contribution sequencing."
+        actions={<PageBenefitsDialog {...TAX_OPTIMIZER_BENEFITS} />}
       />
+
+      <PlainEnglish>
+        The cheapest legal moves you can make to lower next year&rsquo;s tax bill — ranked by dollar impact, calibrated to your bracket.
+      </PlainEnglish>
 
       {!hasMarginalSet && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
@@ -281,6 +310,9 @@ export default function TaxOptimizer() {
             <p className="text-[11px] text-muted-foreground mt-0.5">
               We're using a 30% default. Update it in your Profile under Tax Settings to get recommendations calibrated to your actual bracket.
             </p>
+            <PlainEnglish>
+              Your marginal tax rate is the tax you pay on the next dollar you earn. Without it, every savings number on this page is just a rough guess.
+            </PlainEnglish>
           </div>
           <Link to="/profile">
             <Button variant="outline" size="sm" className="h-7 text-[11px]">Set Rate</Button>
@@ -302,6 +334,7 @@ export default function TaxOptimizer() {
           title="Asset Location Opportunities"
           count={optimization.assetLocation.length}
           accentColor="text-blue-400"
+          plainEnglish="Same investments, different account types. Putting US dividend stocks in your RRSP (no withholding) and growth in your TFSA (tax-free forever) can save hundreds a year — no new buys required."
         />
         {optimization.assetLocation.length === 0 ? (
           <EmptySection message="No asset location moves found. Your portfolio is well-placed across registered and non-registered accounts." />
@@ -316,14 +349,21 @@ export default function TaxOptimizer() {
 
       {/* Loss Harvesting */}
       <section>
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2.5">
-            <TrendingDown className="h-4 w-4 text-amber-400" />
-            <h2 className="text-sm font-semibold text-foreground">Loss Harvesting Opportunities</h2>
-            <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">{optimization.lossHarvest.length}</span>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5">
+              <TrendingDown className="h-4 w-4 text-amber-400" />
+              <h2 className="text-sm font-semibold text-foreground">Loss Harvesting Opportunities</h2>
+              <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">{optimization.lossHarvest.length}</span>
+            </div>
+            <div className="ml-6 mt-0.5">
+              <PlainEnglish>
+                Stocks you currently own at a loss. Selling them lets the loss cancel out gains you owe tax on — actual cash savings on April 15.
+              </PlainEnglish>
+            </div>
           </div>
           <Link to="/harvest">
-            <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5">
+            <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1.5 flex-shrink-0">
               Open Harvest Center <ArrowRight className="h-3 w-3" />
             </Button>
           </Link>
@@ -346,6 +386,7 @@ export default function TaxOptimizer() {
           title="Contribution Sequence"
           count={optimization.contributionSequence.length}
           accentColor="text-emerald-400"
+          plainEnglish="If you have $1,000 to invest right now, which account should it go in first — FHSA, TFSA, RRSP? The order matters; getting it wrong can cost you thousands over a few years."
         />
         <ContributionSequenceCard sequence={optimization.contributionSequence} />
       </section>
@@ -357,6 +398,7 @@ export default function TaxOptimizer() {
             title="Income Splitting Opportunities"
             count={optimization.incomeSplitting.length}
             accentColor="text-violet-400"
+            plainEnglish="Legal ways to move investment income from the higher-earning spouse to the lower-earning one, so the household pays less tax overall."
           />
           {optimization.incomeSplitting.length === 0 ? (
             <p className="text-xs text-muted-foreground rounded-xl border border-border/40 bg-card/30 px-4 py-3">
@@ -380,6 +422,11 @@ export default function TaxOptimizer() {
               We'll surface spousal-RRSP contribution savings, prescribed-rate spousal loans, and TFSA gifting strategies.
             </span>
           </p>
+          <div className="ml-5">
+            <PlainEnglish>
+              If you and your spouse are in different tax brackets, there are legal ways to shift investment income to the lower-bracket spouse and save thousands a year. We just need their tax rate to size them up.
+            </PlainEnglish>
+          </div>
         </section>
       )}
 
@@ -387,6 +434,9 @@ export default function TaxOptimizer() {
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           <strong className="text-foreground/80">For informational purposes only.</strong> These recommendations are based on Canadian tax rules and your portfolio data. They are not tax advice. Consult a tax professional before acting, especially for in-kind transfers between registered accounts (which use contribution room) or transactions that may trigger superficial loss rules.
         </p>
+        <PlainEnglish>
+          We don&rsquo;t know the full picture your accountant does. Treat these as a starting list of questions to bring to them, not as a green light to execute trades.
+        </PlainEnglish>
       </div>
     </div>
   );

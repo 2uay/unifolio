@@ -4,6 +4,8 @@ import {
   TrendingUp, TrendingDown, Info, Sparkles,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PlainEnglish from '@/components/shared/PlainEnglish';
+import PageBenefitsDialog from '@/components/shared/PageBenefitsDialog';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/components/shared/ValueDisplay';
@@ -13,6 +15,24 @@ import { buildBehavioralProfile } from '@/lib/behavioralEngine';
 import { loadHistoricalPricesForTransactions } from '@/lib/historicalPriceCache';
 
 const PM = '••••••';
+
+const BEHAVIORAL_INSIGHTS_BENEFITS = {
+  title: 'Behavioral Insights — what it does for you',
+  benefits: [
+    'A mirror of your own trading habits — revenge buys, late-night clicks, chasing run-ups, panic-selling drawdowns — built only from your history, never from generic advice.',
+    'A single discipline score (A–F) so you can track whether you\'re getting more or less disciplined over time.',
+    'Concrete dollar evidence: e.g. "your 30-day-after-buy returns average -2%" — the kind of feedback brokers never show you.',
+    'No prescriptions. The page tells you what you do, never what you should do.',
+  ],
+  howToUse: [
+    'Read the top score first — that\'s your overall grade for how disciplined your trading has been.',
+    'Scroll the pattern cards. Each one is a single behavior with the data behind it.',
+    'When a card is red or amber, treat it as a flag worth pausing on — not a verdict.',
+    'Re-check the page every few months; the score moves as your habits change.',
+  ],
+  whatItsFor: 'Self-awareness. Trading is mostly psychology, and the patterns that hurt your returns are invisible until somebody points them out — usually that\'s your future self looking back.',
+  whoItsFor: 'Active traders (≥5 realized trades), anyone who suspects they trade emotionally, anyone who wants to know their own discipline score. If you only own index ETFs and never sell, you can skip — there are no patterns to detect.',
+};
 
 function ArchetypeBanner({ archetype, score }) {
   const gradeColor =
@@ -98,7 +118,7 @@ function FactorRow({ factor }) {
   );
 }
 
-function PatternCard({ icon: Icon, title, severity, children }) {
+function PatternCard({ icon: Icon, title, severity, plainEnglish, children }) {
   const severityClass =
     severity === 'high' ? 'border-red-500/30 bg-red-500/5' :
     severity === 'medium' ? 'border-amber-500/30 bg-amber-500/5' :
@@ -106,9 +126,12 @@ function PatternCard({ icon: Icon, title, severity, children }) {
                           'border-border bg-card';
   return (
     <div className={cn('rounded-xl border p-4', severityClass)}>
-      <div className="flex items-center gap-2.5 mb-3">
-        <Icon className="h-4 w-4 text-foreground" />
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <div className="mb-3">
+        <div className="flex items-center gap-2.5">
+          <Icon className="h-4 w-4 text-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        </div>
+        {plainEnglish && <div className="ml-6"><PlainEnglish>{plainEnglish}</PlainEnglish></div>}
       </div>
       <div className="text-xs text-foreground/85 leading-relaxed">{children}</div>
     </div>
@@ -116,15 +139,16 @@ function PatternCard({ icon: Icon, title, severity, children }) {
 }
 
 function RevengePatternCard({ events, privacyMode }) {
+  const explainer = 'Selling a stock at a loss and rushing back in within two weeks. It usually means you\'re trying to "make it back" — and that\'s when bad decisions cluster.';
   if (!events || events.length === 0) {
     return (
-      <PatternCard icon={Repeat} title="Revenge Trading" severity="good">
+      <PatternCard icon={Repeat} title="Revenge Trading" severity="good" plainEnglish={explainer}>
         <p>No rebuy-after-loss events detected. You're not buying back into positions you just sold for a loss.</p>
       </PatternCard>
     );
   }
   return (
-    <PatternCard icon={Repeat} title="Revenge Trading" severity={events.length >= 3 ? 'high' : 'medium'}>
+    <PatternCard icon={Repeat} title="Revenge Trading" severity={events.length >= 3 ? 'high' : 'medium'} plainEnglish={explainer}>
       <p className="mb-3">
         <span className="font-mono text-foreground">{events.length}</span> rebuy event{events.length === 1 ? '' : 's'} where you bought back a position within 14 days of selling it at a loss.
       </p>
@@ -149,9 +173,10 @@ function RevengePatternCard({ events, privacyMode }) {
 }
 
 function HoldingPeriodCard({ data }) {
+  const explainer = 'Do you make more money when you sit tight, or when you flip fast? We split your closed trades into "held a while" vs "sold quickly" and compare the actual returns.';
   if (!data || (!data.long && !data.short)) {
     return (
-      <PatternCard icon={Clock} title="Holding Period Performance" severity="info">
+      <PatternCard icon={Clock} title="Holding Period Performance" severity="info" plainEnglish={explainer}>
         <p className="text-muted-foreground italic">Need a few realized positions to detect a holding-period pattern.</p>
       </PatternCard>
     );
@@ -162,7 +187,7 @@ function HoldingPeriodCard({ data }) {
   const severity = isGood ? 'good' : isBad ? 'medium' : 'info';
 
   return (
-    <PatternCard icon={Clock} title="Holding Period Performance" severity={severity}>
+    <PatternCard icon={Clock} title="Holding Period Performance" severity={severity} plainEnglish={explainer}>
       <p className="mb-3">
         {isGood && <>Your patient holds are paying off — long holds beat short flips by <span className="text-emerald-400 font-mono">{diff.toFixed(1)} pts</span> on weighted average return.</>}
         {isBad && <>Your quick flips are outperforming your long holds by <span className="text-amber-400 font-mono">{Math.abs(diff).toFixed(1)} pts</span> — worth examining which long positions are dragging.</>}
@@ -201,15 +226,16 @@ function HoldingPeriodCard({ data }) {
 }
 
 function ConcentrationCard({ items, privacyMode }) {
+  const explainer = 'When one stock keeps growing into a bigger and bigger slice of your portfolio AND you keep buying more of it. Conviction is fine; conviction without limits is what blows up accounts.';
   if (!items || items.length === 0) {
     return (
-      <PatternCard icon={Layers} title="Concentration Addiction" severity="good">
+      <PatternCard icon={Layers} title="Concentration Addiction" severity="good" plainEnglish={explainer}>
         <p>You don't have oversized positions you keep adding to. No single ticker dominates your portfolio AND has been bought repeatedly.</p>
       </PatternCard>
     );
   }
   return (
-    <PatternCard icon={Layers} title="Concentration Addiction" severity={items[0]?.severity || 'medium'}>
+    <PatternCard icon={Layers} title="Concentration Addiction" severity={items[0]?.severity || 'medium'} plainEnglish={explainer}>
       <p className="mb-3">
         You've added to {items.length} oversized position{items.length === 1 ? '' : 's'} repeatedly. Each one is &gt;15% of your current portfolio.
       </p>
@@ -236,12 +262,13 @@ function ConcentrationCard({ items, privacyMode }) {
 }
 
 function EmotionalVolatilityCard({ data }) {
+  const explainer = 'Do market swings make you trade more? We compare how often you click "buy"/"sell" on big-move days vs. calm days — a high multiplier means the market is driving you instead of the other way around.';
   if (!data) {
     return null;
   }
   if (!data.available) {
     return (
-      <PatternCard icon={Activity} title="Emotional Volatility" severity="info">
+      <PatternCard icon={Activity} title="Emotional Volatility" severity="info" plainEnglish={explainer}>
         <p className="text-muted-foreground italic">
           {data.reason === 'need-30-days' && 'Need at least 30 days of portfolio history to detect day-by-day patterns.'}
           {data.reason === 'flat-snapshots' && 'No daily returns detected in your portfolio history.'}
@@ -253,7 +280,7 @@ function EmotionalVolatilityCard({ data }) {
   const mult = data.multiplier;
   const severity = mult >= 2.5 ? 'high' : mult >= 1.8 ? 'medium' : mult <= 1 ? 'good' : 'info';
   return (
-    <PatternCard icon={Activity} title="Emotional Volatility" severity={severity}>
+    <PatternCard icon={Activity} title="Emotional Volatility" severity={severity} plainEnglish={explainer}>
       <p className="mb-2">
         On volatile days (portfolio ±2%) you trade{' '}
         <span className={cn('font-mono', mult >= 1.8 ? 'text-amber-400' : 'text-emerald-400')}>
@@ -269,10 +296,11 @@ function EmotionalVolatilityCard({ data }) {
 }
 
 function LateNightCard({ data }) {
+  const explainer = 'Trades placed between 11pm and 4am, when you\'re probably tired, alone, and scrolling. Late-night clicks are the single most predictable source of regret trades.';
   if (!data) return null;
   if (!data.available) {
     return (
-      <PatternCard icon={Moon} title="Late-Night Trading" severity="info">
+      <PatternCard icon={Moon} title="Late-Night Trading" severity="info" plainEnglish={explainer}>
         <p className="text-muted-foreground italic">
           Your import source doesn't include trade timestamps — only dates. We can detect late-night patterns once you connect a source that does (Plaid, IBKR with Flex Query time fields, or manual entries with times).
         </p>
@@ -281,7 +309,7 @@ function LateNightCard({ data }) {
   }
   const severity = data.lateTradePct >= 30 ? 'high' : data.lateTradePct >= 15 ? 'medium' : 'info';
   return (
-    <PatternCard icon={Moon} title="Late-Night Trading" severity={severity}>
+    <PatternCard icon={Moon} title="Late-Night Trading" severity={severity} plainEnglish={explainer}>
       <p className="mb-2">
         <span className="font-mono text-foreground">{data.lateTradePct.toFixed(0)}%</span> of your timestamped trades happened between 11 PM and 4 AM ({data.lateTradeCount} of {data.timestampedTradeCount}).
       </p>
@@ -299,22 +327,31 @@ function PriceCacheLoadingNote({ priceLoadState }) {
     return <p className="text-muted-foreground italic">Loading historical price bars…</p>;
   }
   if (priceLoadState === 'error') {
-    return <p className="text-muted-foreground italic">Couldn't load historical prices from Yahoo. Detector will run on your next visit.</p>;
+    return <p className="text-muted-foreground italic">Couldn&rsquo;t load historical prices from Yahoo. Detector will run on your next visit.</p>;
+  }
+  if (priceLoadState === 'all-failed') {
+    return (
+      <div className="space-y-1.5 text-muted-foreground italic">
+        <p>Tried to fetch historical prices for every ticker in your trades — every fetch came back empty.</p>
+        <p className="text-[10px] not-italic">Most common reasons: Yahoo&rsquo;s rate-limiting the dev server, your trade dates are after Yahoo&rsquo;s latest available bar, or the broker&rsquo;s ticker symbols don&rsquo;t match Yahoo&rsquo;s format. Open the browser console for per-ticker error detail.</p>
+      </div>
+    );
   }
   return <p className="text-muted-foreground italic">Not enough analyzable trades yet (need ≥5 buys/sells with available price history).</p>;
 }
 
 function ChasePatternCard({ data, priceLoadState }) {
+  const explainer = 'Buying right after a stock has already had a big run-up. The classic FOMO trade — feels great in the moment, often the exact local top.';
   if (!data || !data.available) {
     return (
-      <PatternCard icon={TrendingUp} title="Chase Pattern" severity="info">
+      <PatternCard icon={TrendingUp} title="Chase Pattern" severity="info" plainEnglish={explainer}>
         <PriceCacheLoadingNote priceLoadState={priceLoadState} />
       </PatternCard>
     );
   }
   if (data.sampleSize < 5) {
     return (
-      <PatternCard icon={TrendingUp} title="Chase Pattern" severity="info">
+      <PatternCard icon={TrendingUp} title="Chase Pattern" severity="info" plainEnglish={explainer}>
         <p className="text-muted-foreground italic">
           Analyzed {data.sampleSize} buy{data.sampleSize === 1 ? '' : 's'} — need at least 5 with available price history to call it a pattern.
         </p>
@@ -324,7 +361,7 @@ function ChasePatternCard({ data, priceLoadState }) {
   const ratePct = (data.chaseRate * 100).toFixed(0);
   const severity = data.chaseRate >= 0.50 ? 'high' : data.chaseRate >= 0.30 ? 'medium' : 'info';
   return (
-    <PatternCard icon={TrendingUp} title="Chase Pattern" severity={severity}>
+    <PatternCard icon={TrendingUp} title="Chase Pattern" severity={severity} plainEnglish={explainer}>
       <p className="mb-2">
         <span className="font-mono text-foreground">{ratePct}%</span> of your last {data.sampleSize} buys came after the security had already run up ≥5% in the prior 5 trading days ({data.chaseCount} of {data.sampleSize}).
       </p>
@@ -347,16 +384,17 @@ function ChasePatternCard({ data, priceLoadState }) {
 }
 
 function CapitulationCard({ data, priceLoadState }) {
+  const explainer = 'Selling right after a stock has already dropped sharply. The classic panic sell — locks in the loss right before the bounce most of the time.';
   if (!data || !data.available) {
     return (
-      <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity="info">
+      <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity="info" plainEnglish={explainer}>
         <PriceCacheLoadingNote priceLoadState={priceLoadState} />
       </PatternCard>
     );
   }
   if (data.sampleSize < 4) {
     return (
-      <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity="info">
+      <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity="info" plainEnglish={explainer}>
         <p className="text-muted-foreground italic">
           Analyzed {data.sampleSize} sell{data.sampleSize === 1 ? '' : 's'} — need at least 4 with available price history to call it a pattern.
         </p>
@@ -366,7 +404,7 @@ function CapitulationCard({ data, priceLoadState }) {
   const ratePct = (data.capitulationRate * 100).toFixed(0);
   const severity = data.capitulationRate >= 0.40 ? 'high' : data.capitulationRate >= 0.25 ? 'medium' : 'info';
   return (
-    <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity={severity}>
+    <PatternCard icon={TrendingDown} title="Capitulation Pattern" severity={severity} plainEnglish={explainer}>
       <p className="mb-2">
         <span className="font-mono text-foreground">{ratePct}%</span> of your last {data.sampleSize} sells came after a ≥8% drop in the prior 7 trading days ({data.capitulationCount} of {data.sampleSize}). Selling into weakness locks in losses that often recover.
       </p>
@@ -389,16 +427,17 @@ function CapitulationCard({ data, priceLoadState }) {
 }
 
 function PostTradeTimingCard({ data, priceLoadState }) {
+  const explainer = 'For each trade, what did the stock do in the 30 days right after you clicked? Positive after a buy = good timing; positive after a sell = you sold too early.';
   if (!data || !data.available) {
     return (
-      <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity="info">
+      <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity="info" plainEnglish={explainer}>
         <PriceCacheLoadingNote priceLoadState={priceLoadState} />
       </PatternCard>
     );
   }
   if (data.sampleSize < 5) {
     return (
-      <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity="info">
+      <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity="info" plainEnglish={explainer}>
         <p className="text-muted-foreground italic">
           Need at least 5 analyzable trades with 30 days of follow-through data.
         </p>
@@ -413,7 +452,7 @@ function PostTradeTimingCard({ data, priceLoadState }) {
     : compositePct >= -0.02 ? 'Your timing is roughly neutral over 30-day windows — typical for self-directed traders.'
     : 'Your timing is working against you: buys tend to decline and sells tend to be followed by further gains.';
   return (
-    <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity={severity}>
+    <PatternCard icon={Activity} title="30-Day Post-Trade Timing" severity={severity} plainEnglish={explainer}>
       <p className="mb-2">{verdict}</p>
       <div className="grid grid-cols-2 gap-2 text-[11px]">
         {data.avgBuyMovePct !== null && (
@@ -454,7 +493,20 @@ export default function BehavioralInsights() {
     let cancelled = false;
     setPriceLoadState('loading');
     loadHistoricalPricesForTransactions(transactions)
-      .then(cache => { if (!cancelled) { setPriceCache(cache); setPriceLoadState('loaded'); } })
+      .then(cache => {
+        if (cancelled) return;
+        setPriceCache(cache);
+        // If we attempted fetches for every ticker and got zero usable
+        // results back, that's a different state than "still loading" or
+        // "loaded fine." Surface it so the UI can tell the user why
+        // (rate-limited, future-dated trades, unrecognized symbols).
+        const attempted = cache.__attempted || 0;
+        if (attempted > 0 && cache.size === 0) {
+          setPriceLoadState('all-failed');
+        } else {
+          setPriceLoadState('loaded');
+        }
+      })
       .catch(() => { if (!cancelled) setPriceLoadState('error'); });
     return () => { cancelled = true; };
   }, [transactions]);
@@ -470,6 +522,7 @@ export default function BehavioralInsights() {
         <PageHeader
           title="Behavioral Insights"
           description="The patterns hidden in your own trading history."
+          actions={<PageBenefitsDialog {...BEHAVIORAL_INSIGHTS_BENEFITS} />}
         />
         <EmptyPortfolioState />
       </div>
@@ -483,11 +536,17 @@ export default function BehavioralInsights() {
         <PageHeader
           title="Behavioral Insights"
           description="The patterns hidden in your own trading history."
+          actions={<PageBenefitsDialog {...BEHAVIORAL_INSIGHTS_BENEFITS} />}
         />
         <div className="rounded-xl border border-border/40 bg-card/50 px-6 py-12 text-center">
           <Sparkles className="h-6 w-6 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-foreground">Need at least 5 trades to detect patterns.</p>
           <p className="text-xs text-muted-foreground mt-1">You have {tradesCount} so far. Import your transaction history to unlock this page.</p>
+          <div className="max-w-md mx-auto">
+            <PlainEnglish>
+              We need a few trades to find patterns. Once you&rsquo;ve made five or more, this page turns into your personal trading-habit mirror.
+            </PlainEnglish>
+          </div>
         </div>
       </div>
     );
@@ -498,7 +557,12 @@ export default function BehavioralInsights() {
       <PageHeader
         title="Behavioral Insights"
         description="The patterns hidden in your own trading history. Pure observation — never prescriptive."
+        actions={<PageBenefitsDialog {...BEHAVIORAL_INSIGHTS_BENEFITS} />}
       />
+
+      <PlainEnglish>
+        A mirror of your own trading habits — what you actually do, not what you think you do. No advice, no judgment, just data about your own clicks.
+      </PlainEnglish>
 
       <ArchetypeBanner archetype={profile.archetype} score={profile.score} />
 
@@ -530,10 +594,15 @@ export default function BehavioralInsights() {
 
       {/* Score factor breakdown */}
       <section>
-        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2.5">
+        <h2 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2.5">
           <Sparkles className="h-4 w-4 text-primary" />
           Discipline Factors
         </h2>
+        <div className="ml-6 mb-3">
+          <PlainEnglish>
+            The pieces that add up to your discipline score. Green ones are working in your favor; amber ones are dragging the grade down.
+          </PlainEnglish>
+        </div>
         <div className="space-y-1.5">
           {profile.score.factors.map(f => <FactorRow key={f.id} factor={f} />)}
         </div>
@@ -541,10 +610,17 @@ export default function BehavioralInsights() {
 
       {/* Per-pattern deep cards */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground flex items-center gap-2.5">
-          <Brain className="h-4 w-4 text-primary" />
-          Patterns Detected
-        </h2>
+        <div>
+          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2.5">
+            <Brain className="h-4 w-4 text-primary" />
+            Patterns Detected
+          </h2>
+          <div className="ml-6">
+            <PlainEnglish>
+              Eight specific habits we look for. Each card is a single behavior with the actual evidence — your own trades, not industry averages.
+            </PlainEnglish>
+          </div>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <RevengePatternCard events={profile.patterns.revengeTrades} privacyMode={privacyMode} />
           <HoldingPeriodCard data={profile.patterns.holdingPeriod} />
@@ -560,9 +636,14 @@ export default function BehavioralInsights() {
       {/* Footer */}
       <div className="rounded-xl border border-border/40 bg-card/30 px-4 py-3 flex items-start gap-2.5">
         <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
-        <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Patterns are based on your imported transaction history. Past patterns don't predict future trades — they're a mirror, not advice. This page is for observation and self-awareness; consult a financial planner before changing strategy based on any of it.
-        </p>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Patterns are based on your imported transaction history. Past patterns don't predict future trades — they're a mirror, not advice. This page is for observation and self-awareness; consult a financial planner before changing strategy based on any of it.
+          </p>
+          <PlainEnglish>
+            Spotting a pattern here doesn&rsquo;t mean it&rsquo;ll happen again — and we&rsquo;re not telling you what to do about it. That part is up to you (and ideally a real planner).
+          </PlainEnglish>
+        </div>
       </div>
     </div>
   );

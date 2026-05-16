@@ -5,6 +5,8 @@ import {
   Shield, Info,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PlainEnglish from '@/components/shared/PlainEnglish';
+import PageBenefitsDialog from '@/components/shared/PageBenefitsDialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { calcTaxSummary, calcACBByTicker, exportT5008CSV } from '@/lib/taxEngine';
@@ -13,6 +15,24 @@ import { usePrivacy } from '@/lib/PrivacyContext.jsx';
 import { useCurrency } from '@/lib/CurrencyContext';
 import { usePortfolioData } from '@/lib/PortfolioDataContext';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
+
+const TAX_REPORT_BENEFITS = {
+  title: 'Tax Report — what it does for you',
+  benefits: [
+    'Know exactly what taxable gain you owe before April, instead of guessing from a stack of broker PDFs.',
+    'Catch superficial losses before you file — CRA would otherwise quietly add them to your ACB and you\'d never see the disallowed deduction.',
+    'Export T5008-formatted CSV lines you can hand to an accountant or paste into the CRA form.',
+    'See ACB per ticker across every account, so you stop overpaying tax on shares you actually bought at a higher price.',
+  ],
+  howToUse: [
+    'Open the page after every tax year ends (or any time you want a year-to-date estimate).',
+    'Reconcile the All-Time Net Gain card against the totals on your broker\'s T5008 — they should match within rounding.',
+    'Check the Superficial Losses count. If it\'s >0, scroll into that year\'s section and read each warning.',
+    'Click "T5008 CSV" to download the line items, then hand to your accountant or import into your tax software.',
+  ],
+  whatItsFor: 'Translating your trading history into the exact numbers the CRA expects on Schedule 3 (capital gains) and the dividend lines of your T1 return.',
+  whoItsFor: 'Anyone with non-registered (taxable) trades during the year. If your only account is a TFSA and you never trade in non-registered accounts, you can mostly ignore this page — the TFSA/RRSP Sheltered card will just show you what you\'re saving.',
+};
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -25,7 +45,7 @@ function InfoBadge({ children }) {
   );
 }
 
-function StatCard({ label, value, sub, color, icon: Icon }) {
+function StatCard({ label, value, sub, plainEnglish, color, icon: Icon }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-2 mb-2">
@@ -34,6 +54,7 @@ function StatCard({ label, value, sub, color, icon: Icon }) {
       </div>
       <p className={cn('text-xl font-bold font-mono', color)}>{value}</p>
       {sub && <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>}
+      {plainEnglish && <PlainEnglish>{plainEnglish}</PlainEnglish>}
     </div>
   );
 }
@@ -93,13 +114,18 @@ function YearSection({ data, privacyMode, realizedPositions, accounts }) {
           <div>
             <button
               type="button"
-              className="flex w-full items-center justify-between px-5 py-3 hover:bg-secondary/20 transition-colors"
+              className="flex w-full items-start justify-between px-5 py-3 hover:bg-secondary/20 transition-colors text-left"
               onClick={() => setShowGains(v => !v)}
             >
-              <span className="text-xs font-semibold text-foreground">
-                Capital Gains &amp; Losses ({data.taxableGains.length + data.taxableLosses.length} positions)
-              </span>
-              {showGains ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-semibold text-foreground">
+                  Capital Gains &amp; Losses ({data.taxableGains.length + data.taxableLosses.length} positions)
+                </span>
+                <PlainEnglish>
+                  Every share you actually sold this year. Profit lines you owe tax on; loss lines lower that tax bill.
+                </PlainEnglish>
+              </div>
+              {showGains ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
             </button>
             {showGains && (
               <div className="overflow-x-auto">
@@ -140,13 +166,18 @@ function YearSection({ data, privacyMode, realizedPositions, accounts }) {
           <div>
             <button
               type="button"
-              className="flex w-full items-center justify-between px-5 py-3 hover:bg-secondary/20 transition-colors"
+              className="flex w-full items-start justify-between px-5 py-3 hover:bg-secondary/20 transition-colors text-left"
               onClick={() => setShowDivs(v => !v)}
             >
-              <span className="text-xs font-semibold text-foreground">
-                Dividends &amp; Interest ({data.dividendEntries.length} entries)
-              </span>
-              {showDivs ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-semibold text-foreground">
+                  Dividends &amp; Interest ({data.dividendEntries.length} entries)
+                </span>
+                <PlainEnglish>
+                  Cash payouts you collected just for owning the shares. Canadian dividends get a tax credit; US dividends get a 15&ndash;25% withholding hit.
+                </PlainEnglish>
+              </div>
+              {showDivs ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />}
             </button>
             {showDivs && (
               <div className="overflow-x-auto">
@@ -202,12 +233,17 @@ function ACBTable({ privacyMode, holdings, transactions }) {
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <button
         type="button"
-        className="flex w-full items-center gap-2.5 px-5 py-4 text-left hover:bg-secondary/20 transition-colors"
+        className="flex w-full items-start gap-2.5 px-5 py-4 text-left hover:bg-secondary/20 transition-colors"
         onClick={() => setOpen(v => !v)}
       >
-        <Receipt className="h-4 w-4 text-muted-foreground" />
-        <span className="flex-1 text-sm font-semibold text-foreground">Adjusted Cost Base (ACB) by Ticker</span>
-        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        <Receipt className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-semibold text-foreground">Adjusted Cost Base (ACB) by Ticker</span>
+          <PlainEnglish>
+            What the CRA says you really paid for each stock you own, averaged across every purchase. Use this number, not the broker&rsquo;s, when you sell.
+          </PlainEnglish>
+        </div>
+        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />}
       </button>
       {open && (
         <div className="border-t border-border/30">
@@ -259,6 +295,7 @@ export default function TaxReport() {
         <PageHeader
           title="Tax Report"
           description="Capital gains, dividend income, ACB tracking, and superficial loss detection."
+          actions={<PageBenefitsDialog {...TAX_REPORT_BENEFITS} />}
         />
         <EmptyPortfolioState />
       </div>
@@ -270,7 +307,12 @@ export default function TaxReport() {
       <PageHeader
         title="Tax Report"
         description="Capital gains, dividend income, ACB tracking, and superficial loss detection."
+        actions={<PageBenefitsDialog {...TAX_REPORT_BENEFITS} />}
       />
+
+      <PlainEnglish>
+        Everything you need to do your Canadian taxes on this year&rsquo;s trading — the gain you owe tax on, the dividends you collected, and the loss-rebuy mistakes the CRA penalizes.
+      </PlainEnglish>
 
       <InfoBadge>
         This report is for informational purposes only and is based on your portfolio data. Consult a tax professional for filing. Canadian tax rules are applied (50% capital gains inclusion, ACB, superficial loss rule).
@@ -282,6 +324,7 @@ export default function TaxReport() {
           label="All-Time Net Gain"
           value={privacyMode ? PM : (totalNetGL >= 0 ? '+' : '') + formatCurrency(totalNetGL)}
           sub={`${(totalNetGL * 0.5).toFixed(2)} taxable inclusion`}
+          plainEnglish="The CRA only taxes half of your capital gains — that's the number on the second line."
           color={totalNetGL >= 0 ? 'text-emerald-400' : 'text-red-400'}
           icon={TrendingUp}
         />
@@ -289,6 +332,7 @@ export default function TaxReport() {
           label="Dividend Income"
           value={privacyMode ? PM : formatCurrency(totalDivs)}
           sub="Across all taxable accounts"
+          plainEnglish="Cash you received from owning shares this year. Counts as income on your return."
           color="text-blue-400"
           icon={DollarSign}
         />
@@ -296,6 +340,7 @@ export default function TaxReport() {
           label="TFSA/RRSP Sheltered"
           value={privacyMode ? PM : formatCurrency(totalSheltered)}
           sub="No tax reporting required"
+          plainEnglish="Gains and dividends inside your registered accounts. You owe zero tax on these — don&rsquo;t even mention them on your return."
           color="text-emerald-500"
           icon={Shield}
         />
@@ -303,6 +348,7 @@ export default function TaxReport() {
           label="Superficial Losses"
           value={allWarnings.length}
           sub={allWarnings.length > 0 ? 'Potential disallowed losses' : 'None detected'}
+          plainEnglish="If you sell at a loss and rebuy the same stock within 30 days, the CRA cancels the deduction. We flag those here so you don&rsquo;t accidentally claim a loss they&rsquo;ll reject."
           color={allWarnings.length > 0 ? 'text-amber-400' : 'text-muted-foreground'}
           icon={AlertTriangle}
         />

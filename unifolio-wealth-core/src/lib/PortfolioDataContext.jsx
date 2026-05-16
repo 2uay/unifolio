@@ -343,20 +343,110 @@ function normalizeRealized(row) {
   };
 }
 
-function buildSnapshotsFallback(holdings, accounts) {
-  const currentValue = holdings.reduce((sum, h) => sum + safeNumber(h.market_value), 0)
-    + accounts.reduce((sum, a) => sum + safeNumber(a.cash_balance), 0);
-  return [{
-    date: new Date().toISOString().slice(0, 10),
-    value: Math.round(currentValue * 100) / 100,
-    daily_return_amount: 0,
-    daily_return_percent: 0,
-    cumulative_return_percent: 0,
-    deposits: 0,
-    withdrawals: 0,
-    net_contributions: 0,
-    valuation_method: 'current_import_value',
-  }];
+// "We know what you have right now and nothing else" fallback. Returns a
+// flat-line series across the lookback window so the chart renders as a
+// horizontal line at the current value, not a single floating dot. Returns
+// an empty array if there's literally nothing to chart (no cash, no
+// holdings) — the consumer will then show its empty state instead.
+function buildSnapshotsFallback(holdings, accounts, days = 90) {
+  const currentValue = (holdings || []).reduce((sum, h) => sum + safeNumber(h.market_value), 0)
+    + (accounts || []).reduce((sum, a) => sum + safeNumber(a.cash_balance), 0);
+  if (currentValue <= 0) return [];
+  const rounded = Math.round(currentValue * 100) / 100;
+  const today = new Date();
+  const snaps = [];
+  for (let i = days; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    snaps.push({
+      date: d.toISOString().slice(0, 10),
+      value: rounded,
+      daily_return_amount: 0,
+      daily_return_percent: 0,
+      cumulative_return_percent: 0,
+      deposits: 0,
+      withdrawals: 0,
+      net_contributions: 0,
+      valuation_method: 'current_import_value',
+    });
+  }
+  return snaps;
+}
+
+// Reconstruct a historical portfolio-value series from current holdings + a
+// historical-price fetch, when we don't have a transaction history to walk.
+// Assumes the user held the *current* quantities for the entire lookback —
+// inaccurate for active traders (who will have transactions and won't hit
+// this path) but the right answer for Plaid users on first connect, manual
+// CSV imports without trade history, etc. Without it, those users see a
+// chart with one floating dot instead of a line.
+async function buildSnapshotsFromCurrentHoldings(holdings, accounts, days = 365) {
+  const activeHoldings = (holdings || []).filter(h => h.ticker && safeNumber(h.quantity) > 0);
+  if (activeHoldings.length === 0) return buildSnapshotsFallback(holdings, accounts);
+
+  const today = new Date();
+  const fromDate = new Date(today);
+  fromDate.setDate(today.getDate() - days);
+  const fromDateStr = fromDate.toISOString().slice(0, 10);
+
+  const tickers = [...new Set(activeHoldings.map(h => h.quote_symbol || h.ticker).filter(Boolean))];
+
+  let priceHistory = {};
+  try {
+    priceHistory = await fetchHistoricalPricesForTickers(tickers, fromDateStr);
+  } catch (err) {
+    console.warn('[PortfolioData] Holdings-backfilled reconstruction price fetch failed:', err?.message || err);
+    return buildSnapshotsFallback(holdings, accounts);
+  }
+  const hasAnyPrices = priceHistory && Object.values(priceHistory).some(byDate => byDate && Object.keys(byDate).length > 0);
+  if (!hasAnyPrices) return buildSnapshotsFallback(holdings, accounts);
+
+  // Cash is assumed constant across the lookback — without deposit /
+  // withdrawal transactions we can't model it any better. The error is
+  // bounded; cash is a small fraction of most portfolios.
+  const cashConstant = (accounts || []).reduce((sum, a) => sum + safeNumber(a.cash_balance), 0);
+
+  // Seed last-known-price from the current quote so any days the historical
+  // fetch doesn't cover (common near today — fetches usually lag a day or
+  // two) still get a price.
+  const lastKnownPrice = {};
+  activeHoldings.forEach(h => {
+    const key = h.quote_symbol || h.ticker;
+    if (key && safeNumber(h.current_price) > 0) lastKnownPrice[key] = safeNumber(h.current_price);
+  });
+
+  const snapshots = [];
+  const cursor = new Date(fromDate);
+  const end = new Date(today);
+  while (cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10);
+    tickers.forEach(ticker => {
+      const p = priceHistory[ticker]?.[date];
+      if (p) lastKnownPrice[ticker] = p;
+    });
+    let holdingsValue = 0;
+    activeHoldings.forEach(h => {
+      const key = h.quote_symbol || h.ticker;
+      const qty = safeNumber(h.quantity);
+      const price = lastKnownPrice[key];
+      if (price && qty > 0) holdingsValue += qty * price;
+    });
+    snapshots.push({
+      date,
+      value: Math.round((cashConstant + holdingsValue) * 100) / 100,
+      daily_return_amount: 0,
+      daily_return_percent: 0,
+      cumulative_return_percent: 0,
+      deposits: 0,
+      withdrawals: 0,
+      net_contributions: 0,
+      valuation_method: 'holdings_backfilled',
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  if (!snapshots.some(s => s.value > 0)) return buildSnapshotsFallback(holdings, accounts);
+  return snapshots;
 }
 
 async function buildHistoricalSnapshots(holdings, accounts, transactions) {
@@ -365,7 +455,7 @@ async function buildHistoricalSnapshots(holdings, accounts, transactions) {
     .filter(t => t.date)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
-  if (sorted.length === 0) return buildSnapshotsFallback(holdings, accounts);
+  if (sorted.length === 0) return buildSnapshotsFromCurrentHoldings(holdings, accounts);
 
   const firstDate = String(sorted[0].date).slice(0, 10);
 
@@ -484,8 +574,11 @@ async function buildHistoricalSnapshots(holdings, accounts, transactions) {
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  // If reconstruction produced all-zero values (e.g. no price history at all), fall back
-  if (!snapshots.some(s => s.value > 0)) return buildSnapshotsFallback(holdings, accounts);
+  // If reconstruction produced all-zero values (e.g. no price history at
+  // all for the tx tickers), try the current-holdings backfill path —
+  // it doesn't depend on transaction tickers and often succeeds when the
+  // transaction-driven pass produces nothing useful.
+  if (!snapshots.some(s => s.value > 0)) return buildSnapshotsFromCurrentHoldings(holdings, accounts);
 
   return snapshots;
 }
@@ -789,8 +882,26 @@ export function PortfolioDataProvider({ children }) {
     }
 
     const localImportedBundle = loadLocalImportedBundle();
-    setBundle(localImportedBundle || emptyBundle());
     setIsLoadingPortfolio(true);
+    // Only swap to the local-imported bundle if we actually have one. Previously
+    // we stomped to emptyBundle() on every refresh, which produced a visible
+    // empty-state flash on first sign-in (chart with disconnected dots, blank
+    // holdings page) until the Supabase queries completed — or, if RLS-filtered
+    // them to zero rows due to the session race below, persisted indefinitely.
+    if (localImportedBundle) setBundle(localImportedBundle);
+
+    // Force supabase-js to materialize the session before we hit RLS-guarded
+    // tables. Without this, queries fired off the React-state propagation of
+    // SIGNED_IN (via user?.id changing in useAuth) can go out before the
+    // postgrest client has the JWT attached — RLS silently filters them to
+    // zero rows, which looks identical to "no data." The onAuthStateChange
+    // subscription below will retrigger this function when the session lands.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      setIsLoadingPortfolio(false);
+      return;
+    }
+
     try {
       const [institutionsRes, accountsRes, holdingsRes, transactionsRes, realizedRes] = await withTimeout(
         Promise.all([
@@ -859,6 +970,21 @@ export function PortfolioDataProvider({ children }) {
 
   useEffect(() => {
     refreshPortfolioData();
+  }, [refreshPortfolioData]);
+
+  // Canonical "supabase session is fully ready" signal. The React-state path
+  // (useAuth → user?.id changing → useCallback recompute → useEffect above)
+  // occasionally fires before supabase-js's postgrest client has the JWT,
+  // making first-sign-in queries return zero rows. Listening to the SDK's own
+  // auth event closes that gap; getSession() inside refreshPortfolioData
+  // makes the double-fire idempotent on the happy path.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        refreshPortfolioData();
+      }
+    });
+    return () => subscription.unsubscribe();
   }, [refreshPortfolioData]);
 
   useEffect(() => {

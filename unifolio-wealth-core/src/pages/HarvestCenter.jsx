@@ -5,6 +5,8 @@ import {
   TrendingDown, CheckCircle2, Clock, Sparkles, ExternalLink,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PlainEnglish from '@/components/shared/PlainEnglish';
+import PageBenefitsDialog from '@/components/shared/PageBenefitsDialog';
 import EmptyPortfolioState from '@/components/shared/EmptyPortfolioState';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -18,6 +20,25 @@ import { useQuery } from '@tanstack/react-query';
 import { getHouseholdRecentTransactions, getCurrentHousehold } from '@/lib/householdClient';
 
 const PM = '••••••';
+
+const HARVEST_CENTER_BENEFITS = {
+  title: 'Loss Harvest Center — what it does for you',
+  benefits: [
+    'Real cash on your tax return — selling a losing stock turns a paper loss into a deduction that cancels out gains you owe tax on.',
+    'Replacement tickers per position, so you can stay invested in the same theme without triggering the superficial-loss rule.',
+    'Cross-spouse superficial-loss detection (when your spouse is linked) — if they bought the same stock recently, we mark it as Blocked so you don\'t accidentally waste the deduction.',
+    'A countdown to the year-end sell-by date so you know how many days you have left to act.',
+  ],
+  howToUse: [
+    'Check the urgency banner at the top — that\'s your deadline.',
+    'Review each opportunity card. Green is safe to harvest, amber needs caution, "Blocked by Spouse Buy" needs to be skipped.',
+    'Execute the sell at your broker before the sell-by date.',
+    'If you still want exposure, buy the suggested replacement ticker (or wait 30 days and rebuy the original).',
+    'Click "Download Harvest Plan" for a markdown summary you can paste into your records or your accountant\'s email.',
+  ],
+  whatItsFor: 'Turning unrealized losses into a tax deduction this year, with guardrails so the CRA doesn\'t reject the deduction or quietly add it to your ACB.',
+  whoItsFor: 'Anyone with non-registered (taxable) accounts holding positions at a loss, especially in November–December when the tax year is closing. If everything you hold is in a TFSA or RRSP, you can skip — losses in registered accounts don\'t produce a deduction.',
+};
 
 const URGENCY_STYLES = {
   planning:  { bg: 'bg-blue-500/10',    border: 'border-blue-500/30',   text: 'text-blue-400',   label: 'Planning Window' },
@@ -43,6 +64,9 @@ function UrgencyBanner({ progress }) {
         <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
           Trades placed by {progress.sellByDate} will settle in {progress.taxYear} (T+1 settlement). After that, harvests count toward the {progress.taxYear + 1} tax year.
         </p>
+        <PlainEnglish>
+          Sell after this date and the loss goes on next year&rsquo;s taxes instead of this year&rsquo;s — which usually means waiting 12 months to get the cash back.
+        </PlainEnglish>
       </div>
     </div>
   );
@@ -74,6 +98,9 @@ function HeadlineCard({ plan, privacyMode }) {
               )}
             </div>
           </div>
+          <PlainEnglish>
+            Cash you keep on your tax bill if you actually execute every harvest below. &ldquo;Immediate&rdquo; cancels gains you already owe tax on this year; &ldquo;carryforward&rdquo; banks the rest against gains in any future year.
+          </PlainEnglish>
         </div>
       </div>
     </div>
@@ -89,12 +116,14 @@ function YtdGainsRow({ plan, privacyMode }) {
           {privacyMode ? PM : formatCurrency(plan.ytdRealizedGains)}
         </p>
         <p className="text-[10px] text-muted-foreground mt-0.5">Non-registered only</p>
+        <PlainEnglish>The profit you&rsquo;ve already locked in this year. This is what you owe tax on.</PlainEnglish>
       </div>
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">YTD Realized Losses</p>
         <p className="text-lg font-bold font-mono text-red-400 mt-1">
           {privacyMode ? PM : formatCurrency(plan.ytdRealizedLosses)}
         </p>
+        <PlainEnglish>Losses you&rsquo;ve already taken this year. They already cancel out some of the gains above.</PlainEnglish>
       </div>
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Harvestable Losses</p>
@@ -102,6 +131,7 @@ function YtdGainsRow({ plan, privacyMode }) {
           {privacyMode ? PM : formatCurrency(plan.totalHarvestableLoss)}
         </p>
         <p className="text-[10px] text-muted-foreground mt-0.5">Currently unrealized</p>
+        <PlainEnglish>What you could lock in by selling losers you still own. Each dollar here is a dollar of taxable gain you can cancel.</PlainEnglish>
       </div>
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Net If Harvested</p>
@@ -109,6 +139,7 @@ function YtdGainsRow({ plan, privacyMode }) {
           {privacyMode ? PM : formatCurrency(plan.ytdNetRealized - plan.totalHarvestableLoss)}
         </p>
         <p className="text-[10px] text-muted-foreground mt-0.5">YTD gains minus harvest</p>
+        <PlainEnglish>What you&rsquo;d actually be taxed on if you harvested everything below. Closer to zero (or negative) = lower tax bill.</PlainEnglish>
       </div>
     </div>
   );
@@ -318,6 +349,7 @@ export default function HarvestCenter() {
         <PageHeader
           title="Loss Harvest Center"
           description="Year-end tax-loss harvesting plan with superficial-loss detection and safe replacement suggestions."
+          actions={<PageBenefitsDialog {...HARVEST_CENTER_BENEFITS} />}
         />
         <EmptyPortfolioState />
       </div>
@@ -332,7 +364,12 @@ export default function HarvestCenter() {
       <PageHeader
         title="Loss Harvest Center"
         description="Year-end tax-loss harvesting plan. Detects superficial-loss conflicts across every account and suggests safe replacements using ETF underlying-overlap data."
+        actions={<PageBenefitsDialog {...HARVEST_CENTER_BENEFITS} />}
       />
+
+      <PlainEnglish>
+        Selling losers on purpose to lower this year&rsquo;s tax bill — with guardrails so the CRA actually lets you keep the deduction.
+      </PlainEnglish>
 
       <UrgencyBanner progress={plan} />
 
@@ -344,6 +381,9 @@ export default function HarvestCenter() {
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Using a 30% default. Set your actual bracket in Profile under Tax Settings.
             </p>
+            <PlainEnglish>
+              Without your real tax bracket, the savings numbers below are a rough guess instead of an accurate dollar figure.
+            </PlainEnglish>
           </div>
           <Link to="/profile">
             <Button variant="outline" size="sm" className="h-7 text-[11px]">Set Rate</Button>
@@ -378,18 +418,30 @@ export default function HarvestCenter() {
 
       {/* Opportunities */}
       <section>
-        <div className="flex items-center gap-2.5 mb-3">
-          <Scissors className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">Harvest Opportunities</h2>
-          <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
-            {plan.opportunities.length}
-          </span>
+        <div className="mb-3">
+          <div className="flex items-center gap-2.5">
+            <Scissors className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Harvest Opportunities</h2>
+            <span className="rounded-full bg-secondary border border-border px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+              {plan.opportunities.length}
+            </span>
+          </div>
+          <div className="ml-6 mt-0.5">
+            <PlainEnglish>
+              Each card is a stock you currently own at a loss, and a one-click plan: sell this for the deduction, optionally rebuy this replacement to stay invested.
+            </PlainEnglish>
+          </div>
         </div>
         {!hasOpportunities ? (
           <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-8 text-center">
             <CheckCircle2 className="h-6 w-6 text-emerald-500/60 mx-auto mb-2" />
             <p className="text-xs text-muted-foreground">No harvestable losses in your taxable accounts.</p>
             <p className="text-[11px] text-muted-foreground/70 mt-1">We only surface positions in non-registered accounts — losses in TFSA/RRSP/FHSA are not tax-deductible.</p>
+            <div className="max-w-md mx-auto">
+              <PlainEnglish>
+                Good news — nothing to harvest right now. Either everything you own is in the green, or the losers you have are inside a TFSA/RRSP where losses don&rsquo;t help your tax bill.
+              </PlainEnglish>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -404,23 +456,33 @@ export default function HarvestCenter() {
       <div className="space-y-2">
         <div className="rounded-xl border border-border/40 bg-card/30 px-4 py-3 flex items-start gap-2.5">
           <Clock className="h-3.5 w-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Carryforward value is shown at <span className="text-foreground">60% of nominal</span> to reflect that future use depends on having future capital gains. Adjust your own expectation accordingly.
-          </p>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Carryforward value is shown at <span className="text-foreground">60% of nominal</span> to reflect that future use depends on having future capital gains. Adjust your own expectation accordingly.
+            </p>
+            <PlainEnglish>
+              A loss only saves you tax in a year you have gains. We discount the future use because most years aren&rsquo;t big-gain years — a dollar of loss now isn&rsquo;t worth a full dollar of deduction later.
+            </PlainEnglish>
+          </div>
         </div>
         <div className="rounded-xl border border-border/40 bg-card/30 px-4 py-3 flex items-start gap-2.5">
           <AlertTriangle className="h-3.5 w-3.5 mt-0.5 text-amber-400 flex-shrink-0" />
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {plan.spouseLinkActive ? (
-              <>
-                <strong className="text-foreground/80">Spousal accounts ARE checked</strong> via the household link in your profile. Cross-spouse superficial-loss blocks are marked "Blocked by Spouse Buy" above. For informational purposes only; not tax advice.
-              </>
-            ) : (
-              <>
-                <strong className="text-foreground/80">The superficial-loss rule also applies to your spouse's accounts.</strong> <Link to="/profile" className="text-primary hover:underline">Link your spouse</Link> to enable cross-spouse detection. For informational purposes only; not tax advice.
-              </>
-            )}
-          </p>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {plan.spouseLinkActive ? (
+                <>
+                  <strong className="text-foreground/80">Spousal accounts ARE checked</strong> via the household link in your profile. Cross-spouse superficial-loss blocks are marked "Blocked by Spouse Buy" above. For informational purposes only; not tax advice.
+                </>
+              ) : (
+                <>
+                  <strong className="text-foreground/80">The superficial-loss rule also applies to your spouse's accounts.</strong> <Link to="/profile" className="text-primary hover:underline">Link your spouse</Link> to enable cross-spouse detection. For informational purposes only; not tax advice.
+                </>
+              )}
+            </p>
+            <PlainEnglish>
+              The CRA treats you and your spouse as one for this rule. If your spouse rebuys what you sold, your loss gets denied too — link them so we can catch that for you.
+            </PlainEnglish>
+          </div>
         </div>
       </div>
     </div>
